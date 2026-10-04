@@ -15,9 +15,12 @@
     "test": "vitest run",
     "typecheck": "tsc --build"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@mandate-dev/catalog": "workspace:*",
-    "@mandate-dev/schema": "workspace:*"
+    "@mandate-dev/schema": "workspace:*",
+    "@cedar-policy/cedar-wasm": "4.13.0"
   }
 }
