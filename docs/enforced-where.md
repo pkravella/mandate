@@ -89,6 +89,26 @@ with `contents: write`, and nothing stops the deletion over the raw REST API.
 Most of these are classed `forbidden` or `elevated` and the R4 lints reject them
 outright, which is the real mitigation.
 
+**Destinations are enforced on fields, not on content.** R9a scans "every tool
+call argument ... for destination-bearing fields (URLs, remotes, webhook
+targets, fork owners)", and the field list is the operative part. A URL inside
+a file's `content` or an issue `body` is **not** treated as a destination,
+because writing `curl evil.example.com` into a source file sends nothing
+anywhere — the bytes still travel to GitHub, an allowed destination. Treating
+content as a destination would deny any commit touching a `package.json`, a
+licence header or a document with a link in it, against a target of under 5%
+false pauses, while blocking no actual exfiltration.
+
+A URL written into the repository and *later executed* is a real risk. It is
+the sandbox's (R9b) and taint tracking's (R14, P1), and until the sandbox is in
+place destination enforcement at the proxy is advisory — which Decision D3 says
+in as many words.
+
+Destination entries are matched as `host/path` prefixes on a segment boundary,
+so a mandate allowing `github.com/acme/api` does not permit
+`github.com/evil/api` or `github.com/acme/api-private`. A bare host entry also
+covers its subdomains.
+
 **The loosest rule for a tool decides.** Nine MCP tools are reached by more than
 one operation — `get_file_contents` by both `repo.read` and `contents.read`,
 `create_or_update_file` by both `contents.write` and `workflows.write`. A call is
