@@ -18,6 +18,7 @@ export const workspaceAlias: Readonly<Record<string, string>> = {
   "@mandate-dev/catalog": src("catalog"),
   "@mandate-dev/cli": src("cli"),
   "@mandate-dev/compiler": src("compiler"),
+  "@mandate-dev/proxy": src("proxy"),
   "@mandate-dev/schema": src("schema"),
   "@mandate-dev/validator": src("validator"),
   "@mandate-dev/writer": src("writer"),

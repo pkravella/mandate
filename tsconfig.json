@@ -6,6 +6,7 @@
     { "path": "./packages/validator" },
     { "path": "./packages/writer" },
     { "path": "./packages/compiler" },
+    { "path": "./packages/proxy" },
     { "path": "./packages/cli" }
   ]
 }
