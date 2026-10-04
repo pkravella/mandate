@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
+import {
+  MandateSchema, mandateHash, markValidated, unwrap, type ValidatedMandate,
+} from "@mandate-dev/schema";
 import { compileRules, enforcementReport, rulesForTool } from "./rules.js";
 
 const validated = (grants: unknown[], over: Record<string, unknown> = {}): ValidatedMandate =>
@@ -35,6 +37,21 @@ describe("compileRules", () => {
     expect(rules.allowedTools).toContain("create_branch");
     expect(rules.allowedTools).toContain("create_pull_request");
     expect(rules.allowedTools).toContain("get_file_contents");
+  });
+
+  // The action graph's header names the mandate the proxy enforced. `mandateId`
+  // alone cannot: slug() truncates the task text, so two tasks opening with the
+  // same words share an id.
+  it("carries the mandate's canonical hash, so a trace names one exact mandate", () => {
+    expect(rules.mandateHash).toBe(mandateHash(unwrap(FIX_42)));
+    expect(rules.mandateHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("gives two mandates differing only in a grant different hashes", () => {
+    const narrower = validated([
+      { action: "repo.read", enforcedBy: "token", resources: ["acme/api"] },
+    ]);
+    expect(compileRules(narrower).mandateHash).not.toBe(rules.mandateHash);
   });
 
   it("does not allow a tool no grant reaches — merge is the exit-criterion case", () => {

@@ -122,6 +122,29 @@ decorative. The enforcement report names the facet, the tool and the grant
 responsible.
 A single number would be marketing rather than measurement.
 
+## What the action graph proves, and what it does not
+
+Every decision the proxy makes is recorded as a node (R8), and that trace is
+what the replay evaluator scores a mandate against. It is a record, not a
+control: it bounds nothing. Three limits are worth stating.
+
+**It sees what the proxy sees, and no more.** The trace has the same blind spot
+as the proxy row above: a call that never transits MCP never appears. A trace
+showing nothing untoward is not evidence that nothing untoward happened.
+
+**It records how much data moved, not what the data was.** Outputs are stored
+as a size in bytes and a truncated sha256 of the result, never as content. That
+is deliberate — a trace file holding repository contents would be a second copy
+of everything the agent read, with none of the repository's access control — but
+it means the trace cannot answer "was this file's contents in the response". It
+answers "did the same bytes come back as last time".
+
+**Destinations in the trace are the fields R9a checks, not every URL seen.** A
+URL inside an issue body or a file's `content` is not recorded as a destination,
+for the same reason it is not enforced as one. The trace and the enforcer use
+one extraction function, so a destination in the trace is exactly a destination
+the proxy decided on.
+
 ## What Mandate does not attempt
 
 - **Prompt-injection detection.** Mandate does not try to notice that an agent's

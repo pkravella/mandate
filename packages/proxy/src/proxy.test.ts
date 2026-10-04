@@ -4,12 +4,14 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ProxyRules } from "@mandate-dev/compiler";
-import { createProxyServer, type Decision } from "./proxy.js";
+import { createProxyServer, type Decision, type ProxyDeps } from "./proxy.js";
+import { Recorder, parseJsonl } from "./graph.js";
 import { makeArgumentEnforcer } from "./enforce.js";
 import { pauseRecord, type PauseRecord } from "./pause.js";
 
 const rules: ProxyRules = {
   mandateId: "fix-issue-42",
+  mandateHash: "b".repeat(64),
   expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
   allowedTools: [
     "get_file_contents", "create_branch", "create_or_update_file", "create_pull_request",
@@ -391,5 +393,175 @@ describe("proxy with argument enforcement — the phase 2 exit criterion", () =>
     expect(second.isError).toBe(true);
     expect(JSON.stringify(second.content)).toContain("at most 1");
     expect(seen.filter((s) => s.tool === "create_pull_request")).toHaveLength(1);
+  });
+});
+
+// R8. The recorder's trace is the ground truth Task 17 replays, so the proxy
+// has to record on every path it can take — including the one where the
+// mandate allowed the call and the upstream server then threw.
+describe("proxy recording", () => {
+  const recorder = () => new Recorder({
+    mode: "enforced", mandateId: rules.mandateId, mandateHash: rules.mandateHash,
+  });
+
+  const withRecorder = async (over: Partial<ProxyDeps> = {}) => {
+    const { client, seen } = await fakeUpstream(over as { failOn?: string });
+    const rec = recorder();
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+      recorder: rec, ...over,
+    }));
+    return { agent, rec, seen };
+  };
+
+  it("records an allowed call with the action of the rule that allowed it", async () => {
+    const { agent, rec } = await withRecorder();
+    await agent.callTool({
+      name: "create_or_update_file",
+      arguments: {
+        owner: "acme", repo: "api", branch: "agent/42-fix", path: "src/a.ts", content: "x",
+      },
+    });
+    expect(rec.graph().nodes).toHaveLength(1);
+    expect(rec.graph().nodes[0]).toMatchObject({
+      seq: 1, tool: "create_or_update_file", action: "contents.write",
+      resource: "acme/api", branch: "agent/42-fix", decision: "allow", outcome: "ok",
+    });
+  });
+
+  it("records a denial for a tool the mandate does not grant", async () => {
+    const { agent, rec } = await withRecorder();
+    await agent.callTool({ name: "merge_pull_request", arguments: { owner: "acme", repo: "api" } });
+    const node = rec.graph().nodes[0];
+    expect(node).toMatchObject({ tool: "merge_pull_request", decision: "deny", clause: "mandate.grants" });
+    // No rule was consulted, so no operation can honestly be named.
+    expect(node!.action).toBeUndefined();
+  });
+
+  it("records an argument denial with the clause and the rule's action", async () => {
+    const { agent, rec } = await withRecorder();
+    await agent.callTool({
+      name: "create_or_update_file",
+      arguments: {
+        owner: "acme", repo: "api", branch: "main", path: "src/a.ts", content: "x",
+      },
+    });
+    expect(rec.graph().nodes[0]).toMatchObject({
+      decision: "deny", clause: "contents.write.branches", action: "contents.write",
+      branch: "main",
+    });
+  });
+
+  it("records a denial once the mandate has expired", async () => {
+    const { client } = await fakeUpstream();
+    const rec = recorder();
+    const agent = await connectAgent(createProxyServer({
+      rules: expiredRules(), upstream: client, recorder: rec,
+    }));
+    await agent.callTool({ name: "get_file_contents", arguments: { owner: "acme", repo: "api" } });
+    expect(rec.graph().nodes[0]).toMatchObject({ decision: "deny", clause: "mandate.expiry" });
+  });
+
+  // The upstream call sits inside a try/catch, and an MCP upstream failure
+  // arrives as a thrown McpError. Recording only after a successful await loses
+  // the node entirely — for a call the mandate allowed and whose `max` quota
+  // was already spent.
+  it("records an allowed call that failed upstream", async () => {
+    const { agent, rec } = await withRecorder({ failOn: "get_file_contents" } as Partial<ProxyDeps>);
+    const res = await agent.callTool({
+      name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "a" },
+    });
+    expect(res.isError).toBe(true);
+    expect(rec.graph().nodes).toHaveLength(1);
+    expect(rec.graph().nodes[0]).toMatchObject({
+      tool: "get_file_contents", decision: "allow", outcome: "upstream-failure", outputBytes: 0,
+    });
+    expect(rec.graph().nodes[0]!.reason).toContain("upstream exploded");
+  });
+
+  it("records one node per call, in order, across allows and denials", async () => {
+    const { agent, rec } = await withRecorder();
+    await agent.callTool({
+      name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "a" },
+    });
+    await agent.callTool({ name: "delete_file", arguments: { owner: "acme", repo: "api" } });
+    await agent.callTool({
+      name: "create_branch", arguments: { owner: "acme", repo: "api", branch: "agent/42-x" },
+    });
+    expect(rec.graph().nodes.map((n) => [n.seq, n.tool, n.decision])).toEqual([
+      [1, "get_file_contents", "allow"],
+      [2, "delete_file", "deny"],
+      [3, "create_branch", "allow"],
+    ]);
+    // A trace the proxy wrote must be one parseJsonl accepts.
+    expect(parseJsonl(rec.toJsonl()).nodes).toHaveLength(3);
+  });
+
+  it("never records a raw argument the mandate does not enforce", async () => {
+    const { agent, rec } = await withRecorder();
+    await agent.callTool({
+      name: "create_or_update_file",
+      arguments: {
+        owner: "acme", repo: "api", branch: "agent/42-fix", path: "src/a.ts",
+        content: "ghp_SUPERSECRETTOKEN",
+      },
+    });
+    expect(rec.toJsonl()).not.toContain("ghp_SUPERSECRETTOKEN");
+  });
+});
+
+// A tool several grants reach is decided by whichever rule accepts, which is
+// not necessarily the first. Recording the first candidate's action would
+// attribute the call to an operation that refused it.
+describe("recording a tool several grants reach", () => {
+  const shared: ProxyRules = {
+    ...rules,
+    allowedTools: ["get_file_contents"],
+    rules: [
+      { tool: "get_file_contents", action: "repo.read", resources: ["acme/api"], paths: ["docs/**"] },
+      { tool: "get_file_contents", action: "contents.read", resources: ["acme/api"], paths: ["src/**"] },
+    ],
+  };
+
+  it("records the action of the rule that actually allowed the call", async () => {
+    const { client } = await fakeUpstream();
+    const rec = new Recorder({
+      mode: "enforced", mandateId: shared.mandateId, mandateHash: shared.mandateHash,
+    });
+    const agent = await connectAgent(createProxyServer({
+      rules: shared, upstream: client, enforceArguments: makeArgumentEnforcer(shared),
+      recorder: rec,
+    }));
+    await agent.callTool({
+      name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "src/a.ts" },
+    });
+    expect(rec.graph().nodes[0]).toMatchObject({ decision: "allow", action: "contents.read" });
+  });
+
+  it("records the action of the last rule to refuse, when none allow", async () => {
+    const { client } = await fakeUpstream();
+    const rec = new Recorder({
+      mode: "enforced", mandateId: shared.mandateId, mandateHash: shared.mandateHash,
+    });
+    const agent = await connectAgent(createProxyServer({
+      rules: shared, upstream: client, enforceArguments: makeArgumentEnforcer(shared),
+      recorder: rec,
+    }));
+    await agent.callTool({
+      name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "etc/a.ts" },
+    });
+    expect(rec.graph().nodes[0]).toMatchObject({
+      decision: "deny", action: "contents.read", clause: "contents.read.paths",
+    });
+  });
+});
+
+describe("compiled rules carry the mandate hash", () => {
+  // The trace header names the exact mandate the proxy enforced. Without the
+  // hash on ProxyRules the proxy has nothing to put there, and `mandateId`
+  // alone cannot distinguish two mandates with the same slug — slug() collides
+  // on tasks with the same opening words.
+  it("is a full sha256", () => {
+    expect(rules.mandateHash).toMatch(/^[0-9a-f]{64}$/);
   });
 });
