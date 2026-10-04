@@ -1,0 +1,31 @@
+name: Bug report
+description: Something behaves incorrectly, but does not let an agent exceed its mandate
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **If an agent was able to act outside its mandate, do not file here.**
+        Use Security → Report a vulnerability instead. See SECURITY.md.
+  - type: textarea
+    attributes:
+      label: What happened
+    validations: { required: true }
+  - type: textarea
+    attributes:
+      label: What you expected
+    validations: { required: true }
+  - type: textarea
+    attributes:
+      label: The mandate
+      description: Redact private repository names if you need to.
+      render: yaml
+  - type: textarea
+    attributes:
+      label: The ceiling
+      render: text
+  - type: input
+    attributes:
+      label: Version
+      placeholder: "0.1.0, or a commit SHA"
+    validations: { required: true }

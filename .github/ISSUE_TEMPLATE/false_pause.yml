@@ -1,0 +1,28 @@
+name: False pause
+description: A call was denied that you believe was genuinely in scope for the task
+labels: ["false-pause"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        False pauses are tracked as a product metric with a target under 5%, so
+        these reports are useful even when the behaviour is arguably correct.
+  - type: textarea
+    attributes:
+      label: The task
+    validations: { required: true }
+  - type: input
+    attributes:
+      label: The clause that fired
+      placeholder: "contents.write.branches"
+    validations: { required: true }
+  - type: textarea
+    attributes:
+      label: The denied call
+      description: Tool name and arguments, as the pause message reported them.
+      render: json
+    validations: { required: true }
+  - type: textarea
+    attributes:
+      label: Why it was in scope
+    validations: { required: true }

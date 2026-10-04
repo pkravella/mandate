@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+    # The policy engine and the GitHub client are security-relevant surfaces;
+    # review their updates individually rather than in a group.
+    ignore:
+      - dependency-name: "@cedar-policy/cedar-wasm"
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: "/sandbox"
+    schedule: { interval: weekly }
