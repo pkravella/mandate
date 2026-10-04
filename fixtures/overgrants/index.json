@@ -1,0 +1,86 @@
+[
+  {
+    "file": "wildcard-repo.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "wildcard-destination.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "write-to-main.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "write-no-branch.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "merge-granted.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "secrets-read.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "workflows-write.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "no-deny-paths.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "unbounded-pr-count.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "token-overclaim.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "gist-exfiltration.yaml",
+    "expect": "lint"
+  },
+  {
+    "file": "foreign-org-repo.yaml",
+    "expect": "not-contained"
+  },
+  {
+    "file": "branch-wider-than-ceiling.yaml",
+    "expect": "not-contained"
+  },
+  {
+    "file": "weaker-deny-list.yaml",
+    "expect": "not-contained"
+  },
+  {
+    "file": "base-not-main.yaml",
+    "expect": "not-contained"
+  },
+  {
+    "file": "no-base-constraint.yaml",
+    "expect": "not-contained"
+  },
+  {
+    "file": "op-absent-from-ceiling.yaml",
+    "expect": "no-ceiling-rule"
+  },
+  {
+    "file": "user-lacks-push.yaml",
+    "expect": "user-authority"
+  },
+  {
+    "file": "unknown-operation.yaml",
+    "expect": "schema"
+  },
+  {
+    "file": "undecidable-glob.yaml",
+    "expect": "schema"
+  },
+  {
+    "file": "expiry-too-long.yaml",
+    "expect": "schema"
+  }
+]

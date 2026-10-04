@@ -1,0 +1,14 @@
+# Seeded over-grant: no-deny-paths
+mandate: overgrant-no-deny-paths
+task: "Fix issue #42 and open a PR"
+requestedBy: user:alice
+expiresInMinutes: 60
+ceiling: org-policy@v12
+grants:
+  - action: contents.write
+    enforcedBy: proxy
+    resources: ["acme/api"]
+    branches: ["agent/42-*"]
+    paths: ["src/**"]
+destinations:
+  allow: ["github.com/acme/api"]

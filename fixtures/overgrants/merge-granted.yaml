@@ -1,0 +1,13 @@
+# Seeded over-grant: merge-granted
+mandate: overgrant-merge-granted
+task: "Fix issue #42 and open a PR"
+requestedBy: user:alice
+expiresInMinutes: 60
+ceiling: org-policy@v12
+grants:
+  - action: pull_request.merge
+    enforcedBy: token
+    resources: ["acme/api"]
+    max: 1
+destinations:
+  allow: ["github.com/acme/api"]

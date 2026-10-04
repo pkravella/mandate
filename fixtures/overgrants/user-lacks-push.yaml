@@ -1,0 +1,15 @@
+# Seeded over-grant: user-lacks-push
+mandate: overgrant-user-lacks-push
+task: "Fix issue #42 and open a PR"
+requestedBy: user:bob
+expiresInMinutes: 60
+ceiling: org-policy@v12
+grants:
+  - action: contents.write
+    enforcedBy: proxy
+    resources: ["acme/api"]
+    branches: ["agent/42-*"]
+    paths: ["src/**"]
+    denyPaths: [".github/workflows/**", "**.env**"]
+destinations:
+  allow: ["github.com/acme/api"]

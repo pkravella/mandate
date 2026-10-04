@@ -1,0 +1,15 @@
+# Seeded over-grant: token-overclaim
+mandate: overgrant-token-overclaim
+task: "Fix issue #42 and open a PR"
+requestedBy: user:alice
+expiresInMinutes: 60
+ceiling: org-policy@v12
+grants:
+  - action: contents.write
+    enforcedBy: token
+    resources: ["acme/api"]
+    branches: ["agent/42-*"]
+    paths: ["src/**"]
+    denyPaths: [".github/workflows/**", "**.env**"]
+destinations:
+  allow: ["github.com/acme/api"]

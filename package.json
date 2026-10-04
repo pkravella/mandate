@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --build --force && tsc -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

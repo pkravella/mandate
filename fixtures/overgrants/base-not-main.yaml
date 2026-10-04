@@ -1,0 +1,15 @@
+# Seeded over-grant: base-not-main
+mandate: overgrant-base-not-main
+task: "Fix issue #42 and open a PR"
+requestedBy: user:alice
+expiresInMinutes: 60
+ceiling: org-policy@v12
+grants:
+  - action: pull_request.create
+    enforcedBy: proxy
+    resources: ["acme/api"]
+    branches: ["agent/42-*"]
+    base: release/1.0
+    max: 1
+destinations:
+  allow: ["github.com/acme/api"]

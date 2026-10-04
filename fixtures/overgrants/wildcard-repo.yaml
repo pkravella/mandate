@@ -1,0 +1,12 @@
+# Seeded over-grant: wildcard-repo
+mandate: overgrant-wildcard-repo
+task: "Fix issue #42 and open a PR"
+requestedBy: user:alice
+expiresInMinutes: 60
+ceiling: org-policy@v12
+grants:
+  - action: repo.read
+    enforcedBy: token
+    resources: ["*"]
+destinations:
+  allow: ["github.com/acme/api"]
