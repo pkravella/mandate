@@ -5,3 +5,7 @@ export {
   type Ceiling, type CeilingRule,
 } from "./ceiling.js";
 export { CedarError, type CedarDecision, type PatternToken } from "./cedar.js";
+export {
+  validate, type Rejection, type RejectionCode, type ValidationResult,
+} from "./validate.js";
+export { fetchUserAuthority, type UserAuthority, type OctokitLike } from "./userAuthority.js";
