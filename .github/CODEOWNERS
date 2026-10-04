@@ -1,0 +1,12 @@
+# Default owner for everything.
+*                       @pkravella
+
+# The trust boundary. Changes here need an explicit security review.
+/packages/validator/    @pkravella
+/packages/schema/       @pkravella
+/packages/catalog/      @pkravella
+/fixtures/ceilings/     @pkravella
+/fixtures/overgrants/   @pkravella
+/fixtures/adversarial/  @pkravella
+/sandbox/               @pkravella
+/SECURITY.md            @pkravella

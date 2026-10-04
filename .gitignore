@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test and coverage
+coverage/
+.vitest/
+
+# ---------------------------------------------------------------------------
+# Secrets. This project handles GitHub App private keys and minted installation
+# tokens. Do not relax these patterns.
+# ---------------------------------------------------------------------------
+*.pem
+*.p8
+*.key
+*.cert
+.env
+.env.*
+!.env.example
+**/secrets.json
+**/installation-token*
+
+# Runtime artifacts. Action-graph traces record repository paths and output
+# digests, so they are generated locally and never committed. Test fixtures
+# under fixtures/ are checked in deliberately and are not matched here.
+bench/out/
+.mandate/
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Docs
+mandate-prd.md 
+docs/*
