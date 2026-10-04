@@ -10,6 +10,6 @@ export {
 } from "./validate.js";
 export { fetchUserAuthority, type UserAuthority, type OctokitLike } from "./userAuthority.js";
 export {
-  runLints, hasLintErrors, LINT_RULES, SIDE_EFFECTING,
+  runLints, hasLintErrors, LINT_RULES, SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles,
   type LintFinding, type LintSeverity,
 } from "./lints.js";

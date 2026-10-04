@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/catalog" },
     { "path": "./packages/schema" },
-    { "path": "./packages/validator" }
+    { "path": "./packages/validator" },
+    { "path": "./packages/writer" }
   ]
 }
