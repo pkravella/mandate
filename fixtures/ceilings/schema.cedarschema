@@ -1,0 +1,44 @@
+// The Cedar schema the org ceiling is validated against.
+//
+// Context attributes are optional, and policies must guard each access with
+// `context has <attr> &&`. Declaring them required would make every read
+// request supply a branch and a path; accessing an optional attribute without
+// a guard is a Cedar validation error ("unable to guarantee safety of access
+// to optional attribute"). The guard form is what Cedar's own diagnostic
+// recommends, and it means a request that omits an attribute simply fails to
+// satisfy the rule rather than erroring.
+namespace Mandate {
+  entity User;
+
+  entity Repo {
+    repo: String
+  };
+
+  action
+    // reads
+    "repo.read", "repo.list", "contents.read", "commit.read", "branch.read",
+    "pull_request.read", "issue.read", "checks.read", "actions.read",
+    "actions.logs.read", "variables.read", "collaborators.read",
+    "discussions.read", "notifications.read", "search.code",
+    // writes
+    "contents.write", "contents.delete", "branch.create", "branch.delete",
+    "pull_request.create", "pull_request.update", "pull_request.comment",
+    "pull_request.review", "pull_request.close",
+    "issue.create", "issue.update", "issue.comment", "issue.close",
+    "issue.label", "issue.assign",
+    "releases.write", "actions.write", "repo.create", "repo.fork",
+    // operations an org ceiling may deliberately never permit
+    "pull_request.merge", "workflows.write", "secrets.read", "secrets.write",
+    "repo.delete", "branch.protect", "environments.write",
+    "collaborators.write", "webhooks.write", "rulesets.write",
+    "deploy_keys.write", "gist.write"
+  appliesTo {
+    principal: User,
+    resource: Repo,
+    context: {
+      branch?: String,
+      path?: String,
+      base?: String
+    }
+  };
+}
