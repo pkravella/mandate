@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { MandateSchema, type ProposedMandate } from "@mandate-dev/schema";
+import { MandateSchema, type CeilingDigest, type ProposedMandate } from "@mandate-dev/schema";
 import { coverGrants, coverPrompt, type ProposedGrant } from "./cover.js";
 import { applyPrune, prunePrompt } from "./prune.js";
 import { WriterError } from "./errors.js";
@@ -9,7 +9,15 @@ export interface WriteRequest {
   readonly task: string;
   readonly repo: string;
   readonly requestedBy: string;
-  readonly ceilingId: string;
+  /**
+   * The ceiling this mandate must sit inside, as data.
+   *
+   * Required, not optional: a writer that cannot see the ceiling is guessing
+   * which operations its organization permits and what its branches are
+   * called, and the live model guessed wrong on both. Guidance only — a
+   * proposal that matches it still has to clear `validate()`.
+   */
+  readonly ceiling: CeilingDigest;
   readonly issueNumber?: number | undefined;
   /** PRD lifecycle step 1: evidence only, never authority. */
   readonly agentPlan?: string | undefined;
@@ -66,11 +74,17 @@ export const DEFAULT_TTL_MINUTES = 30;
 const REPO_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 // Tool inputs are tolerant of a missing or null facet, while the JSON schemas
-// below mark every property required and nullable. `strict: true` guarantees
-// the input validates against the schema it is given, and the stricter reading
-// of that guarantee -- every property present -- is the one that cannot be
-// probed without calling the API, so the schema satisfies both readings and
-// Zod normalises null to absent.
+// below mark every property required and nullable. Probed against the live API
+// with `countTokens`: `strict: true` accepts optional properties, so this is a
+// design choice rather than a constraint. Requiring every facet makes the model
+// write `null` to leave one unconstrained, which turns an omission into a
+// decision -- and an omitted `branches` on a file write is the difference
+// between a mandate that validates and one the ceiling refuses.
+//
+// The same probe found what the API does *not* accept: `minimum` on an
+// `integer` is a 400 ("For 'integer' type, property 'minimum' is not
+// supported"). Bounds on `max` are Zod's and the mandate schema's job anyway --
+// `.int().positive()` here, `.max(100)` in the contract.
 const nullableGlobs = z.array(z.string()).min(1).nullish();
 
 const ProposeGrantInput = z.object({
@@ -100,13 +114,14 @@ const normalize = (g: z.infer<typeof ProposeGrantInput>): ProposedGrant => ({
   max: g.max ?? undefined,
 });
 
-const nullableArray = { type: ["array", "null"], items: { type: "string" } } as const;
+const globList = (description: string) =>
+  ({ type: ["array", "null"], items: { type: "string" }, description }) as const;
 
 const PROPOSE_TOOL: Anthropic.Tool = {
   name: "propose_grants",
   description:
-    "Propose the grants this task needs. Send null for a facet the operation " +
-    "should not be limited by.",
+    "Propose the grants this task needs. Every facet is required: send null to "
+    + "leave an operation unlimited by it, which is wider, not safer.",
   strict: true,
   input_schema: {
     type: "object",
@@ -121,17 +136,35 @@ const PROPOSE_TOOL: Anthropic.Tool = {
           additionalProperties: false,
           required: ["action", "resources", "branches", "paths", "denyPaths", "base", "max"],
           properties: {
-            action: { type: "string" },
-            resources: { type: "array", minItems: 1, items: { type: "string" } },
-            branches: nullableArray,
-            paths: nullableArray,
-            denyPaths: nullableArray,
-            base: { type: ["string", "null"] },
-            max: { type: ["integer", "null"], minimum: 1 },
+            action: { type: "string", description: "A catalog operation id, e.g. contents.write." },
+            resources: {
+              type: "array", minItems: 1, items: { type: "string" },
+              description: "Repositories as owner/name. Globs allowed: * within a path segment, ** across.",
+            },
+            branches: globList(
+              "Branches this operation may touch. Required in practice for anything that "
+              + "writes files, and it must not match a default branch.",
+            ),
+            paths: globList("Paths this operation may touch. null means every path."),
+            denyPaths: globList(
+              "Paths this operation may never touch, whatever `paths` allows.",
+            ),
+            base: {
+              type: ["string", "null"],
+              description: "For pull_request.create: the branch to merge into.",
+            },
+            max: {
+              type: ["integer", "null"],
+              description: "How many times this operation may run. Required for anything with an "
+                + "outward-facing side effect.",
+            },
           },
         },
       },
-      destinations: { type: "array", minItems: 1, items: { type: "string" } },
+      destinations: {
+        type: "array", minItems: 1, items: { type: "string" },
+        description: "Hosts repository data may be sent to, e.g. github.com/acme/api.",
+      },
     },
   },
 };
@@ -144,9 +177,22 @@ const KEEP_TOOL: Anthropic.Tool = {
     type: "object",
     additionalProperties: false,
     required: ["keep"],
-    properties: { keep: { type: "array", items: { type: "string" } } },
+    properties: {
+      keep: {
+        type: "array", items: { type: "string" },
+        description: "Catalog operation ids from the proposed list.",
+      },
+    },
   },
 };
+
+/**
+ * Exactly the tool definitions the writer sends, so a test can check them
+ * against the API without paying for inference. `countTokens` validates the
+ * request shape and runs no model, which is how the unsupported `minimum` above
+ * was found.
+ */
+export const WRITER_TOOLS: readonly Anthropic.Tool[] = [PROPOSE_TOOL, KEEP_TOOL];
 
 const zodWhy = (error: z.ZodError): string =>
   error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ");
@@ -228,7 +274,7 @@ export async function writeMandate(client: AnthropicLike, req: WriteRequest): Pr
 
   // ---- cover --------------------------------------------------------------
   const proposal = await callTool(client, coverPrompt(req), PROPOSE_TOOL, ProposeInput);
-  const coveredGrants = coverGrants(proposal.grants.map(normalize));
+  const coveredGrants = coverGrants(proposal.grants.map(normalize), req.ceiling);
 
   // ---- prune --------------------------------------------------------------
   const keep = await callTool(client, prunePrompt(req.task, coveredGrants), KEEP_TOOL, KeepInput);
@@ -239,7 +285,7 @@ export async function writeMandate(client: AnthropicLike, req: WriteRequest): Pr
     task: req.task,
     requestedBy: req.requestedBy,
     expiresInMinutes: req.expiresInMinutes ?? DEFAULT_TTL_MINUTES,
-    ceiling: req.ceilingId,
+    ceiling: req.ceiling.id,
     grants: finalGrants,
     destinations: { allow: proposal.destinations },
   });
@@ -262,7 +308,19 @@ export async function writeMandate(client: AnthropicLike, req: WriteRequest): Pr
   };
 }
 
+const MAX_SLUG = 48;
+
+/**
+ * The mandate id, derived from the task text. It is what an audit entry and a
+ * runtime pause name, so it is cut at a word boundary rather than mid-word:
+ * the live writer produced `fix-issue-42-the-retry-loop-in-src-retry-ts-swal`.
+ */
 function slug(task: string): string {
-  const s = task.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
-  return s.length > 0 ? s : "task";
+  const all = task.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (all.length === 0) return "task";
+  if (all.length <= MAX_SLUG) return all;
+  const cut = all.slice(0, MAX_SLUG);
+  const dash = cut.lastIndexOf("-");
+  const trimmed = (dash > 0 ? cut.slice(0, dash) : cut).replace(/-+$/, "");
+  return trimmed.length > 0 ? trimmed : "task";
 }

@@ -4,6 +4,8 @@ export {
   loadCeiling, rulesFor, cedarAllows, CeilingProfileError,
   type Ceiling, type CeilingRule,
 } from "./ceiling.js";
+// The ceiling shape the writer is given. Produced here, consumed as data.
+export { digestRulesFor, isUnconstrained, permittedActions, type CeilingDigest } from "@mandate-dev/schema";
 export { CedarError, type CedarDecision, type PatternToken } from "./cedar.js";
 export {
   validate, type Rejection, type RejectionCode, type ValidationResult,
