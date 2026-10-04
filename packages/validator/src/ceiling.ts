@@ -1,4 +1,5 @@
 import { getOperation } from "@mandate-dev/catalog";
+import type { CeilingDigest, CeilingRule } from "@mandate-dev/schema";
 import {
   CedarError, checkParse, checkParseSchema, isAuthorized, policyJson,
   splitPolicies, validatePolicies, type PatternToken,
@@ -11,19 +12,18 @@ export class CeilingProfileError extends Error {
   }
 }
 
-export interface CeilingRule {
-  readonly id: string;
-  readonly action: string;
-  readonly resources: readonly string[];
-  readonly branches: readonly string[];
-  readonly paths: readonly string[];
-  readonly denyPaths: readonly string[];
-  readonly base: readonly string[];
-}
+// CeilingRule moved to @mandate-dev/schema: the writer needs the same shape to
+// propose anything the ceiling will accept, and passing it as data is what
+// keeps the untrusted writer from importing this package. Re-exported here
+// because this module is where it was first published.
+export type { CeilingRule };
 
-export interface Ceiling {
-  readonly id: string;
-  readonly rules: readonly CeilingRule[];
+/**
+ * A `CeilingDigest` plus what is needed to decide with it. The digest half is
+ * safe to hand to the writer; `policiesById` and `cedarSchema` are not, and are
+ * the reason `Ceiling` is a superset rather than the same type.
+ */
+export interface Ceiling extends CeilingDigest {
   /** Policy source keyed by rule id, the form Cedar needs to report our ids. */
   readonly policiesById: Readonly<Record<string, string>>;
   readonly cedarSchema: string;

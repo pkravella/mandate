@@ -59,9 +59,13 @@ const stub = (toolInputs: readonly unknown[]): Recorder =>
     content: [toolUse(i === 0 ? "propose_grants" : "keep_grants", input)],
   })));
 
+const ceiling = loadCeiling(
+  "org-policy@v12", fixture("org-policy-v12.cedar"), fixture("schema.cedarschema"),
+);
+
 const req: WriteRequest = {
   task: "Fix issue #42 and open a PR", repo: "acme/api",
-  requestedBy: "user:alice", ceilingId: "org-policy@v12", issueNumber: 42,
+  requestedBy: "user:alice", ceiling, issueNumber: 42,
 };
 
 const FIX_42 = [
@@ -161,6 +165,23 @@ describe("writeMandate", () => {
       .rejects.toThrow(/repository/i);
   });
 
+  // The id is what an audit entry and a runtime pause name, and the live
+  // writer produced `fix-issue-42-the-retry-loop-in-src-retry-ts-swal`.
+  it("cuts a long mandate id at a word boundary", async () => {
+    const r = await writeMandate(stub(FIX_42).client, {
+      ...req,
+      task: "Fix issue #42: the retry loop in src/retry.ts swallows the last error "
+        + "instead of rethrowing it. Add a regression test and open a pull request.",
+    });
+    expect(r.proposed.mandate).toBe("fix-issue-42-the-retry-loop-in-src-retry-ts");
+    expect(r.proposed.mandate).not.toMatch(/-$/);
+  });
+
+  it("falls back to a usable id when the task has no alphanumerics", async () => {
+    const r = await writeMandate(stub(FIX_42).client, { ...req, task: "!!! ???" });
+    expect(r.proposed.mandate).toBe("task");
+  });
+
   it("records latency so the <10s write-latency metric is measurable", async () => {
     const client = stub([
       { grants: [{ action: "repo.read", resources: ["acme/api"] }], destinations: ["github.com/acme/api"] },
@@ -207,9 +228,6 @@ describe("writeMandate", () => {
     const r = await writeMandate(stub(FIX_42).client, req);
     expect(runLints(r.proposed)).toEqual([]);
 
-    const ceiling = loadCeiling(
-      "org-policy@v12", fixture("org-policy-v12.cedar"), fixture("schema.cedarschema"),
-    );
     const authority: UserAuthority = { login: "alice", level: "push" };
     const result = validate(r.proposed, { ceiling, authority });
     if (!result.ok) throw new Error(`rejected: ${JSON.stringify(result.rejections, null, 2)}`);
