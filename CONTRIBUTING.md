@@ -28,10 +28,17 @@ allow, will be rejected regardless of how well it tests.
 
 Concretely:
 
-- `ProposedMandate` may only be imported by `writer` and `validator`. A lint
-  rule enforces this.
+- `ProposedMandate` may only be imported by `writer` and `validator`. A
+  `no-restricted-imports` rule enforces this.
 - `ValidatedMandate` may only be constructed by `markValidated`, which requires
   a `ContainmentProof`. Do not add an escape hatch.
+
+  The brand alone is **not** sufficient, and it is worth knowing why. It blocks
+  accidental *assignment* of a plain mandate, but TypeScript permits a
+  narrowing cast to an intersection type — `m as ValidatedMandate` compiles,
+  and so does `m as unknown as ValidatedMandate`. A `no-restricted-syntax`
+  rule bans those casts everywhere except the single file that defines
+  `markValidated`, so even the validator must go through that function.
 - Every decision path ends in a default deny. An exception, a timeout, or an
   unparseable pattern is a rejection, never a pass.
 - Do not loosen the glob parser to make a test pass. An undecidable pattern is
@@ -41,10 +48,23 @@ Concretely:
 
 ```bash
 pnpm install
-pnpm -r test
-pnpm -r typecheck
-pnpm lint
+pnpm typecheck   # solution build, then typecheck the test files
+pnpm lint        # includes the trust-boundary rules below
+pnpm test
+pnpm build
 ```
+
+`typecheck` runs two passes: `tsc --build` emits library code, then
+`tsc -p tsconfig.test.json` typechecks the test files that the build
+deliberately excludes. Tests are excluded from the build so they are never
+published, and typechecked separately so they are never unchecked.
+
+Workspace packages resolve to their TypeScript **source** during tests, via
+the alias map in `vitest.shared.ts` applied from each package's own
+`vitest.config.ts`. Without that, editing one package and testing another
+reads a stale `dist` — which can make a test pass that should fail. A
+root-level `resolve.alias` does not propagate into Vitest projects, so a new
+package needs its own `vitest.config.ts`.
 
 Tests come first. Every change to validation or enforcement needs a test that
 fails before the change and passes after it. For a bug fix, the test should be
