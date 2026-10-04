@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
-    { "path": "./packages/catalog" }
+    { "path": "./packages/catalog" },
+    { "path": "./packages/schema" }
   ]
 }
