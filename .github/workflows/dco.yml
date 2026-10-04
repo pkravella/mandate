@@ -1,0 +1,89 @@
+name: dco
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# The repository default for GITHUB_TOKEN is already read-only. Declaring it
+# here keeps this job's authority explicit and independent of that setting.
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: dco
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to a commit SHA rather than a floating tag: a mutable tag is a
+      # supply-chain hole, and Dependabot updates SHA pins that carry a version
+      # comment. fetch-depth 0 is needed to walk the pull request's commits.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Verify Developer Certificate of Origin sign-off
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Only the commits this pull request adds are examined.
+          #
+          # --no-merges: a merge commit introduces no new authorship to certify,
+          # so demanding a sign-off on one only penalises contributors who sync
+          # their branch.
+          #
+          # GitHub's squash commit on the base branch is deliberately out of
+          # range. GitHub rewrites that commit's author to the user's noreply
+          # address while the sign-off trailer keeps the original address, so it
+          # fails a strict match. It is already merged and already certified by
+          # the branch commits below, so it must not be re-checked here.
+          failed=0
+          checked=0
+
+          for sha in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            checked=$((checked + 1))
+            author_email="$(git show -s --format='%ae' "$sha" | tr '[:upper:]' '[:lower:]')"
+            committer_email="$(git show -s --format='%ce' "$sha" | tr '[:upper:]' '[:lower:]')"
+
+            # `|| true` matters: with `set -o pipefail`, a grep that finds no
+            # sign-off would otherwise abort the whole step instead of letting
+            # this commit be reported as a failure.
+            signoffs="$(
+              git show -s --format='%B' "$sha" \
+                | grep -ioE '^[[:space:]]*Signed-off-by:[[:space:]]*.*<[^>]+>' \
+                | sed -E 's/.*<([^>]+)>.*/\1/' \
+                | tr '[:upper:]' '[:lower:]' || true
+            )"
+
+            # A sign-off may match either the author or the committer, which is
+            # what the reference DCO implementation accepts.
+            if printf '%s\n' "$signoffs" | grep -qxF "$author_email" \
+            || printf '%s\n' "$signoffs" | grep -qxF "$committer_email"; then
+              echo "ok    ${sha:0:8}  ${author_email}"
+            else
+              echo "FAIL  ${sha:0:8}  no Signed-off-by matching ${author_email}"
+              failed=$((failed + 1))
+            fi
+          done
+
+          echo
+          echo "checked ${checked} commit(s); ${failed} without a valid sign-off"
+
+          if [ "$failed" -ne 0 ]; then
+            echo
+            echo "Every commit needs a Developer Certificate of Origin sign-off whose"
+            echo "email matches the commit author or committer:"
+            echo
+            echo "    Signed-off-by: Your Name <you@example.com>"
+            echo
+            echo "Add it to the most recent commit:"
+            echo "    git commit --amend -s --no-edit && git push --force-with-lease"
+            echo
+            echo "Or to every commit on this branch:"
+            echo "    git rebase --signoff origin/main && git push --force-with-lease"
+            echo
+            echo "See CONTRIBUTING.md."
+            exit 1
+          fi
