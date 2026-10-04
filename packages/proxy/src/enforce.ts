@@ -39,6 +39,9 @@ const URL_RE = /^https?:\/\/([A-Za-z0-9.-]+(?::\d+)?)(\/[^\s?#]*)?/;
 const str = (v: unknown): string | undefined =>
   (typeof v === "string" && v.length > 0 ? v : undefined);
 
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
 /** `host/path`, lowercased host, for prefix comparison against the allow list. */
 const toPrefix = (value: string): string | undefined => {
   const m = URL_RE.exec(value.trim());
@@ -58,7 +61,7 @@ function collectDestinations(value: unknown, into: Set<string>, keyed: boolean):
     for (const v of value) collectDestinations(v, into, keyed);
     return;
   }
-  if (value !== null && typeof value === "object") {
+  if (isRecord(value)) {
     for (const [k, v] of Object.entries(value)) {
       collectDestinations(v, into, keyed || DESTINATION_FIELDS.has(k));
     }
@@ -97,9 +100,7 @@ export function extractArgs(_tool: string, args: Record<string, unknown>): ArgEx
   const files = args["files"];
   if (Array.isArray(files)) {
     for (const f of files) {
-      const p = typeof f === "object" && f !== null
-        ? str((f as Record<string, unknown>)["path"])
-        : str(f);
+      const p = isRecord(f) ? str(f["path"]) : str(f);
       if (p !== undefined) paths.push(repoPath(p));
     }
   }

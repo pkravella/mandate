@@ -48,20 +48,46 @@ export function appJwt(appId: string | number, privateKeyPem: string): string {
 
 const API = "https://api.github.com";
 
-/** Splits "POST /a/{b}/c" and fills `{placeholders}` from `params`. */
-const resolve = (
+export interface RequestShape {
+  readonly method: string;
+  readonly path: string;
+  /** Absent for a method that carries no body. */
+  readonly body?: Record<string, unknown>;
+}
+
+/** Methods with no request body, whose leftover params belong in the query. */
+const BODYLESS: ReadonlySet<string> = new Set(["GET", "HEAD", "DELETE"]);
+
+/**
+ * Splits `"POST /a/{b}/c"`, fills `{placeholders}` from `params`, and puts
+ * whatever is left where that method carries it.
+ *
+ * Leftover params used to go into a body unconditionally, and the body was then
+ * correctly dropped for a GET — so `state` and `per_page` on a list call
+ * silently vanished and GitHub answered with defaults and no error.
+ */
+export function requestShape(
   route: string, params: Readonly<Record<string, unknown>>,
-): { method: string; path: string; body: Record<string, unknown> } => {
+): RequestShape {
   const [method = "GET", template = "/"] = route.split(" ");
   const used = new Set<string>();
   const path = template.replace(/\{(\w+)\}/g, (_m, key: string) => {
     used.add(key);
     return encodeURIComponent(String(params[key]));
   });
-  const body: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(params)) if (!used.has(k)) body[k] = v;
-  return { method, path, body };
-};
+
+  const leftover = Object.entries(params)
+    .filter(([k, v]) => !used.has(k) && v !== undefined);
+
+  if (!BODYLESS.has(method.toUpperCase())) {
+    return { method, path, body: Object.fromEntries(leftover) };
+  }
+
+  if (leftover.length === 0) return { method, path };
+  const query = new URLSearchParams();
+  for (const [k, v] of leftover) query.append(k, String(v));
+  return { method, path: `${path}?${query.toString()}` };
+}
 
 /**
  * A `MintDeps` backed by `fetch`.
@@ -82,16 +108,16 @@ export function githubAppDeps(creds: AppCredentials): MintDeps {
   const call = async (
     route: string, authorization: string, params: Readonly<Record<string, unknown>>,
   ): Promise<GitHubResponse> => {
-    const { method, path, body } = resolve(route, params);
+    const { method, path, body } = requestShape(route, params);
     const response = await fetch(`${API}${path}`, {
       method,
       headers: {
         authorization,
         accept: "application/vnd.github+json",
         "x-github-api-version": "2022-11-28",
-        ...(method === "GET" || method === "DELETE" ? {} : { "content-type": "application/json" }),
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
-      ...(method === "GET" || method === "DELETE" ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (response.status === 204) return { status: 204, data: null };
     const text = await response.text();

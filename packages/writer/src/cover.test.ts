@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { permittedActions, SENSITIVE_PATHS, type CeilingDigest } from "@mandate-dev/schema";
 import { loadCeiling } from "@mandate-dev/validator";
 import {
-  closeUnderPrerequisites, coverGrants, coverPrompt, facetsDroppedByLastCover,
+  closeUnderPrerequisites, coverGrants, coverPrompt, enforcementFor,
 } from "./cover.js";
 import { WriterError } from "./errors.js";
 
@@ -112,7 +112,7 @@ describe("coverPrompt", () => {
 
 describe("coverGrants", () => {
   it("synthesises the prerequisites the proposal left out", () => {
-    const out = coverGrants([{ action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] }]);
+    const out = coverGrants([{ action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] }]).grants;
     expect(out.map((g) => g.action)).toEqual(
       expect.arrayContaining(["contents.write", "branch.create", "repo.read"]),
     );
@@ -125,7 +125,7 @@ describe("coverGrants", () => {
     const out = coverGrants([
       { action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] },
       { action: "pull_request.create", resources: ["acme/api"], branches: ["agent/42-fix"], base: "main", max: 1 },
-    ]);
+    ]).grants;
     const branch = out.find((g) => g.action === "branch.create");
     expect(branch?.branches).toEqual(["agent/42-fix"]);
     expect(branch?.enforcedBy).toBe("proxy");
@@ -135,7 +135,7 @@ describe("coverGrants", () => {
     const out = coverGrants([
       { action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] },
       { action: "pull_request.create", resources: ["acme/api"], branches: ["agent/42-docs"], base: "main", max: 1 },
-    ]);
+    ]).grants;
     expect(out.find((g) => g.action === "branch.create")?.branches)
       .toEqual(["agent/42-fix", "agent/42-docs"]);
   });
@@ -147,13 +147,13 @@ describe("coverGrants", () => {
     const out = coverGrants([
       { action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] },
       { action: "contents.delete", resources: ["acme/api"] },
-    ]);
+    ]).grants;
     expect(out.find((g) => g.action === "branch.create")?.branches).toBeUndefined();
     expect(out.find((g) => g.action === "branch.create")?.enforcedBy).toBe("token");
   });
 
   it("inherits the repositories of its dependents, not the request's", () => {
-    const out = coverGrants([{ action: "contents.write", resources: ["acme/other"] }]);
+    const out = coverGrants([{ action: "contents.write", resources: ["acme/other"] }]).grants;
     expect(out.find((g) => g.action === "repo.read")?.resources).toEqual(["acme/other"]);
   });
 
@@ -162,7 +162,7 @@ describe("coverGrants", () => {
   it("adds the contract's deny paths to every grant that writes files", () => {
     const out = coverGrants([
       { action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] },
-    ]);
+    ]).grants;
     const write = out.find((g) => g.action === "contents.write");
     for (const s of SENSITIVE_PATHS) expect(write?.denyPaths).toContain(s);
   });
@@ -170,7 +170,7 @@ describe("coverGrants", () => {
   it("keeps the deny paths the model proposed as well as the contract's", () => {
     const out = coverGrants([
       { action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"], denyPaths: ["vendor/**"] },
-    ]);
+    ]).grants;
     expect(out.find((g) => g.action === "contents.write")?.denyPaths).toContain("vendor/**");
     for (const s of SENSITIVE_PATHS) {
       expect(out.find((g) => g.action === "contents.write")?.denyPaths).toContain(s);
@@ -178,12 +178,12 @@ describe("coverGrants", () => {
   });
 
   it("bounds a side-effecting grant the model left unbounded", () => {
-    const out = coverGrants([{ action: "issue.comment", resources: ["acme/api"] }]);
+    const out = coverGrants([{ action: "issue.comment", resources: ["acme/api"] }]).grants;
     expect(out.find((g) => g.action === "issue.comment")?.max).toBe(1);
   });
 
   it("keeps a max the model chose", () => {
-    const out = coverGrants([{ action: "issue.comment", resources: ["acme/api"], max: 3 }]);
+    const out = coverGrants([{ action: "issue.comment", resources: ["acme/api"], max: 3 }]).grants;
     expect(out.find((g) => g.action === "issue.comment")?.max).toBe(3);
   });
 
@@ -191,7 +191,7 @@ describe("coverGrants", () => {
     const out = coverGrants([
       { action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] },
       { action: "issue.read", resources: ["acme/api"] },
-    ]);
+    ]).grants;
     expect(out.find((g) => g.action === "contents.write")?.enforcedBy).toBe("proxy");
     expect(out.find((g) => g.action === "issue.read")?.enforcedBy).toBe("token");
   });
@@ -200,11 +200,11 @@ describe("coverGrants", () => {
     expect(() => coverGrants([
       { action: "contents.write", resources: ["acme/api"], branches: ["agent/a"] },
       { action: "contents.write", resources: ["acme/api"], branches: ["agent/b"] },
-    ])).toThrow(WriterError);
+    ]).grants).toThrow(WriterError);
   });
 
   it("refuses a proposal naming an operation outside the catalog", () => {
-    expect(() => coverGrants([{ action: "repo.yolo", resources: ["acme/api"] }]))
+    expect(() => coverGrants([{ action: "repo.yolo", resources: ["acme/api"] }]).grants)
       .toThrow(/outside the catalog/);
   });
 
@@ -215,7 +215,7 @@ describe("coverGrants", () => {
   it("drops a facet the operation cannot be constrained by", () => {
     const out = coverGrants([
       { action: "branch.create", resources: ["acme/api"], branches: ["agent/a"], max: 1 },
-    ]);
+    ]).grants;
     const grant = out.find((g) => g.action === "branch.create");
     expect(grant).toBeDefined();
     expect(grant?.max).toBeUndefined();
@@ -223,18 +223,31 @@ describe("coverGrants", () => {
   });
 
   it("reports what it dropped, so an over-eager model stays visible", () => {
-    coverGrants([
+    const dropped = coverGrants([
       { action: "branch.create", resources: ["acme/api"], branches: ["agent/a"], max: 1 },
       { action: "issue.read", resources: ["acme/api"], branches: ["agent/a"] },
-    ]);
-    const dropped = facetsDroppedByLastCover().join(" ");
+    ]).droppedFacets.join(" ");
     expect(dropped).toContain("branch.create: max");
     expect(dropped).toContain("issue.read: branches");
   });
 
   it("reports nothing dropped when the proposal fits", () => {
-    coverGrants([{ action: "branch.create", resources: ["acme/api"], branches: ["agent/a"] }]);
-    expect(facetsDroppedByLastCover()).toEqual([]);
+    expect(coverGrants([
+      { action: "branch.create", resources: ["acme/api"], branches: ["agent/a"] },
+    ]).droppedFacets).toEqual([]);
+  });
+
+  // Returned rather than held in module state: two mandates written at the
+  // same time would otherwise report each other's dropped facets.
+  it("keeps two concurrent covers from seeing each other's drops", () => {
+    const a = coverGrants([
+      { action: "branch.create", resources: ["acme/api"], branches: ["agent/a"], max: 1 },
+    ]);
+    const b = coverGrants([
+      { action: "branch.create", resources: ["acme/api"], branches: ["agent/b"] },
+    ]);
+    expect(a.droppedFacets).toEqual(["branch.create: max"]);
+    expect(b.droppedFacets).toEqual([]);
   });
 
   // Dropping a facet widens the grant relative to what the model asked for, so
@@ -243,7 +256,7 @@ describe("coverGrants", () => {
   it("leaves a dropped facet for the ceiling to bound", () => {
     const out = coverGrants([
       { action: "issue.read", resources: ["acme/api"], branches: ["agent/a"] },
-    ], CEILING);
+    ], CEILING).grants;
     expect(out.find((g) => g.action === "issue.read")?.branches).toBeUndefined();
     // The example ceiling has no permit for issue.read at all, so validate()
     // rejects it regardless of the dropped facet.
@@ -254,7 +267,7 @@ describe("coverGrants", () => {
   // what rejects this, and that rejection is the signal the adversarial suite
   // needs to see. A writer that quietly removed it would hide the attempt.
   it("keeps a forbidden-risk operation the model proposed, for the validator to reject", () => {
-    const out = coverGrants([{ action: "pull_request.merge", resources: ["acme/api"], max: 1 }]);
+    const out = coverGrants([{ action: "pull_request.merge", resources: ["acme/api"], max: 1 }]).grants;
     expect(out.map((g) => g.action)).toContain("pull_request.merge");
   });
 });
@@ -302,7 +315,7 @@ describe("coverGrants, given the ceiling", () => {
     const write = coverGrants(
       [{ action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] }],
       CEILING,
-    ).find((g) => g.action === "contents.write");
+    ).grants.find((g) => g.action === "contents.write");
     for (const d of [".github/workflows/**", "**.env**"]) expect(write?.denyPaths).toContain(d);
   });
 
@@ -321,7 +334,7 @@ describe("coverGrants, given the ceiling", () => {
     const write = coverGrants(
       [{ action: "contents.write", resources: ["acme/api"], branches: ["agent/42-fix"] }],
       twoClauses,
-    ).find((g) => g.action === "contents.write");
+    ).grants.find((g) => g.action === "contents.write");
     expect(write?.denyPaths).not.toContain("vendor/**");
     expect(write?.denyPaths).not.toContain("docs/**");
     // The contract floor still applies.
@@ -331,7 +344,25 @@ describe("coverGrants, given the ceiling", () => {
   // The writer proposes; the validator decides. Silently dropping a grant the
   // ceiling forbids would hide the attempt from the audit trail.
   it("still passes a grant the ceiling does not permit through to the validator", () => {
-    const out = coverGrants([{ action: "issue.comment", resources: ["acme/api"], max: 1 }], CEILING);
+    const out = coverGrants([{ action: "issue.comment", resources: ["acme/api"], max: 1 }], CEILING).grants;
     expect(out.map((g) => g.action)).toContain("issue.comment");
+  });
+});
+
+describe("enforcementFor", () => {
+  it("marks a grant limited only by base or max as proxy-enforced", () => {
+    expect(enforcementFor({ base: "main" })).toBe("proxy");
+    expect(enforcementFor({ max: 1 })).toBe("proxy");
+  });
+
+  it("still marks a grant with no limits as token-enforced", () => {
+    expect(enforcementFor({})).toBe("token");
+  });
+
+  it("gives a base-and-max grant proxy enforcement end to end", () => {
+    const out = coverGrants([
+      { action: "pull_request.update", resources: ["acme/api"], max: 2 },
+    ]).grants;
+    expect(out.find((g) => g.action === "pull_request.update")?.enforcedBy).toBe("proxy");
   });
 });

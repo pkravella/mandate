@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parseMandateYaml, type ProposedMandate } from "@mandate-dev/schema";
-import { loadCeiling, validate, type Ceiling, type UserAuthority } from "@mandate-dev/validator";
+import { loadCeiling, validate, type Ceiling } from "@mandate-dev/validator";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
 
 export interface ValidateArgs {
@@ -8,7 +8,13 @@ export interface ValidateArgs {
   readonly ceiling: string;
   readonly schema: string;
   readonly as: string;
-  readonly level: UserAuthority["level"];
+  /**
+   * A string, because that is what a command line supplies. `runValidate`
+   * checks it against USER_LEVELS and returns exit 2 if it is not one — an
+   * unrecognised value otherwise made `atLeast()` false for everything and
+   * every grant was rejected for "user authority" with nothing naming the flag.
+   */
+  readonly level: string;
   /** Organization repository count for the authority-cut baseline (D7). */
   readonly repositories?: number;
   readonly color?: boolean;
@@ -20,7 +26,8 @@ const message = (e: unknown): string => (e instanceof Error ? e.message : String
 
 /** Returns the process exit code: 0 accepted, 1 rejected, 2 bad input. */
 export function runValidate(args: ValidateArgs, log: (s: string) => void): number {
-  if (!(USER_LEVELS as readonly string[]).includes(args.level)) {
+  const level = USER_LEVELS.find((l) => l === args.level);
+  if (level === undefined) {
     log(`--level must be one of ${USER_LEVELS.join(", ")}, not ${JSON.stringify(args.level)}`);
     return 2;
   }
@@ -47,7 +54,7 @@ export function runValidate(args: ValidateArgs, log: (s: string) => void): numbe
 
   const result = validate(proposed, {
     ceiling,
-    authority: { login: args.as, level: args.level },
+    authority: { login: args.as, level },
   });
   if (!result.ok) {
     log(renderRejections(result.rejections, proposed));

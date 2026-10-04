@@ -1,9 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { MandateSchema, type CeilingDigest, type ProposedMandate } from "@mandate-dev/schema";
-import {
-  coverGrants, coverPrompt, facetsDroppedByLastCover, type ProposedGrant,
-} from "./cover.js";
+import { coverGrants, coverPrompt, type ProposedGrant } from "./cover.js";
 import { applyPrune, prunePrompt } from "./prune.js";
 import { WriterError } from "./errors.js";
 
@@ -283,8 +281,9 @@ export async function writeMandate(client: AnthropicLike, req: WriteRequest): Pr
 
   // ---- cover --------------------------------------------------------------
   const proposal = await callTool(client, coverPrompt(req), PROPOSE_TOOL, ProposeInput);
-  const coveredGrants = coverGrants(proposal.grants.map(normalize), req.ceiling);
-  const droppedFacets = facetsDroppedByLastCover();
+  const covered = coverGrants(proposal.grants.map(normalize), req.ceiling);
+  const coveredGrants = covered.grants;
+  const { droppedFacets } = covered;
 
   // ---- prune --------------------------------------------------------------
   const keep = await callTool(client, prunePrompt(req.task, coveredGrants), KEEP_TOOL, KeepInput);

@@ -187,7 +187,14 @@ export function createProxyServer(deps: ProxyDeps): Server {
 
     try {
       const result = await deps.upstream.callTool({ name: tool, arguments: args });
-      return result as CallToolResult;
+      // `callTool` can return either the modern `{ content }` shape or the
+      // legacy `{ toolResult }` one. Casting the union to the modern shape
+      // would hand the agent an object whose `content` is undefined while the
+      // type claimed otherwise, so the legacy form is wrapped instead.
+      if (Array.isArray(result["content"])) return result as CallToolResult;
+      return {
+        content: [{ type: "text", text: JSON.stringify(result["toolResult"] ?? result) }],
+      };
     } catch (e) {
       // An upstream failure arrives as a thrown McpError. Letting it propagate
       // turns a GitHub outage into a protocol error the agent cannot read.
