@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/catalog" },
-    { "path": "./packages/schema" }
+    { "path": "./packages/schema" },
+    { "path": "./packages/validator" }
   ]
 }

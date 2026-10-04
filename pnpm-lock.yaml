@@ -38,6 +38,15 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  packages/validator:
+    dependencies:
+      '@mandate-dev/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@mandate-dev/schema':
+        specifier: workspace:*
+        version: link:../schema
+
 packages:
 
   '@cacheable/memory@2.2.0':
