@@ -1,5 +1,8 @@
 import { getOperation } from "@mandate-dev/catalog";
-import type { Grant, Mandate } from "@mandate-dev/schema";
+import {
+  SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles,
+  type Grant, type Mandate,
+} from "@mandate-dev/schema";
 import { globMatches, globSetContains } from "./glob/contains.js";
 import { GlobParseError } from "./glob/parse.js";
 
@@ -27,31 +30,11 @@ export const LINT_RULES = [
 
 const DEFAULT_BRANCHES = ["main", "master", "develop", "release", "release/1.0"];
 
-// The minimum a code-write grant must exclude.
-//
-// Note the dotenv pattern is the character-wise form, not the segment-aware
-// basename form. A Cedar ceiling expresses path patterns character-wise, so
-// its dotenv deny means "any path containing .env". Requiring the narrower
-// basename form here would let a mandate pass the lint and then fail
-// containment, which is a worse experience than failing the lint.
-//
-// (Written as line comments deliberately: the segment-aware pattern contains
-// the sequence that terminates a block comment.)
-const SENSITIVE_PATHS = [".github/workflows/**", "**.env**"];
-
-/**
- * Operations that create outward-facing side effects and therefore need a
- * bound. Every member must list "max" in its catalog `constrainable` set,
- * otherwise this lint demands a field the schema refuses and the grant becomes
- * unsatisfiable. An invariant test pins that.
- */
-export const SIDE_EFFECTING: ReadonlySet<string> = new Set([
-  "pull_request.create", "pull_request.comment", "pull_request.update",
-  "pull_request.review", "pull_request.merge", "pull_request.close",
-  "issue.create", "issue.comment", "issue.update", "issue.close",
-  "issue.label", "issue.assign",
-  "actions.write", "releases.write", "repo.create", "repo.fork", "gist.write",
-]);
+// SENSITIVE_PATHS, SIDE_EFFECTING and writesFiles() moved to
+// @mandate-dev/schema so the writer can conform to the same contract rather
+// than keeping a second copy of it. Re-exported here because this module is
+// where they were first published.
+export { SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles };
 
 /** Membership that degrades to "no match" on an undecidable pattern. */
 function matchesSafely(globs: readonly string[], value: string): boolean {
@@ -115,8 +98,7 @@ export function runLints(m: Mandate): readonly LintFinding[] {
     }
 
     // A grant that writes files is held to the branch and path rules.
-    const writesFiles = op.permissionLevel === "write" && op.resourceType === "path";
-    if (writesFiles) {
+    if (writesFiles(g.action)) {
       if (g.branches === undefined) {
         add("require-branch-constraint", "error",
           `${g.action} must name the branches it may write`, i);
