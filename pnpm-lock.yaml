@@ -26,6 +26,18 @@ importers:
 
   packages/catalog: {}
 
+  packages/compiler:
+    dependencies:
+      '@mandate-dev/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@mandate-dev/schema':
+        specifier: workspace:*
+        version: link:../schema
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
   packages/schema:
     dependencies:
       '@mandate-dev/catalog':

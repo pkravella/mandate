@@ -4,6 +4,7 @@
     { "path": "./packages/catalog" },
     { "path": "./packages/schema" },
     { "path": "./packages/validator" },
-    { "path": "./packages/writer" }
+    { "path": "./packages/writer" },
+    { "path": "./packages/compiler" }
   ]
 }
