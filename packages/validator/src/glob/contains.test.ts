@@ -263,3 +263,32 @@ describe("globMatches — cross-checked against a regex oracle", () => {
     expect(violations.slice(0, 5)).toEqual([]);
   });
 });
+
+// globMatches takes a concrete value, not a pattern. It used to pass that value
+// through alphabetOf, which parses its input as a glob, so a real filename
+// containing a metacharacter threw from inside the proxy's enforcement path.
+describe("globMatches on values that are not patterns", () => {
+  it("matches a filename containing glob metacharacters literally", () => {
+    expect(globMatches(["src/**"], "src/pages/[id].tsx")).toBe(true);
+    expect(globMatches(["src/**"], "src/a?.ts")).toBe(true);
+    expect(globMatches(["src/**"], "src/{a,b}.ts")).toBe(true);
+    expect(globMatches(["src/**"], "src/a(1).ts")).toBe(true);
+  });
+
+  it("still says no when such a filename is outside the pattern", () => {
+    expect(globMatches(["src/**"], "app/pages/[id].tsx")).toBe(false);
+    expect(globMatches([".github/workflows/**"], "src/[id].tsx")).toBe(false);
+  });
+
+  it("does not treat a metacharacter in the value as a wildcard", () => {
+    // If `*` in the value were parsed as a pattern it would match anything.
+    expect(globMatches(["src/a.ts"], "*")).toBe(false);
+    expect(globMatches(["src/a.ts"], "src/*")).toBe(false);
+    expect(globMatches(["src/a.ts"], "src/a.ts")).toBe(true);
+  });
+
+  it("catches the deny-path case that matters", () => {
+    expect(globMatches([".github/workflows/**"], ".github/workflows/[env].yml")).toBe(true);
+    expect(globMatches(["**.env**"], "packages/[id]/.env.local")).toBe(true);
+  });
+});

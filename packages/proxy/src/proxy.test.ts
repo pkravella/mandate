@@ -5,6 +5,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ProxyRules } from "@mandate-dev/compiler";
 import { createProxyServer, type Decision } from "./proxy.js";
+import { makeArgumentEnforcer } from "./enforce.js";
+import { pauseRecord, type PauseRecord } from "./pause.js";
 
 const rules: ProxyRules = {
   mandateId: "fix-issue-42",
@@ -269,5 +271,125 @@ describe("a tool several grants reach", () => {
     expect(decisions).toHaveLength(1);
     expect(decisions[0]).toMatchObject({ kind: "deny" });
     expect(decisions[0]).toHaveProperty("clause");
+  });
+});
+
+describe("proxy with argument enforcement — the phase 2 exit criterion", () => {
+  it("allows the issue-fixing path and blocks the merge", async () => {
+    const { client, seen } = await fakeUpstream();
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+    }));
+
+    expect((await agent.callTool({
+      name: "create_branch",
+      arguments: { owner: "acme", repo: "api", branch: "agent/42-fix", from_branch: "main" },
+    })).isError).toBeFalsy();
+
+    expect((await agent.callTool({
+      name: "create_or_update_file",
+      arguments: {
+        owner: "acme", repo: "api", branch: "agent/42-fix",
+        path: "src/fix.ts", content: "x",
+      },
+    })).isError).toBeFalsy();
+
+    expect((await agent.callTool({
+      name: "create_pull_request",
+      arguments: {
+        owner: "acme", repo: "api", head: "agent/42-fix", base: "main", title: "Fix #42",
+      },
+    })).isError).toBeFalsy();
+
+    const merge = await agent.callTool({
+      name: "merge_pull_request",
+      arguments: { owner: "acme", repo: "api", pullNumber: 1 },
+    });
+    expect(merge.isError).toBe(true);
+    expect(seen.map((s) => s.tool)).not.toContain("merge_pull_request");
+  });
+
+  it("blocks a workflow write even though contents.write is granted", async () => {
+    const { client, seen } = await fakeUpstream();
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+    }));
+    const res = await agent.callTool({
+      name: "create_or_update_file",
+      arguments: {
+        owner: "acme", repo: "api", branch: "agent/42-fix",
+        path: ".github/workflows/ci.yml", content: "evil",
+      },
+    });
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.content)).toContain(".github/workflows/**");
+    expect(seen).toEqual([]);
+  });
+
+  // The denial has to arrive as something a reviewer can act on, not just a
+  // refusal: R10 asks for the clause and a reviewable widen request.
+  it("turns a denial into a pause record naming the clause and a narrow widen", async () => {
+    const { client } = await fakeUpstream();
+    const pauses: PauseRecord[] = [];
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+      onDecision: (d) => {
+        if (d.kind !== "deny") return;
+        pauses.push(pauseRecord({
+          mandateId: rules.mandateId, decision: d, observed: { branch: "main" },
+        }));
+      },
+    }));
+
+    await agent.callTool({
+      name: "create_or_update_file",
+      arguments: { owner: "acme", repo: "api", branch: "main", path: "src/a.ts", content: "x" },
+    });
+
+    expect(pauses).toHaveLength(1);
+    expect(pauses[0]?.clause).toBe("contents.write.branches");
+    expect(pauses[0]?.widenRequest?.addGrant.branches).toEqual(["main"]);
+  });
+
+  it("offers no widen for the workflow write, so the deny list stays meaningful", async () => {
+    const { client } = await fakeUpstream();
+    const pauses: PauseRecord[] = [];
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+      onDecision: (d) => {
+        if (d.kind !== "deny") return;
+        pauses.push(pauseRecord({
+          mandateId: rules.mandateId, decision: d,
+          observed: { path: ".github/workflows/ci.yml" },
+        }));
+      },
+    }));
+
+    await agent.callTool({
+      name: "create_or_update_file",
+      arguments: {
+        owner: "acme", repo: "api", branch: "agent/42-fix",
+        path: ".github/workflows/ci.yml", content: "x",
+      },
+    });
+
+    expect(pauses[0]?.clause).toBe("contents.write.denyPaths");
+    expect(pauses[0]?.widenRequest).toBeUndefined();
+  });
+
+  it("stops the second pull request, because the grant allows one", async () => {
+    const { client, seen } = await fakeUpstream();
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+    }));
+    const args = {
+      owner: "acme", repo: "api", head: "agent/42-fix", base: "main", title: "Fix #42",
+    };
+    expect((await agent.callTool({ name: "create_pull_request", arguments: args })).isError)
+      .toBeFalsy();
+    const second = await agent.callTool({ name: "create_pull_request", arguments: args });
+    expect(second.isError).toBe(true);
+    expect(JSON.stringify(second.content)).toContain("at most 1");
+    expect(seen.filter((s) => s.tool === "create_pull_request")).toHaveLength(1);
   });
 });

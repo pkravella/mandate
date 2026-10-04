@@ -67,6 +67,9 @@ importers:
       '@mandate-dev/schema':
         specifier: workspace:*
         version: link:../schema
+      '@mandate-dev/validator':
+        specifier: workspace:*
+        version: link:../validator
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.0
         version: 1.32.0(zod@4.6.5)

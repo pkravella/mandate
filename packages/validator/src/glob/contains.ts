@@ -41,10 +41,16 @@ export function globSetContains(
  * the containment tests check their counterexamples against.
  */
 export function globMatches(globs: readonly string[], value: string): boolean {
-  const alphabet = alphabetOf([...globs, value.length > 0 ? value : "x"]);
-  // Literal characters of the probe string must be in the alphabet, otherwise
-  // they collapse to OTHER and could be mistaken for one another.
-  const withValueChars = new Set(alphabet);
+  // Only the GLOBS are parsed for their alphabet. `value` is a concrete string,
+  // not a pattern, and passing it through alphabetOf meant parseGlob ran over
+  // it -- so any real filename containing a glob metacharacter threw
+  // GlobParseError from the middle of the proxy's enforcement path.
+  // `pages/[id].tsx` is an everyday filename in a Next.js repository.
+  //
+  // The value's literal characters are added directly below, which is what the
+  // alphabet actually needs; routing them through the parser was redundant as
+  // well as wrong.
+  const withValueChars = new Set(alphabetOf(globs));
   for (const ch of value) withValueChars.add(ch);
   return dfaAccepts(dfaFromGlobs(globs, [...withValueChars]), value);
 }
