@@ -109,6 +109,17 @@ so a mandate allowing `github.com/acme/api` does not permit
 `github.com/evil/api` or `github.com/acme/api-private`. A bare host entry also
 covers its subdomains.
 
+**A granted operation can be unreachable, depending on how the upstream is
+run.** `github-mcp-server`'s default toolsets expose 46 tools;
+`GITHUB_TOOLSETS=all` exposes 91. Six catalog operations —
+`actions.read`, `actions.logs.read`, `actions.write`, `discussions.read`,
+`notifications.read` and `gist.write` — name tools that appear only once extra
+toolsets are enabled. The proxy filters `tools/list` to what the upstream
+offers, so a grant whose tools are absent means the agent never sees the tool
+and the task fails with nothing explaining why. `TOOLSET_REQUIRED` in the
+catalog names the toolset each one needs, and `unreachableOperations()` reports
+the gap for a running server.
+
 **The loosest rule for a tool decides.** Nine MCP tools are reached by more than
 one operation — `get_file_contents` by both `repo.read` and `contents.read`,
 `create_or_update_file` by both `contents.write` and `workflows.write`. A call is

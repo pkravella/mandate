@@ -44,6 +44,20 @@ interface FacetBearer {
 
 const dedupe = (xs: readonly string[]): string[] => [...new Set(xs)];
 
+const asGlobs = (v: unknown): readonly string[] | undefined =>
+  (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : undefined);
+
+/** What `coverGrants` produced, including what it had to drop. */
+export interface CoverResult {
+  readonly grants: readonly Grant[];
+  /**
+   * Facets the model proposed that the operation cannot carry, as
+   * `action: facet, ...`. Returned rather than held in module state: two
+   * mandates being written at once would otherwise report each other's.
+   */
+  readonly droppedFacets: readonly string[];
+}
+
 /**
  * Closes a set of actions under the catalog's prerequisite relation, so a task
  * that needs `contents.write` also gets the `branch.create` and `repo.read` it
@@ -115,8 +129,19 @@ export function inheritFacet(
  * only the proxy's to enforce, and saying otherwise is the `enforcement-overclaim`
  * lint's business.
  */
-export function enforcementFor(g: FacetBearer & { readonly denyPaths?: readonly string[] | undefined }): EnforcedBy {
+export function enforcementFor(g: {
+  readonly branches?: readonly string[] | undefined;
+  readonly paths?: readonly string[] | undefined;
+  readonly denyPaths?: readonly string[] | undefined;
+  readonly base?: string | undefined;
+  readonly max?: number | undefined;
+}): EnforcedBy {
+  // `base` and `max` belong here too. A token cannot enforce which branch a
+  // pull request targets, or how many times an operation may run, any more
+  // than it can enforce a path -- and `pull_request.update` is constrainable
+  // by nothing but `max`, so a max-only grant is its normal shape.
   return g.branches !== undefined || g.paths !== undefined || g.denyPaths !== undefined
+    || g.base !== undefined || g.max !== undefined
     ? "proxy"
     : "token";
 }
@@ -139,7 +164,9 @@ interface Facets {
  * either out does not widen the agent's useful authority — it guarantees the
  * validator rejects the whole mandate, so the task cannot run at all.
  */
-function buildGrant(action: string, f: Facets, ceilingDenies: readonly string[] = []): Grant {
+function buildGrant(
+  action: string, f: Facets, ceilingDenies: readonly string[], droppedFacets: string[],
+): Grant {
   const op = getOperation(action);
   if (op === undefined) {
     throw new WriterError(
@@ -148,27 +175,61 @@ function buildGrant(action: string, f: Facets, ceilingDenies: readonly string[] 
     );
   }
 
+  // A facet the operation cannot carry is dropped, not fatal.
+  //
+  // The tool schema asks for every facet and lets the model send null, which in
+  // practice means it volunteers a plausible value for all of them: the live
+  // writer proposed `branch.create` with a `max`, and failing the whole mandate
+  // over that made the loop unrunnable. Dropping it loses nothing real — the
+  // catalog says the facet has no meaning for this operation, so there was
+  // never anything to enforce it against — and the ceiling still bounds the
+  // grant, because an absent facet is unconstrained and `validate()` compares
+  // it as `**`.
+  //
+  // Dropped facets are reported, so an over-eager model is visible rather than
+  // silently tidied up.
+  const dropped: string[] = [];
+  const carries = (kind: ConstraintKind): boolean => op.constrainable.includes(kind);
+
   const draft: Record<string, unknown> = { action, resources: dedupe([...f.resources]) };
-  if (f.branches !== undefined) draft["branches"] = dedupe([...f.branches]);
-  if (f.paths !== undefined) draft["paths"] = dedupe([...f.paths]);
-  if (f.base !== undefined) draft["base"] = f.base;
+  if (f.branches !== undefined) {
+    if (carries("branches")) draft["branches"] = dedupe([...f.branches]);
+    else dropped.push("branches");
+  }
+  if (f.paths !== undefined) {
+    if (carries("paths")) draft["paths"] = dedupe([...f.paths]);
+    else dropped.push("paths");
+  }
+  if (f.base !== undefined) {
+    if (carries("base")) draft["base"] = f.base;
+    else dropped.push("base");
+  }
 
   const denies = [...(f.denyPaths ?? [])];
-  if (op.constrainable.includes("paths")) {
+  if (carries("paths")) {
     if (writesFiles(action)) denies.push(...SENSITIVE_PATHS);
     denies.push(...ceilingDenies);
+    if (denies.length > 0) draft["denyPaths"] = dedupe(denies);
+  } else if (denies.length > 0) {
+    dropped.push("denyPaths");
   }
-  if (denies.length > 0) draft["denyPaths"] = dedupe(denies);
 
-  const max = f.max ?? (SIDE_EFFECTING.has(action) && op.constrainable.includes("max")
-    ? DEFAULT_MAX
-    : undefined);
-  if (max !== undefined) draft["max"] = max;
+  const max = f.max ?? (SIDE_EFFECTING.has(action) ? DEFAULT_MAX : undefined);
+  if (max !== undefined) {
+    if (carries("max")) draft["max"] = max;
+    else if (f.max !== undefined) dropped.push("max");
+  }
+
+  if (dropped.length > 0) {
+    droppedFacets.push(`${action}: ${dropped.join(", ")}`);
+  }
 
   draft["enforcedBy"] = enforcementFor({
-    branches: draft["branches"] as readonly string[] | undefined,
-    paths: draft["paths"] as readonly string[] | undefined,
-    denyPaths: draft["denyPaths"] as readonly string[] | undefined,
+    branches: asGlobs(draft["branches"]),
+    paths: asGlobs(draft["paths"]),
+    denyPaths: asGlobs(draft["denyPaths"]),
+    base: typeof draft["base"] === "string" ? draft["base"] : undefined,
+    max: typeof draft["max"] === "number" ? draft["max"] : undefined,
   });
 
   const parsed = GrantSchema.safeParse(draft);
@@ -211,7 +272,7 @@ function ceilingDenies(ceiling: CeilingDigest | undefined, action: string): read
  */
 export function coverGrants(
   proposed: readonly ProposedGrant[], ceiling?: CeilingDigest,
-): Grant[] {
+): CoverResult {
   const byAction = new Map<string, ProposedGrant>();
   for (const g of proposed) {
     if (getOperation(g.action) === undefined) {
@@ -232,6 +293,7 @@ export function coverGrants(
     byAction.set(g.action, g);
   }
 
+  const droppedFacets: string[] = [];
   const proposedList = [...byAction.values()];
   const out: Grant[] = [];
 
@@ -239,7 +301,7 @@ export function coverGrants(
     const denies = ceilingDenies(ceiling, action);
     const found = byAction.get(action);
     if (found !== undefined) {
-      out.push(buildGrant(action, found, denies));
+      out.push(buildGrant(action, found, denies, droppedFacets));
       continue;
     }
 
@@ -261,10 +323,10 @@ export function coverGrants(
         ? inheritFacet("branches", dependents)
         : undefined,
       paths: op.constrainable.includes("paths") ? inheritFacet("paths", dependents) : undefined,
-    }, denies));
+    }, denies, droppedFacets));
   }
 
-  return out;
+  return { grants: out, droppedFacets };
 }
 
 /**

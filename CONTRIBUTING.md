@@ -28,8 +28,10 @@ allow, will be rejected regardless of how well it tests.
 
 Concretely:
 
-- `ProposedMandate` may only be imported by `writer` and `validator`. A
-  `no-restricted-imports` rule enforces this.
+- `ProposedMandate` may only be imported by `writer`, `validator` and `cli`. A
+  `no-restricted-imports` rule enforces this. The CLI is on the list because it
+  reads a mandate off disk and hands it to `validate()`; it never passes one
+  downstream.
 - `ValidatedMandate` may only be constructed by `markValidated`, which requires
   a `ContainmentProof`. Do not add an escape hatch.
 
@@ -42,7 +44,17 @@ Concretely:
 - Every decision path ends in a default deny. An exception, a timeout, or an
   unparseable pattern is a rejection, never a pass.
 - Do not loosen the glob parser to make a test pass. An undecidable pattern is
-  supposed to be rejected.
+  supposed to be rejected. Note the distinction the proxy depends on:
+  `globSetContains` compares two *patterns*, and `globMatches` tests whether a
+  *concrete value* is a member. Enforcement takes concrete tool arguments, so it
+  uses `globMatches` — passing an argument to `globSetContains` would parse it
+  as a pattern, and an agent sending `repo: "*"` would be compared as a
+  language rather than matched literally.
+- A grant limited by `base` or `max` is **proxy**-enforced, not `token`. A
+  GitHub App token carries a repository set and a permission set and nothing
+  finer, so it can no more enforce which branch a pull request targets, or how
+  many times an operation may run, than it can enforce a path. The
+  `enforcement-overclaim` lint checks all five facets.
 
 ## Development
 
@@ -69,6 +81,31 @@ package needs its own `vitest.config.ts`.
 Tests come first. Every change to validation or enforcement needs a test that
 fails before the change and passes after it. For a bug fix, the test should be
 the reproducing case from the issue.
+
+A test that passes is not evidence on its own. Before trusting one, break the
+code it covers and check that it fails — several tests in this repository were
+written, passed, and turned out to assert nothing until that was done.
+
+### Tests that cost money
+
+The offline suite needs no credentials and is what CI runs. A handful of tests
+are gated behind `MANDATE_LIVE=1` **and** the relevant credentials, because they
+call the Anthropic API, mint real GitHub App tokens, or start the real
+`github-mcp-server` in Docker:
+
+```bash
+MANDATE_LIVE=1 pnpm --filter @mandate-dev/writer test     # ~$0.03
+MANDATE_LIVE=1 pnpm --filter @mandate-dev/compiler test    # free, mints tokens
+MANDATE_LIVE=1 pnpm --filter @mandate-dev/cli test         # ~$0.25, writes a PR
+```
+
+Two gates, not one, so `pnpm test` can never bill anyone by accident. Keep it
+that way: a live test that runs on a bare `pnpm test` is a defect.
+
+They have earned their keep. Every live run so far has found something the
+offline suite could not see — two catalog tool names that do not exist, a tool
+schema the API rejects outright, a writer that refused its own first mandate,
+and two false pauses that blocked an agent's very first call.
 
 If you add a GitHub operation to the catalog, you must also give it a risk
 class, the GitHub App permission it needs, its minimum user permission level,

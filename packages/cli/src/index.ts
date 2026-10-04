@@ -37,12 +37,12 @@ export function main(argv: readonly string[]): void {
         process.exitCode = 2;
         return;
       }
-      const args = {
+      const args: ValidateArgs = {
         file, ceiling: opts.ceiling, schema: opts.schema, as: opts.as,
         level: opts.level,
         ...(repositories === undefined ? {} : { repositories }),
         ...(opts.color === undefined ? {} : { color: opts.color }),
-      } as ValidateArgs;
+      };
       process.exitCode = runValidate(args, (s) => { console.log(s); });
     });
 

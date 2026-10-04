@@ -35,6 +35,13 @@ export interface WriteResult {
   readonly proposed: ProposedMandate;
   readonly covered: readonly string[];
   readonly pruned: readonly string[];
+  /**
+   * Facets the model proposed that the operation cannot carry, as
+   * `action: facet, ...`. Dropped rather than fatal, because the tool schema
+   * asks for every facet and the model fills them in; an over-eager proposal
+   * should not make the mandate unwritable. Reported so it stays visible.
+   */
+  readonly droppedFacets: readonly string[];
   readonly latencyMs: number;
 }
 
@@ -274,7 +281,9 @@ export async function writeMandate(client: AnthropicLike, req: WriteRequest): Pr
 
   // ---- cover --------------------------------------------------------------
   const proposal = await callTool(client, coverPrompt(req), PROPOSE_TOOL, ProposeInput);
-  const coveredGrants = coverGrants(proposal.grants.map(normalize), req.ceiling);
+  const covered = coverGrants(proposal.grants.map(normalize), req.ceiling);
+  const coveredGrants = covered.grants;
+  const { droppedFacets } = covered;
 
   // ---- prune --------------------------------------------------------------
   const keep = await callTool(client, prunePrompt(req.task, coveredGrants), KEEP_TOOL, KeepInput);
@@ -303,6 +312,7 @@ export async function writeMandate(client: AnthropicLike, req: WriteRequest): Pr
   return {
     proposed,
     covered: coveredGrants.map((g) => g.action),
+    droppedFacets,
     pruned: coveredGrants.filter((g) => !kept.has(g.action)).map((g) => g.action),
     latencyMs: Date.now() - started,
   };

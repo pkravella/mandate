@@ -180,3 +180,42 @@ describe("runLints", () => {
     expect([...emitted].sort()).toEqual([...LINT_RULES].sort());
   });
 });
+
+// A token carries a repository set and a permission set and nothing finer, so
+// base and max are no more token-enforceable than a path is. They were missing
+// from the overclaim check, and pull_request.update is constrainable by nothing
+// but max, so a max-only grant -- its normal shape -- always claimed the token.
+describe("enforcement-overclaim on base and max", () => {
+  const rules = (grants: unknown[]): readonly string[] =>
+    runLints(MandateSchema.parse({
+      mandate: "m", task: "t", requestedBy: "user:a", expiresInMinutes: 30,
+      ceiling: "c@v1", grants, destinations: { allow: ["github.com/acme/api"] },
+    })).filter((f) => f.rule === "enforcement-overclaim").map((f) => f.message);
+
+  it("flags a token claim on a grant limited only by base", () => {
+    const found = rules([{
+      action: "pull_request.create", enforcedBy: "token", resources: ["acme/api"],
+      base: "main", max: 1,
+    }]);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("base");
+    expect(found[0]).toContain("max");
+  });
+
+  it("flags a token claim on a max-only grant", () => {
+    expect(rules([{
+      action: "pull_request.update", enforcedBy: "token", resources: ["acme/api"], max: 2,
+    }])).toHaveLength(1);
+  });
+
+  it("says nothing when the same grant is marked proxy", () => {
+    expect(rules([{
+      action: "pull_request.update", enforcedBy: "proxy", resources: ["acme/api"], max: 2,
+    }])).toEqual([]);
+  });
+
+  it("still says nothing for a grant with no facets at all", () => {
+    expect(rules([{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }]))
+      .toEqual([]);
+  });
+});

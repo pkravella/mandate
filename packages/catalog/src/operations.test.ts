@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   OPERATIONS, getOperation, requireOperation, operationsForMcpTool,
   highRiskOps, atLeast, UnknownOperationError,
+  TOOLSET_REQUIRED, unreachableOperations,
 } from "./operations.js";
 
 describe("catalog", () => {
@@ -117,5 +118,57 @@ describe("catalog", () => {
   it("surfaces the high-risk set for the derived notGrantedNotable display", () => {
     expect(highRiskOps().map((o) => o.id)).toContain("pull_request.merge");
     expect(highRiskOps().map((o) => o.id)).not.toContain("repo.read");
+  });
+});
+
+// The two names below were wrong until a live `tools/list` against
+// ghcr.io/github/github-mcp-server:latest caught them. `get_repository` does
+// not exist at all, and the review tool is `pull_request_review_write`.
+describe("mcpTools against the real server", () => {
+  it("does not name a tool the server has never had", () => {
+    const all = OPERATIONS.flatMap((o) => [...o.mcpTools]);
+    expect(all).not.toContain("get_repository");
+    expect(all).not.toContain("create_pull_request_review");
+  });
+
+  it("reaches pull request review through the tool that exists", () => {
+    expect(requireOperation("pull_request.review").mcpTools).toEqual(["pull_request_review_write"]);
+  });
+
+  it("leaves repo.read with three real tools", () => {
+    expect(requireOperation("repo.read").mcpTools)
+      .toEqual(["get_file_contents", "list_branches", "search_code"]);
+  });
+});
+
+describe("unreachableOperations", () => {
+  // The silent failure this exists to surface: the proxy filters tools/list to
+  // what upstream offers, so a grant whose tools are not exposed means the
+  // agent never sees the tool and the task fails with no explanation.
+  it("names a granted operation the running server cannot reach", () => {
+    const exposedByDefault = ["get_file_contents", "list_branches", "search_code", "create_branch"];
+    expect(unreachableOperations(["repo.read", "actions.read"], exposedByDefault))
+      .toEqual(["actions.read"]);
+  });
+
+  it("says nothing when every grant has a tool on the server", () => {
+    expect(unreachableOperations(["repo.read"], ["get_file_contents"])).toEqual([]);
+  });
+
+  // branch.delete has no MCP tool by design; the token is its only control and
+  // enforcementReport already reports that. It is not an upstream problem.
+  it("does not blame the server for an operation that has no tool at all", () => {
+    expect(unreachableOperations(["branch.delete"], [])).toEqual([]);
+  });
+
+  it("ignores an unknown action rather than throwing", () => {
+    expect(unreachableOperations(["repo.yolo"], [])).toEqual([]);
+  });
+
+  it("names the toolset each gated operation needs", () => {
+    expect(TOOLSET_REQUIRED["actions.read"]).toBe("actions");
+    for (const id of Object.keys(TOOLSET_REQUIRED)) {
+      expect(getOperation(id), `${id} is not a catalog operation`).toBeDefined();
+    }
   });
 });

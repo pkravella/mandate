@@ -1,7 +1,6 @@
 import { getOperation } from "@mandate-dev/catalog";
 import {
-  SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles,
-  type Grant, type Mandate,
+  SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles, type Mandate,
 } from "@mandate-dev/schema";
 import { globMatches, globSetContains } from "./glob/contains.js";
 import { GlobParseError } from "./glob/parse.js";
@@ -125,11 +124,17 @@ export function runLints(m: Mandate): readonly LintFinding[] {
         `${g.action} creates outward-facing side effects and needs a max`, i);
     }
 
-    if (g.enforcedBy === "token" &&
-        (g.branches !== undefined || g.paths !== undefined || g.denyPaths !== undefined)) {
+    // A token carries a repository set and a permission set, and nothing
+    // finer. `base` and `max` were missing from this check, so a grant like
+    // `pull_request.create` with only a base and a count -- or any
+    // `pull_request.update`, which the catalog lets carry nothing but `max` --
+    // claimed token enforcement and the lint said nothing.
+    const proxyOnly = (["branches", "paths", "denyPaths", "base", "max"] as const)
+      .filter((f) => g[f] !== undefined);
+    if (g.enforcedBy === "token" && proxyOnly.length > 0) {
       add("enforcement-overclaim", "error",
         `grant ${g.action} claims token enforcement, but a GitHub App token cannot limit by ` +
-        `branch or path; use enforcedBy: "proxy"`, i);
+        `${proxyOnly.join(", ")}; use enforcedBy: "proxy"`, i);
     }
   }
 
