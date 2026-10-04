@@ -254,12 +254,76 @@ describe("makeArgumentEnforcer", () => {
       .toBe("deny");
   });
 
-  it("checks a suspicious path even when the rule constrains neither paths nor denyPaths", () => {
+  // A rule with no path limit does not limit paths, and a leading slash is
+  // repo-relative, so `/etc/passwd` is just a path that does not exist. What
+  // must still be refused whatever the rule says is a traversal.
+  it("checks for traversal even when the rule constrains neither paths nor denyPaths", () => {
     const bare: ToolRule = {
       tool: "create_or_update_file", action: "contents.write", resources: ["acme/api"],
     };
-    expect(makeArgumentEnforcer(rules)(bare, {
-      owner: "acme", repo: "api", path: "/etc/passwd",
+    const e = makeArgumentEnforcer(rules);
+    expect(e(bare, { owner: "acme", repo: "api", path: "../../etc/passwd" }).kind).toBe("deny");
+    expect(e(bare, { owner: "acme", repo: "api", path: "/etc/passwd" }).kind).toBe("allow");
+  });
+
+  // Found by the live run. `path: "/"` is how github-mcp-server lists the
+  // repository root, and treating a leading slash as an escape attempt denied
+  // the agent's first call. A leading slash is not a traversal: the contents
+  // API is repo-relative either way, so it is normalised off and the path
+  // patterns still decide.
+  it("allows listing the repository root", () => {
+    const readRule: ToolRule = {
+      tool: "get_file_contents", action: "repo.read", resources: ["acme/api"],
+    };
+    expect(makeArgumentEnforcer(rules)(readRule, {
+      owner: "acme", repo: "api", path: "/",
+    })).toMatchObject({ kind: "allow" });
+  });
+
+  it("normalises a leading slash rather than denying it", () => {
+    const readRule: ToolRule = {
+      tool: "get_file_contents", action: "contents.read", resources: ["acme/api"],
+      paths: ["src/**"],
+    };
+    const e = makeArgumentEnforcer(rules);
+    expect(e(readRule, { owner: "acme", repo: "api", path: "/src/a.ts" }).kind).toBe("allow");
+    expect(e(readRule, { owner: "acme", repo: "api", path: "/docs/a.md" }).kind).toBe("deny");
+  });
+
+  it("still denies a traversal", () => {
+    expect(makeArgumentEnforcer(rules)(writeRule, {
+      owner: "acme", repo: "api", branch: "agent/42-fix", path: "/src/../.github/workflows/x.yml",
     }).kind).toBe("deny");
+  });
+
+  // Also found by the live run. search_code takes a `query`, not owner/repo, so
+  // the repository check could never be satisfied and a granted tool was
+  // permanently unusable.
+  it("reads the repository from a search query's repo: qualifier", () => {
+    const searchRule: ToolRule = {
+      tool: "search_code", action: "search.code", resources: ["acme/api"],
+    };
+    expect(makeArgumentEnforcer(rules)(searchRule, {
+      query: "retry repo:acme/api",
+    })).toMatchObject({ kind: "allow" });
+  });
+
+  it("denies a search of another repository", () => {
+    const searchRule: ToolRule = {
+      tool: "search_code", action: "search.code", resources: ["acme/api"],
+    };
+    expect(makeArgumentEnforcer(rules)(searchRule, {
+      query: "secrets repo:evil/api",
+    }).kind).toBe("deny");
+  });
+
+  // A search with no repo qualifier runs across all of GitHub, which is not
+  // something any mandate grants.
+  it("denies a search that names no repository", () => {
+    const searchRule: ToolRule = {
+      tool: "search_code", action: "search.code", resources: ["acme/api"],
+    };
+    expect(makeArgumentEnforcer(rules)(searchRule, { query: "AWS_SECRET_ACCESS_KEY" }).kind)
+      .toBe("deny");
   });
 });

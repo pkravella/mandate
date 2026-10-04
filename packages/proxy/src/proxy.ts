@@ -210,8 +210,29 @@ export function createProxyServer(deps: ProxyDeps): Server {
     });
     try {
       const result = await deps.upstream.callTool({ name: tool, arguments: args });
-      recorded?.completed(result);
-      return result as CallToolResult;
+      // `callTool` can return either the modern `{ content }` shape or the
+      // protocol-2024-10-07 `{ toolResult }` one, and the legacy payload has to
+      // be moved to where the agent looks for it.
+      //
+      // Testing `result.content` for absence does not detect the legacy shape:
+      // `CallToolResultSchema.content` carries a `.default([])`, so a
+      // `{ toolResult }` response arrives as `{ content: [], toolResult }` and
+      // an `Array.isArray` check is *always* true. Verified against the SDK at
+      // 1.32.0. The discriminator is a `toolResult` with nothing in `content`
+      // — which also leaves a modern result that legitimately has no text
+      // blocks, such as one carrying only `structuredContent`, untouched.
+      const content = result["content"];
+      const forwarded: CallToolResult =
+        result["toolResult"] !== undefined && (!Array.isArray(content) || content.length === 0)
+          ? { content: [{ type: "text", text: JSON.stringify(result["toolResult"]) }] }
+          : (result as CallToolResult);
+      // The trace records what the agent was handed, not the shape that
+      // arrived. `outputBytes` then answers how much data actually reached the
+      // agent, and one call cannot digest two different ways depending on which
+      // upstream shape it came back in. The legacy shape carries no `isError`
+      // at all, so an outcome of "ok" there is the whole truth available.
+      recorded?.completed(forwarded);
+      return forwarded;
     } catch (e) {
       // An upstream failure arrives as a thrown McpError. Letting it propagate
       // turns a GitHub outage into a protocol error the agent cannot read. It

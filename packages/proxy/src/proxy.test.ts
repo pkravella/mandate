@@ -36,6 +36,7 @@ const rules: ProxyRules = {
 };
 
 const TOOL_NAMES = [
+  "search_code",
   "get_file_contents", "create_branch", "create_or_update_file",
   "create_pull_request", "merge_pull_request", "delete_file",
 ];
@@ -47,7 +48,7 @@ interface Upstream {
 
 /** A stand-in for github-mcp-server that records what reached it. */
 async function fakeUpstream(opts: {
-  paged?: boolean; failOn?: string;
+  paged?: boolean; failOn?: string; legacy?: boolean; structured?: boolean;
 } = {}): Promise<Upstream> {
   const seen: { tool: string; args: unknown }[] = [];
   const server = new Server({ name: "fake-github", version: "0" }, { capabilities: { tools: {} } });
@@ -67,6 +68,13 @@ async function fakeUpstream(opts: {
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (req.params.name === opts.failOn) throw new Error("upstream exploded");
     seen.push({ tool: req.params.name, args: req.params.arguments });
+    // The protocol-2024-10-07 shape. CallToolResultSchema defaults `content`
+    // to [], so this reaches the proxy as `{ content: [], toolResult }` — the
+    // payload is there, but not where the agent looks for it.
+    if (opts.legacy === true) return { toolResult: { sha: "abc" } } as never;
+    if (opts.structured === true) {
+      return { content: [], structuredContent: { sha: "abc" } };
+    }
     return { content: [{ type: "text" as const, text: "ok" }] };
   });
 
@@ -553,6 +561,104 @@ describe("recording a tool several grants reach", () => {
     expect(rec.graph().nodes[0]).toMatchObject({
       decision: "deny", action: "contents.read", clause: "contents.read.paths",
     });
+  });
+});
+
+// `Client.callTool` parses with CallToolResultSchema, whose `content` has a
+// `.default([])`. So a legacy `{ toolResult }` response never arrives with
+// `content` absent — it arrives with `content: []`. A check of
+// `Array.isArray(result.content)` is therefore always true, and the legacy
+// branch it guards is unreachable: the agent is handed empty content and the
+// payload is dropped on the floor.
+describe("the two upstream result shapes", () => {
+  const recorderFor = (r: ProxyRules) => new Recorder({
+    mode: "enforced", mandateId: r.mandateId, mandateHash: r.mandateHash,
+  });
+
+  it("forwards a legacy toolResult payload where the agent can see it", async () => {
+    const { client } = await fakeUpstream({ legacy: true });
+    const agent = await connectAgent(createProxyServer({ rules, upstream: client }));
+    const res = await agent.callTool({
+      name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "a" },
+    });
+    expect(JSON.stringify(res.content)).toContain("abc");
+  });
+
+  it("records the bytes the agent received, not the shape that arrived", async () => {
+    const { client } = await fakeUpstream({ legacy: true });
+    const rec = recorderFor(rules);
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, recorder: rec,
+    }));
+    const res = await agent.callTool({
+      name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "a" },
+    });
+    const node = rec.graph().nodes[0]!;
+    expect(node.outcome).toBe("ok");
+    // One call cannot digest two different ways depending on which upstream
+    // shape it came back in.
+    expect(node.outputBytes).toBe(
+      Buffer.byteLength(JSON.stringify({ content: res.content }), "utf8"),
+    );
+  });
+
+  // The legacy path must not swallow a modern result that simply has no text
+  // blocks. A tool declaring an outputSchema returns exactly this.
+  it("passes a modern structuredContent result through untouched", async () => {
+    const { client } = await fakeUpstream({ structured: true });
+    const rec = recorderFor(rules);
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, recorder: rec,
+    }));
+    const res = await agent.callTool({
+      name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "a" },
+    });
+    expect(res.structuredContent).toEqual({ sha: "abc" });
+    expect(res.content).toEqual([]);
+    expect(rec.graph().nodes[0]!.outputBytes).toBeGreaterThan(0);
+  });
+});
+
+// #18 made the search tools' repository come from a `repo:` qualifier inside
+// the query rather than from owner/repo. The trace has to record the resource
+// the enforcer actually decided on, or Task 17 cannot replay a search at all.
+describe("recording a search", () => {
+  const searchRules: ProxyRules = {
+    ...rules,
+    allowedTools: ["search_code"],
+    rules: [{ tool: "search_code", action: "repo.read", resources: ["acme/api"] }],
+  };
+
+  it("records the repository the query scoped itself to", async () => {
+    const { client } = await fakeUpstream();
+    const rec = new Recorder({
+      mode: "enforced", mandateId: searchRules.mandateId, mandateHash: searchRules.mandateHash,
+    });
+    const agent = await connectAgent(createProxyServer({
+      rules: searchRules, upstream: client,
+      enforceArguments: makeArgumentEnforcer(searchRules), recorder: rec,
+    }));
+    await agent.callTool({
+      name: "search_code", arguments: { query: "repo:acme/api retry" },
+    });
+    expect(rec.graph().nodes[0]).toMatchObject({
+      decision: "allow", resource: "acme/api", action: "repo.read",
+    });
+  });
+
+  it("records the denial of a search that names no repository", async () => {
+    const { client } = await fakeUpstream();
+    const rec = new Recorder({
+      mode: "enforced", mandateId: searchRules.mandateId, mandateHash: searchRules.mandateHash,
+    });
+    const agent = await connectAgent(createProxyServer({
+      rules: searchRules, upstream: client,
+      enforceArguments: makeArgumentEnforcer(searchRules), recorder: rec,
+    }));
+    await agent.callTool({ name: "search_code", arguments: { query: "retry" } });
+    const node = rec.graph().nodes[0]!;
+    expect(node.decision).toBe("deny");
+    expect(node.resource).toBeUndefined();
   });
 });
 
