@@ -65,10 +65,27 @@ function collectDestinations(value: unknown, into: Set<string>, keyed: boolean):
   }
 }
 
+/**
+ * The repository a GitHub search is scoped to.
+ *
+ * The search tools take a `query` rather than owner/repo, so without this the
+ * repository check could never be satisfied and `search_code` was permanently
+ * unusable despite being granted. A query with no `repo:` qualifier searches
+ * all of GitHub, which no mandate grants, so it stays undefined and is denied.
+ */
+const searchRepo = (args: Record<string, unknown>): string | undefined => {
+  const query = str(args["query"]) ?? str(args["q"]);
+  if (query === undefined) return undefined;
+  const m = /(?:^|\s)repo:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)(?=\s|$)/.exec(query);
+  return m?.[1];
+};
+
 export function extractArgs(_tool: string, args: Record<string, unknown>): ArgExtract {
   const owner = str(args["owner"]);
   const repoName = str(args["repo"]);
-  const repo = owner !== undefined && repoName !== undefined ? `${owner}/${repoName}` : undefined;
+  const repo = owner !== undefined && repoName !== undefined
+    ? `${owner}/${repoName}`
+    : searchRepo(args);
 
   // `head` on a PR create is the source branch; `branch`/`ref` elsewhere.
   const branch = str(args["branch"]) ?? str(args["head"]) ?? str(args["ref"])
@@ -76,14 +93,14 @@ export function extractArgs(_tool: string, args: Record<string, unknown>): ArgEx
 
   const paths: string[] = [];
   const single = str(args["path"]);
-  if (single !== undefined) paths.push(single);
+  if (single !== undefined) paths.push(repoPath(single));
   const files = args["files"];
   if (Array.isArray(files)) {
     for (const f of files) {
       const p = typeof f === "object" && f !== null
         ? str((f as Record<string, unknown>)["path"])
         : str(f);
-      if (p !== undefined) paths.push(p);
+      if (p !== undefined) paths.push(repoPath(p));
     }
   }
 
@@ -100,10 +117,20 @@ export function extractArgs(_tool: string, args: Record<string, unknown>): ArgEx
   };
 }
 
-/** Rejects a path that could escape its prefix. Normalization is not enough: refuse. */
+/**
+ * Rejects a path that could escape its prefix.
+ *
+ * A leading slash is *not* an escape and used to be treated as one, which
+ * denied `path: "/"` — how github-mcp-server lists the repository root, and the
+ * live agent's first call. The contents API is repo-relative either way, so the
+ * slash is normalised off by `repoPath` and the path patterns still decide.
+ */
 function pathIsSuspicious(p: string): boolean {
-  return p.split("/").includes("..") || p.startsWith("/") || p.includes("\0");
+  return p.split("/").includes("..") || p.includes("\0");
 }
+
+/** A repository-relative path, with any leading slashes removed. */
+const repoPath = (p: string): string => p.replace(/^\/+/, "");
 
 /**
  * Whether a destination prefix sits inside one the mandate allows.

@@ -25,7 +25,19 @@ export interface Operation {
   readonly summary: string;
   /** GitHub REST route, for docs and for the Cedar and OPA exports. */
   readonly restRoute: string;
-  /** Tool names exposed by github/github-mcp-server that reach this operation. */
+  /**
+   * Tool names exposed by github/github-mcp-server that reach this operation.
+   *
+   * Verified against `ghcr.io/github/github-mcp-server:latest` by listing its
+   * tools, which found two names that do not exist and a dependency nothing
+   * documented: **the server's default toolsets expose 46 tools, and
+   * `GITHUB_TOOLSETS=all` exposes 91.** Seven operations here name tools that
+   * only appear once extra toolsets are enabled — see TOOLSET_REQUIRED below.
+   *
+   * An operation whose tools the running server does not expose is silently
+   * unreachable: the proxy filters `tools/list` to what upstream offers, so the
+   * agent simply never sees the tool and the task fails with no explanation.
+   */
   readonly mcpTools: readonly string[];
   readonly resourceType: ResourceType;
   readonly permission: GhPermission;
@@ -63,7 +75,7 @@ export const OPERATIONS: readonly Operation[] = [
   // ---- repository and metadata -------------------------------------------
   op({ id: "repo.read", summary: "Read repository metadata, code, issues and pull requests",
     restRoute: "GET /repos/{owner}/{repo}",
-    mcpTools: ["get_file_contents", "list_branches", "search_code", "get_repository"],
+    mcpTools: ["get_file_contents", "list_branches", "search_code"],
     resourceType: "repo", permission: "contents", permissionLevel: "read", minUserLevel: "pull",
     risk: "read", prerequisites: [], constrainable: ["resources"] }),
   op({ id: "repo.list", summary: "List repositories visible to the installation",
@@ -145,7 +157,7 @@ export const OPERATIONS: readonly Operation[] = [
     constrainable: ["resources", "max"] }),
   op({ id: "pull_request.review", summary: "Submit a pull request review",
     restRoute: "POST /repos/{owner}/{repo}/pulls/{number}/reviews",
-    mcpTools: ["create_pull_request_review"],
+    mcpTools: ["pull_request_review_write"],
     resourceType: "pull_request", permission: "pull_requests", permissionLevel: "write",
     minUserLevel: "triage", risk: "elevated", prerequisites: ["pull_request.read"],
     constrainable: ["resources", "max"] }),
@@ -290,6 +302,35 @@ const BY_MCP_TOOL: ReadonlyMap<string, readonly Operation[]> = (() => {
   }
   return m;
 })();
+
+/**
+ * Operations whose MCP tools are absent from github-mcp-server's default
+ * toolsets. Running the upstream with `GITHUB_TOOLSETS` covering these is a
+ * deployment requirement, not a nicety: without it the grant is unreachable
+ * and nothing says so.
+ *
+ * Measured, not read off the documentation: default 46 tools, `all` 91.
+ */
+export const TOOLSET_REQUIRED: Readonly<Record<string, string>> = {
+  "actions.read": "actions",
+  "actions.logs.read": "actions",
+  "actions.write": "actions",
+  "discussions.read": "discussions",
+  "notifications.read": "notifications",
+  "gist.write": "gists",
+};
+
+/** Granted operations the running server cannot reach, given its tool list. */
+export function unreachableOperations(
+  actions: readonly string[], toolsExposed: readonly string[],
+): readonly string[] {
+  const exposed = new Set(toolsExposed);
+  return actions.filter((id) => {
+    const op = BY_ID.get(id);
+    if (op === undefined) return false;
+    return op.mcpTools.length > 0 && !op.mcpTools.some((t) => exposed.has(t));
+  });
+}
 
 export function getOperation(id: string): Operation | undefined {
   return BY_ID.get(id);
