@@ -16,6 +16,7 @@ const src = (pkg: string): string =>
  */
 export const workspaceAlias: Readonly<Record<string, string>> = {
   "@mandate-dev/catalog": src("catalog"),
+  "@mandate-dev/cli": src("cli"),
   "@mandate-dev/compiler": src("compiler"),
   "@mandate-dev/proxy": src("proxy"),
   "@mandate-dev/schema": src("schema"),
