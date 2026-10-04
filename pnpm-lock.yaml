@@ -26,6 +26,24 @@ importers:
 
   packages/catalog: {}
 
+  packages/cli:
+    dependencies:
+      '@mandate-dev/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@mandate-dev/compiler':
+        specifier: workspace:*
+        version: link:../compiler
+      '@mandate-dev/schema':
+        specifier: workspace:*
+        version: link:../schema
+      '@mandate-dev/validator':
+        specifier: workspace:*
+        version: link:../validator
+      commander:
+        specifier: ^14.0.2
+        version: 14.0.3
+
   packages/compiler:
     dependencies:
       '@mandate-dev/catalog':
@@ -395,6 +413,10 @@ packages:
   chai@6.3.0:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
     engines: {node: '>=18'}
+
+  commander@14.0.3:
+    resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
+    engines: {node: '>=20'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -1173,6 +1195,8 @@ snapshots:
       qified: 0.10.1
 
   chai@6.3.0: {}
+
+  commander@14.0.3: {}
 
   cross-spawn@7.0.6:
     dependencies:
