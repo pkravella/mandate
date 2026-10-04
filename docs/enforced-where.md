@@ -11,7 +11,8 @@ today.
 | Control | Bounds | Does **not** bound | Defeated by | Status |
 | --- | --- | --- | --- | --- |
 | Mandate schema + validator | What may be granted at all: the operation set, pattern decidability, the organization ceiling, the requester's own permission level | Anything at runtime — it decides before the agent starts | Nothing; it is deterministic and fails closed | **built** |
-| GitHub App installation token | Repository set, permission set | Branch, path, argument, call count | Nothing — but it is coarse by design, see below | planned (Task 10) |
+| GitHub App installation token | Repository set, permission set, one-hour lifetime | Branch, path, argument, call count | Nothing — but it is coarse by design, see below | **built** |
+| Token revocation on run exit | Reuse of a leaked token, after a propagation delay | The ~4 s window measured below, and work already done | Using the token inside that window | **built** |
 | MCP proxy | Tool set, branch, path, base, call count, destinations appearing in arguments | Anything not sent as an MCP call | An agent with a shell and another credential | planned (Tasks 12–13) |
 | Sandbox egress allowlist | All network egress from the agent user | Data sent to an **allowed** destination | Running the agent outside the sandbox | planned (Task 15) |
 | Mandate expiry | Call acceptance after `expiresAt` | Work already done | Nothing | planned (Task 12) |
@@ -38,6 +39,39 @@ enforcement while carrying a branch or path limit — because that grant is
 describing a control that does not exist.
 
 This is also why the benchmark reports **authority cut twice**, once per layer.
+
+## What minting actually does, measured
+
+These are observations against the live GitHub API, not readings of the docs.
+
+**Asking for more than the installation holds is refused, not trimmed.** A
+token request naming a permission the installation was never granted comes back
+`422 The permissions requested are not granted to this installation.`, and one
+asking for `write` where the installation holds `read` comes back `422 The level
+of access for permissions requested are not granted to this installation.`
+Mandate surfaces GitHub's own wording, because the fix is either installing the
+app with that permission or narrowing the mandate, and the message says which.
+
+**Omitting the permission set asks for everything.** A request that sends
+`repositories` but no `permissions` mints a token carrying *every* permission
+the installation holds. Mandate therefore always sends an explicit permission
+set and refuses to mint with an empty one — an absent set would be read as "all
+of them", which is the opposite of what an empty one means.
+
+**The repository list takes bare names.** `repositories: ["api"]`, not
+`["acme/api"]`; a full name is refused as *"does not exist or is not accessible
+to the parent installation"*, which reads like a permissions problem and is not
+one. Because the owner has to be dropped, Mandate refuses a mandate whose grants
+span two owners rather than let `acme/api` and `other/api` collapse to one name.
+
+**Revocation is real but not instant.** `DELETE /installation/token` answers
+`204` immediately and is idempotent, but the token kept working for **about two
+to four seconds** afterwards. So revocation shortens the window in which a
+leaked token is useful; it is not what ends the authority. That is the proxy
+refusing every call past the mandate's `expiresAt`, which takes effect at once.
+
+> Revoking a token is a cleanup, not a boundary. If you need a credential to
+> stop working at a precise moment, the control is the proxy, not the token.
 A single number would be marketing rather than measurement.
 
 ## What Mandate does not attempt
