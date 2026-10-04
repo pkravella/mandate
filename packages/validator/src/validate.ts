@@ -7,6 +7,7 @@ import {
 import { globMatches, globSetContains } from "./glob/contains.js";
 import { GlobParseError } from "./glob/parse.js";
 import { cedarAllows, rulesFor, type Ceiling, type CeilingRule } from "./ceiling.js";
+import { runLints } from "./lints.js";
 import type { UserAuthority } from "./userAuthority.js";
 
 export type RejectionCode =
@@ -15,7 +16,8 @@ export type RejectionCode =
   | "not-contained"
   | "user-authority"
   | "layer-disagreement"
-  | "undecidable";
+  | "undecidable"
+  | "lint";
 
 export interface Rejection {
   readonly code: RejectionCode;
@@ -116,6 +118,18 @@ export function validate(
       resourcesContained: true,
       pathsContained: true,
       branchesContained: true,
+    });
+  }
+
+  // R4's lints run last: they catch a mandate that is technically inside a
+  // loose ceiling but obviously wrong. A lint error is a rejection, not a
+  // warning -- the point of the ceiling is that it may be loose and still safe.
+  for (const finding of runLints(proposed)) {
+    if (finding.severity !== "error") continue;
+    rejections.push({
+      code: "lint",
+      ...(finding.grantIndex !== undefined ? { grantIndex: finding.grantIndex } : {}),
+      message: `${finding.rule}: ${finding.message}`,
     });
   }
 

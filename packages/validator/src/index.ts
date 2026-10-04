@@ -9,3 +9,7 @@ export {
   validate, type Rejection, type RejectionCode, type ValidationResult,
 } from "./validate.js";
 export { fetchUserAuthority, type UserAuthority, type OctokitLike } from "./userAuthority.js";
+export {
+  runLints, hasLintErrors, LINT_RULES, SIDE_EFFECTING,
+  type LintFinding, type LintSeverity,
+} from "./lints.js";

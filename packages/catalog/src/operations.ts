@@ -73,7 +73,7 @@ export const OPERATIONS: readonly Operation[] = [
   op({ id: "repo.create", summary: "Create a repository",
     restRoute: "POST /orgs/{org}/repos", mcpTools: ["create_repository"],
     resourceType: "repo", permission: "administration", permissionLevel: "write", minUserLevel: "admin",
-    risk: "elevated", prerequisites: [], constrainable: ["resources"] }),
+    risk: "elevated", prerequisites: [], constrainable: ["resources", "max"] }),
   op({ id: "repo.delete", summary: "Delete a repository",
     restRoute: "DELETE /repos/{owner}/{repo}", mcpTools: [],
     resourceType: "repo", permission: "administration", permissionLevel: "write", minUserLevel: "admin",
@@ -81,7 +81,7 @@ export const OPERATIONS: readonly Operation[] = [
   op({ id: "repo.fork", summary: "Fork a repository",
     restRoute: "POST /repos/{owner}/{repo}/forks", mcpTools: ["fork_repository"],
     resourceType: "repo", permission: "administration", permissionLevel: "write", minUserLevel: "push",
-    risk: "elevated", prerequisites: ["repo.read"], constrainable: ["resources", "destinations"] }),
+    risk: "elevated", prerequisites: ["repo.read"], constrainable: ["resources", "destinations", "max"] }),
 
   // ---- contents -----------------------------------------------------------
   op({ id: "contents.read", summary: "Read file contents at a ref",
@@ -274,7 +274,7 @@ export const OPERATIONS: readonly Operation[] = [
   op({ id: "gist.write", summary: "Create or update a gist",
     restRoute: "POST /gists", mcpTools: ["create_gist"],
     resourceType: "repo", permission: "metadata", permissionLevel: "write", minUserLevel: "pull",
-    risk: "forbidden", prerequisites: [], constrainable: ["destinations"] }),
+    risk: "forbidden", prerequisites: [], constrainable: ["destinations", "max"] }),
 ];
 
 const BY_ID = new Map<string, Operation>(OPERATIONS.map((o) => [o.id, o]));
