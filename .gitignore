@@ -43,6 +43,13 @@ Thumbs.db
 npm-debug.log*
 pnpm-debug.log*
 
-# Docs
-mandate-prd.md 
-docs/*
+# Private working documents.
+#
+# The PRD carries business-model and competitive material; the implementation
+# plans are working documents; handoffs are session state. Everything ELSE
+# under docs/ is public and committed -- SECURITY.md links to
+# docs/enforced-where.md, so a blanket docs/* ignore would leave a public
+# repository with a broken link to a file that can never exist in it.
+mandate-prd.md
+docs/superpowers/
+docs/handoff/
