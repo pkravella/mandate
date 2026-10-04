@@ -13,7 +13,7 @@ today.
 | Mandate schema + validator | What may be granted at all: the operation set, pattern decidability, the organization ceiling, the requester's own permission level | Anything at runtime — it decides before the agent starts | Nothing; it is deterministic and fails closed | **built** |
 | GitHub App installation token | Repository set, permission set, one-hour lifetime | Branch, path, argument, call count | Nothing — but it is coarse by design, see below | **built** |
 | Token revocation on run exit | Reuse of a leaked token, after a propagation delay | The ~4 s window measured below, and work already done | Using the token inside that window | **built** |
-| MCP proxy | Tool set, branch, path, base, call count, destinations appearing in arguments | Anything not sent as an MCP call | An agent with a shell and another credential | planned (Tasks 12–13) |
+| MCP proxy | Tool set, branch, path, base, call count, destinations appearing in arguments | Anything not sent as an MCP call; 13 catalog operations no MCP tool reaches | An agent with a shell and another credential | rules **built**, enforcement planned (Tasks 12–13) |
 | Sandbox egress allowlist | All network egress from the agent user | Data sent to an **allowed** destination | Running the agent outside the sandbox | planned (Task 15) |
 | Mandate expiry | Call acceptance after `expiresAt` | Work already done | Nothing | planned (Task 12) |
 | GitHub rulesets (backstop) | Pushes to protected branches, required reviews | Anything outside branch rules | An admin token | planned (Task 11) |
@@ -72,6 +72,34 @@ refusing every call past the mandate's `expiresAt`, which takes effect at once.
 
 > Revoking a token is a cleanup, not a boundary. If you need a credential to
 > stop working at a precise moment, the control is the proxy, not the token.
+
+## Two blind spots in the proxy
+
+Both are properties of the operation catalog, and both are reported per grant by
+`enforcementReport` rather than left for someone to notice.
+
+**Thirteen operations no MCP tool reaches.** `repo.delete`, `branch.delete`,
+`branch.protect`, `secrets.read`, `secrets.write`, `variables.read`,
+`environments.write`, `collaborators.read`, `collaborators.write`,
+`webhooks.write`, `rulesets.write`, `deploy_keys.write` and `releases.write` have
+no entry in the GitHub MCP server's tool set. The proxy sees MCP calls and
+nothing else, so for these it can neither allow nor deny: the token is the only
+control. `branch.delete` is the sharp case — a mandate granting it gets a token
+with `contents: write`, and nothing stops the deletion over the raw REST API.
+Most of these are classed `forbidden` or `elevated` and the R4 lints reject them
+outright, which is the real mitigation.
+
+**The loosest rule for a tool decides.** Nine MCP tools are reached by more than
+one operation — `get_file_contents` by both `repo.read` and `contents.read`,
+`create_or_update_file` by both `contents.write` and `workflows.write`. A call is
+allowed if it satisfies *at least one* rule for its tool, which is the only
+coherent reading: requiring all of them would mean a read had to satisfy
+`contents.write`'s rule too, so adding a grant would narrow the mandate. The
+consequence is that a grant leaving a facet unconstrained makes every other
+grant's limit on that facet useless *for the tools they share*. Granting
+`repo.read` alongside a path-limited `contents.read` makes the path limit
+decorative. The enforcement report names the facet, the tool and the grant
+responsible.
 A single number would be marketing rather than measurement.
 
 ## What Mandate does not attempt
