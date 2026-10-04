@@ -1,5 +1,6 @@
 export {
-  closeUnderPrerequisites, coverGrants, coverPrompt, dependsOn, enforcementFor, inheritFacet,
+  closeUnderPrerequisites, coverGrants, coverPrompt, dependsOn, enforcementFor,
+  facetsDroppedByLastCover, inheritFacet,
   type ProposedGrant,
 } from "./cover.js";
 export { applyPrune, prunePrompt } from "./prune.js";

@@ -43,6 +43,19 @@ importers:
       commander:
         specifier: ^14.0.2
         version: 14.0.3
+    devDependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.131.0
+        version: 0.131.0(zod@4.6.5)
+      '@mandate-dev/proxy':
+        specifier: workspace:*
+        version: link:../proxy
+      '@mandate-dev/writer':
+        specifier: workspace:*
+        version: link:../writer
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.32.0
+        version: 1.32.0(zod@4.6.5)
 
   packages/compiler:
     dependencies:

@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { SENSITIVE_PATHS, type CeilingDigest } from "@mandate-dev/schema";
+import { permittedActions, SENSITIVE_PATHS, type CeilingDigest } from "@mandate-dev/schema";
 import { loadCeiling } from "@mandate-dev/validator";
-import { closeUnderPrerequisites, coverGrants, coverPrompt } from "./cover.js";
+import {
+  closeUnderPrerequisites, coverGrants, coverPrompt, facetsDroppedByLastCover,
+} from "./cover.js";
 import { WriterError } from "./errors.js";
 
 const fixture = (name: string): string =>
@@ -206,11 +208,46 @@ describe("coverGrants", () => {
       .toThrow(/outside the catalog/);
   });
 
-  // A model that asks for a facet the operation cannot carry gets a named
-  // writer failure, not a raw schema error: R10 needs something to print.
-  it("refuses a facet the operation cannot be constrained by", () => {
-    expect(() => coverGrants([{ action: "issue.read", resources: ["acme/api"], branches: ["agent/a"] }]))
-      .toThrow(WriterError);
+  // The live writer proposed `branch.create` with a `max`, which that operation
+  // cannot carry, and failing the whole mandate over it made the end-to-end run
+  // impossible. The tool schema asks for every facet and the model fills them
+  // in, so an over-eager proposal has to be survivable.
+  it("drops a facet the operation cannot be constrained by", () => {
+    const out = coverGrants([
+      { action: "branch.create", resources: ["acme/api"], branches: ["agent/a"], max: 1 },
+    ]);
+    const grant = out.find((g) => g.action === "branch.create");
+    expect(grant).toBeDefined();
+    expect(grant?.max).toBeUndefined();
+    expect(grant?.branches).toEqual(["agent/a"]);
+  });
+
+  it("reports what it dropped, so an over-eager model stays visible", () => {
+    coverGrants([
+      { action: "branch.create", resources: ["acme/api"], branches: ["agent/a"], max: 1 },
+      { action: "issue.read", resources: ["acme/api"], branches: ["agent/a"] },
+    ]);
+    const dropped = facetsDroppedByLastCover().join(" ");
+    expect(dropped).toContain("branch.create: max");
+    expect(dropped).toContain("issue.read: branches");
+  });
+
+  it("reports nothing dropped when the proposal fits", () => {
+    coverGrants([{ action: "branch.create", resources: ["acme/api"], branches: ["agent/a"] }]);
+    expect(facetsDroppedByLastCover()).toEqual([]);
+  });
+
+  // Dropping a facet widens the grant relative to what the model asked for, so
+  // the ceiling has to remain the thing that bounds it. An absent facet is
+  // unconstrained, and validate() compares it as `**`.
+  it("leaves a dropped facet for the ceiling to bound", () => {
+    const out = coverGrants([
+      { action: "issue.read", resources: ["acme/api"], branches: ["agent/a"] },
+    ], CEILING);
+    expect(out.find((g) => g.action === "issue.read")?.branches).toBeUndefined();
+    // The example ceiling has no permit for issue.read at all, so validate()
+    // rejects it regardless of the dropped facet.
+    expect(permittedActions(CEILING)).not.toContain("issue.read");
   });
 
   // Not dropped, not sanitised: the validator's no-forbidden-risk-op lint is
