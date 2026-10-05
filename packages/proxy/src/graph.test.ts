@@ -417,6 +417,23 @@ describe("the recorded node shape", () => {
     expect(node.destinations).toEqual(["github.com/acme/api"]);
   });
 
+  // Observed live: the agent's first call is `path: "/"`, how
+  // github-mcp-server lists the repository root, and `repoPath` normalizes the
+  // slash off — so the recorded path is the empty string. It is logged verbatim
+  // because the record must be what the enforcer decided on, not a tidied
+  // version of it. The consequence belongs to Task 17: rebuilding `path: ""`
+  // into an argument object yields no path at all, because `extractArgs`
+  // ignores empty strings, so a replay checks one fewer facet than the run did.
+  it("records the repository root as the empty path the enforcer saw", () => {
+    const r = enforced();
+    r.recordCall({
+      tool: "get_file_contents", action: "repo.read",
+      args: { owner: "acme", repo: "api", path: "/" },
+    }).completed(ok(""));
+    expect(r.graph().nodes[0]!.paths).toEqual([""]);
+    expect(parseJsonl(r.toJsonl()).nodes[0]!.paths).toEqual([""]);
+  });
+
   it("never stores a raw argument value that is not an enforced facet", () => {
     const r = enforced();
     r.recordDenial({
