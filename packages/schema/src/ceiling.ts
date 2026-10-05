@@ -29,6 +29,19 @@ export interface CeilingRule {
 export interface CeilingDigest {
   readonly id: string;
   readonly rules: readonly CeilingRule[];
+  /**
+   * Where the organization permits repository data to go (R9).
+   *
+   * Not a Cedar concept: Cedar decides `(principal, action, resource)`
+   * questions and has no destination in its model, so this is authored as a
+   * plain list beside the ceiling and parsed by `parseDestinationList`. An
+   * empty list permits nothing.
+   *
+   * The writer needs it for the same reason it needs the rules: a writer told
+   * nothing about the organization's destinations proposes a host and has the
+   * mandate rejected.
+   */
+  readonly destinations: readonly string[];
 }
 
 /** The rules that could permit `action`. A grant must fit exactly one of them. */

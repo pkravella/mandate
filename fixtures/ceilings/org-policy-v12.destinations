@@ -1,0 +1,19 @@
+# Destination ceiling for org-policy@v12.
+#
+# Where repository data may be sent. One host, or one host/path prefix, per
+# line. A mandate may name these or anything beneath them, and nothing else.
+#
+# This is a plain list rather than Cedar because Cedar decides
+# (principal, action, resource) questions and has no destination in its model;
+# expressing it as a policy would mean inventing an entity for it. An empty
+# list permits nothing, which is why this file is a required input to
+# loadCeiling rather than an optional one.
+
+# The organization's own repositories.
+github.com/acme
+
+# The API and git transport hosts the GitHub App token is used against. A bare
+# host would also cover every subdomain, so these are named exactly.
+api.github.com
+codeload.github.com
+objects.githubusercontent.com

@@ -56,6 +56,7 @@ pnpm install && pnpm build
 node packages/cli/dist/index.js validate mandate.yaml \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
+  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
   --as alice --repositories 20
 ```
 

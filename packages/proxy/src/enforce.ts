@@ -1,3 +1,4 @@
+import { destinationWithin } from "@mandate-dev/schema";
 import { globMatches, GlobParseError } from "@mandate-dev/validator";
 import type { ProxyRules, ToolRule } from "@mandate-dev/compiler";
 import type { Decision } from "./proxy.js";
@@ -134,27 +135,6 @@ function pathIsSuspicious(p: string): boolean {
 const repoPath = (p: string): string => p.replace(/^\/+/, "");
 
 /**
- * Whether a destination prefix sits inside one the mandate allows.
- *
- * A prefix, not a host: a mandate allowing `github.com/acme/api` must not
- * permit `github.com/evil/api`. The boundary check stops
- * `github.com/acme/api-private` from passing as `github.com/acme/api`.
- */
-function destinationAllowed(prefix: string, allow: readonly string[]): boolean {
-  return allow.some((raw) => {
-    const entry = raw.toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
-    if (prefix === entry) return true;
-    if (prefix.startsWith(`${entry}/`)) return true;
-    // A bare host entry also covers its subdomains.
-    if (!entry.includes("/")) {
-      const host = prefix.split("/")[0] ?? "";
-      return host === entry || host.endsWith(`.${entry}`);
-    }
-    return false;
-  });
-}
-
-/**
  * R7's argument half and R9a. Returns a `Decision` per rule; the proxy calls
  * this once for every rule on the tool and allows if any of them accepts.
  *
@@ -274,7 +254,7 @@ export function makeArgumentEnforcer(
 
     // --- destinations (R9a) ----------------------------------------------
     for (const prefix of e.destinations) {
-      if (!destinationAllowed(prefix, rules.destinations)) {
+      if (!destinationWithin(prefix, rules.destinations)) {
         return deny(
           "destinations.allow",
           `${prefix} is not in the mandate's allowed destinations `

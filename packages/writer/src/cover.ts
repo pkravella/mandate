@@ -344,6 +344,24 @@ function candidateOps(ceiling: CeilingDigest): readonly Operation[] {
   return OPERATIONS.filter((o) => o.risk !== "forbidden" && permitted.has(o.id));
 }
 
+/**
+ * The destinations the ceiling permits (R9).
+ *
+ * Shown for the same reason the rules are: a writer told nothing about its
+ * organization's destinations proposes a plausible host and has the whole
+ * mandate rejected. A bare host entry covers its subdomains; one with a path
+ * does not, which the prompt has to say or the model will assume the looser
+ * reading.
+ */
+function renderDestinations(ceiling: CeilingDigest): string {
+  if (ceiling.destinations.length === 0) {
+    return "- (none; this ceiling permits no destination at all, so propose an empty list)";
+  }
+  return ceiling.destinations
+    .map((d) => `- ${d}${d.includes("/") ? "" : "  (and any subdomain of it)"}`)
+    .join("\n");
+}
+
 /** The ceiling's limits, per clause, in the glob language the grants use. */
 function renderCeiling(ceiling: CeilingDigest): string {
   const lines: string[] = [];
@@ -419,6 +437,11 @@ only within the limits shown. A grant outside them is denied and the task does
 not run, so propose patterns that sit inside these:
 
 ${renderCeiling(req.ceiling)}
+
+Repository data may be sent only to these destinations, or to a path beneath
+one of them. Naming anything else is rejected and the task does not run:
+
+${renderDestinations(req.ceiling)}
 
 Call the propose_grants tool with the operations this task needs, and with the
 hosts repository data may be sent to.`;

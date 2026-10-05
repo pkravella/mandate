@@ -7,6 +7,13 @@ export interface ValidateArgs {
   readonly file: string;
   readonly ceiling: string;
   readonly schema: string;
+  /**
+   * The ceiling's destination allowlist (R9). Required, not inferred from the
+   * ceiling's path: destinations went unchecked until now precisely because
+   * nothing made an operator aware the list existed, and an empty list permits
+   * nothing. Point it at an empty file to say "no data may leave" deliberately.
+   */
+  readonly destinations: string;
   readonly as: string;
   /**
    * A string, because that is what a command line supplies. `runValidate`
@@ -46,6 +53,7 @@ export function runValidate(args: ValidateArgs, log: (s: string) => void): numbe
       proposed.ceiling,
       readFileSync(args.ceiling, "utf8"),
       readFileSync(args.schema, "utf8"),
+      readFileSync(args.destinations, "utf8"),
     );
   } catch (e) {
     log(`Could not load the ceiling: ${message(e)}`);

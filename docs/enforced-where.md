@@ -10,7 +10,7 @@ today.
 
 | Control | Bounds | Does **not** bound | Defeated by | Status |
 | --- | --- | --- | --- | --- |
-| Mandate schema + validator | What may be granted at all: the operation set, pattern decidability, the organization ceiling, the requester's own permission level | Anything at runtime — it decides before the agent starts | Nothing; it is deterministic and fails closed | **built** |
+| Mandate schema + validator | What may be granted at all: the operation set, pattern decidability, the organization ceiling, the requester's own permission level, the destinations data may reach | Anything at runtime — it decides before the agent starts | Nothing; it is deterministic and fails closed | **built** |
 | GitHub App installation token | Repository set, permission set, one-hour lifetime | Branch, path, argument, call count | Nothing — but it is coarse by design, see below | **built** |
 | Token revocation on run exit | Reuse of a leaked token, after a propagation delay | The ~4 s window measured below, and work already done | Using the token inside that window | **built** |
 | MCP proxy | Tool set, branch, path, base, call count, destinations appearing in arguments | Anything not sent as an MCP call; 13 catalog operations no MCP tool reaches | An agent with a shell and another credential | **built** |
@@ -132,6 +132,41 @@ grant's limit on that facet useless *for the tools they share*. Granting
 decorative. The enforcement report names the facet, the tool and the grant
 responsible.
 A single number would be marketing rather than measurement.
+
+## One destination list, three readers
+
+A mandate's `destinations.allow` is read by three layers, and they must agree
+about it or the disagreement is either a false pause or an open channel:
+
+| Layer | Reads it to | Requirement |
+| --- | --- | --- |
+| Validator | prove the list sits inside the organization's | R9, check 3 |
+| MCP proxy | refuse a tool call whose destination-bearing field is outside it | R9a |
+| Egress compiler | build the sandbox's allowlist | R9b |
+
+So there is exactly one predicate, `destinationWithin` in
+`@mandate-dev/schema`, and all three call it. It lives in `schema` for the same
+reason `SENSITIVE_PATHS` does: packages on both sides of the trust boundary need
+it, and a second copy is a chance to drift.
+
+**Containment reduces to membership.** A destination denotes itself plus
+everything beneath it, so proving a mandate's entry sits inside the ceiling is
+the same question as asking whether the ceiling permits that entry's own string.
+That is why the proof and the runtime check can share one function rather than
+being two implementations that have to be kept in step.
+
+**A bare host covers its subdomains; one with a path does not.** `github.com`
+permits `gist.github.com`; `github.com/acme` does not. All three layers apply
+that rule, including the squid ACL the egress compiler emits.
+
+**The organization's list is authored beside the ceiling, not inside it.** Cedar
+decides `(principal, action, resource)` questions and has no destination in its
+model, so expressing this as a policy would mean inventing an entity for it.
+`fixtures/ceilings/<id>.destinations` is a plain list with comments, and
+`loadCeiling` takes it as a **required** input. An empty list permits nothing —
+which is why it is required rather than optional: a ceiling that forgot the file
+would otherwise silently permit every destination, and that is exactly the state
+this closed.
 
 ## The sandbox, and why it is the layer that holds
 

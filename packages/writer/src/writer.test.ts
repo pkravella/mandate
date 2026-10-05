@@ -61,6 +61,7 @@ const stub = (toolInputs: readonly unknown[]): Recorder =>
 
 const ceiling = loadCeiling(
   "org-policy@v12", fixture("org-policy-v12.cedar"), fixture("schema.cedarschema"),
+  fixture("org-policy-v12.destinations"),
 );
 
 const req: WriteRequest = {

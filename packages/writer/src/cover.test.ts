@@ -15,6 +15,7 @@ const fixture = (name: string): string =>
 // repo.read, contents.write, pull_request.create and branch.create.
 const CEILING: CeilingDigest = loadCeiling(
   "org-policy@v12", fixture("org-policy-v12.cedar"), fixture("schema.cedarschema"),
+  fixture("org-policy-v12.destinations"),
 );
 
 describe("closeUnderPrerequisites", () => {
@@ -60,6 +61,33 @@ describe("coverPrompt", () => {
   it("lists the catalog operations the model may choose from", () => {
     expect(p).toContain("contents.write");
     expect(p).toContain("pull_request.create");
+  });
+
+  // A writer told nothing about its organization's destinations proposes a
+  // plausible host and has the whole mandate rejected on check 3.
+  it("names the destinations the ceiling permits", () => {
+    expect(p).toContain("github.com/acme");
+    expect(p).toContain("api.github.com");
+    expect(p).toMatch(/destinations?/i);
+  });
+
+  // A bare entry covers its subdomains and one with a path does not. Left
+  // unsaid, the model assumes the looser reading.
+  it("says which destination entries cover their subdomains", () => {
+    const bare = coverPrompt({
+      task: "t", repo: "acme/api", requestedBy: "user:alice",
+      ceiling: { ...CEILING, destinations: ["example.com", "github.com/acme"] },
+    });
+    expect(bare).toMatch(/- example\.com\s+\(and any subdomain of it\)/);
+    expect(bare).toMatch(/- github\.com\/acme$/m);
+  });
+
+  it("tells a writer under a ceiling with no destinations to propose none", () => {
+    const none = coverPrompt({
+      task: "t", repo: "acme/api", requestedBy: "user:alice",
+      ceiling: { ...CEILING, destinations: [] },
+    });
+    expect(none).toContain("permits no destination at all");
   });
 
   it("marks an attached agent plan as evidence, never as authority", () => {
@@ -324,6 +352,7 @@ describe("coverGrants, given the ceiling", () => {
   it("leaves the ceiling's deny paths alone when the action has alternative clauses", () => {
     const twoClauses: CeilingDigest = {
       id: "two@v1",
+      destinations: ["github.com/acme"],
       rules: [
         { id: "a", action: "contents.write", resources: ["acme/**"], branches: ["agent/**"],
           paths: ["**"], denyPaths: ["vendor/**"], base: ["**"] },

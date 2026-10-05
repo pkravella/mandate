@@ -62,6 +62,7 @@ describe.skipIf(!live)("the whole loop, live", () => {
     // ---- 1. write -------------------------------------------------------
     const ceiling = loadCeiling(
       "sandbox@v1", fixture("sandbox-v1.cedar"), fixture("schema.cedarschema"),
+      fixture("sandbox-v1.destinations"),
     );
     const written = await writeMandate(new Anthropic(), {
       task: TASK, repo: REPO, requestedBy: "user:pkravella", ceiling, issueNumber: 1,

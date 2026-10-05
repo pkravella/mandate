@@ -13,6 +13,7 @@ const ceiling = loadCeiling(
   "org-policy@v12",
   read("fixtures/ceilings/org-policy-v12.cedar"),
   read("fixtures/ceilings/schema.cedarschema"),
+  read("fixtures/ceilings/org-policy-v12.destinations"),
 );
 
 interface Case {

@@ -58,6 +58,7 @@ describe.skipIf(!live)("writeMandate against the live API", () => {
 
     const ceiling = loadCeiling(
       "org-policy@v12", fixture("org-policy-v12.cedar"), fixture("schema.cedarschema"),
+      fixture("org-policy-v12.destinations"),
     );
     const req: WriteRequest = {
       task: "Fix issue #42: the retry loop in src/retry.ts swallows the last error "
