@@ -4,6 +4,7 @@ import {
   CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { rulesForTool, type ProxyRules, type ToolRule } from "@mandate-dev/compiler";
+import type { Recorder } from "./graph.js";
 
 export type Decision =
   | { readonly kind: "allow"; readonly tool: string }
@@ -25,6 +26,11 @@ export interface ProxyDeps {
    * Defaults to allowing anything already past the tool gate.
    */
   readonly enforceArguments?: (rule: ToolRule, args: Record<string, unknown>) => Decision;
+  /**
+   * R8. Installed by Task 14. Every decision this proxy makes is recorded,
+   * including an allowed call the upstream server then refused or failed.
+   */
+  readonly recorder?: Recorder;
 }
 
 export function denial(tool: string, clause: string, reason: string): CallToolResult {
@@ -143,62 +149,98 @@ export function createProxyServer(deps: ProxyDeps): Server {
         ? { ...raw }
         : {};
 
+    /**
+     * Records and returns the denial. `action` is omitted when no rule reached
+     * a verdict: an expired mandate and an ungranted tool are both refused
+     * before any rule is consulted, and naming the tool there as if it were a
+     * catalog operation would put a value in the trace that is not one.
+     */
+    const refuse = (
+      clause: string, reason: string, action?: string,
+    ): CallToolResult => {
+      const verdict = { kind: "deny" as const, tool, clause, reason };
+      report(verdict);
+      deps.recorder?.recordDenial({
+        tool, args, decision: verdict, ...(action !== undefined ? { action } : {}),
+      });
+      return denial(tool, clause, reason);
+    };
+
     if (expired()) {
-      const reason = `the mandate expired at ${deps.rules.expiresAt}`;
-      report({ kind: "deny", tool, clause: "mandate.expiry", reason });
-      return denial(tool, "mandate.expiry", reason);
+      return refuse("mandate.expiry", `the mandate expired at ${deps.rules.expiresAt}`);
     }
 
     if (!allowed.has(tool)) {
-      const reason = `${tool} is not granted by mandate ${deps.rules.mandateId}; `
-        + `anything not granted is denied`;
-      report({ kind: "deny", tool, clause: "mandate.grants", reason });
-      return denial(tool, "mandate.grants", reason);
+      return refuse(
+        "mandate.grants",
+        `${tool} is not granted by mandate ${deps.rules.mandateId}; `
+        + `anything not granted is denied`,
+      );
     }
 
     const candidates = rulesForTool(deps.rules, tool);
     if (candidates.length === 0) {
       // allowedTools is derived from rules, so this is a compiler bug. Fail closed.
-      const reason = `no rule compiled for ${tool}`;
-      report({ kind: "deny", tool, clause: "mandate.internal", reason });
-      return denial(tool, "mandate.internal", reason);
+      return refuse("mandate.internal", `no rule compiled for ${tool}`);
     }
 
     // Nine catalog tools are reached by more than one operation, and a call is
     // allowed if it satisfies at least one of their rules. Taking only the
     // first would enforce whichever rule happened to compile first.
-    let lastDenial: Decision & { kind: "deny" } | undefined;
-    let verdict: Decision | undefined;
+    // The deciding rule is carried alongside its verdict, because the recorded
+    // node names the operation that rule belongs to — and the rule that
+    // decided is not necessarily the first candidate.
+    let lastDenial: { decision: Decision & { kind: "deny" }; rule: ToolRule } | undefined;
+    let permitted: { decision: Decision; rule: ToolRule } | undefined;
     for (const rule of candidates) {
       const d = deps.enforceArguments?.(rule, args) ?? { kind: "allow" as const, tool };
-      if (d.kind === "allow") { verdict = d; break; }
-      lastDenial = d;
+      if (d.kind === "allow") { permitted = { decision: d, rule }; break; }
+      lastDenial = { decision: d, rule };
     }
-    const decided = verdict ?? lastDenial;
-    if (decided === undefined || decided.kind === "deny") {
-      const d = decided ?? {
-        kind: "deny" as const, tool, clause: "mandate.internal",
-        reason: "no rule reached a decision",
-      };
-      report(d);
-      return denial(tool, d.clause, d.reason);
-    }
-    report(decided);
 
+    if (permitted === undefined) {
+      return lastDenial === undefined
+        ? refuse("mandate.internal", "no rule reached a decision")
+        : refuse(lastDenial.decision.clause, lastDenial.decision.reason, lastDenial.rule.action);
+    }
+    report(permitted.decision);
+
+    const recorded = deps.recorder?.recordCall({
+      tool, action: permitted.rule.action, args,
+    });
     try {
       const result = await deps.upstream.callTool({ name: tool, arguments: args });
       // `callTool` can return either the modern `{ content }` shape or the
-      // legacy `{ toolResult }` one. Casting the union to the modern shape
-      // would hand the agent an object whose `content` is undefined while the
-      // type claimed otherwise, so the legacy form is wrapped instead.
-      if (Array.isArray(result["content"])) return result as CallToolResult;
-      return {
-        content: [{ type: "text", text: JSON.stringify(result["toolResult"] ?? result) }],
-      };
+      // protocol-2024-10-07 `{ toolResult }` one, and the legacy payload has to
+      // be moved to where the agent looks for it.
+      //
+      // Testing `result.content` for absence does not detect the legacy shape:
+      // `CallToolResultSchema.content` carries a `.default([])`, so a
+      // `{ toolResult }` response arrives as `{ content: [], toolResult }` and
+      // an `Array.isArray` check is *always* true. Verified against the SDK at
+      // 1.32.0. The discriminator is a `toolResult` with nothing in `content`
+      // — which also leaves a modern result that legitimately has no text
+      // blocks, such as one carrying only `structuredContent`, untouched.
+      const content = result["content"];
+      const forwarded: CallToolResult =
+        result["toolResult"] !== undefined && (!Array.isArray(content) || content.length === 0)
+          ? { content: [{ type: "text", text: JSON.stringify(result["toolResult"]) }] }
+          : (result as CallToolResult);
+      // The trace records what the agent was handed, not the shape that
+      // arrived. `outputBytes` then answers how much data actually reached the
+      // agent, and one call cannot digest two different ways depending on which
+      // upstream shape it came back in. The legacy shape carries no `isError`
+      // at all, so an outcome of "ok" there is the whole truth available.
+      recorded?.completed(forwarded);
+      return forwarded;
     } catch (e) {
       // An upstream failure arrives as a thrown McpError. Letting it propagate
-      // turns a GitHub outage into a protocol error the agent cannot read.
-      return upstreamFailure(tool, describeError(e));
+      // turns a GitHub outage into a protocol error the agent cannot read. It
+      // is still a call the mandate allowed, and one whose `max` quota is
+      // already spent, so it belongs in the trace.
+      const detail = describeError(e);
+      recorded?.upstreamFailed(detail);
+      return upstreamFailure(tool, detail);
     }
   });
 

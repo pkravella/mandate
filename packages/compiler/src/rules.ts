@@ -1,5 +1,7 @@
 import { getOperation } from "@mandate-dev/catalog";
-import { unwrap, type EnforcedBy, type Grant, type ValidatedMandate } from "@mandate-dev/schema";
+import {
+  mandateHash, unwrap, type EnforcedBy, type Grant, type ValidatedMandate,
+} from "@mandate-dev/schema";
 
 export interface ToolRule {
   readonly tool: string;
@@ -14,6 +16,14 @@ export interface ToolRule {
 
 export interface ProxyRules {
   readonly mandateId: string;
+  /**
+   * Full sha256 of the canonical mandate.
+   *
+   * The action graph's header names the exact mandate the proxy enforced, and
+   * `mandateId` alone cannot do that: `slug()` truncates the task text, so two
+   * tasks opening with the same words share an id.
+   */
+  readonly mandateHash: string;
   /** The mandate's expiry, not the token's. Decision D5: two clocks. */
   readonly expiresAt: string;
   readonly allowedTools: readonly string[];
@@ -63,6 +73,7 @@ export function compileRules(m: ValidatedMandate, now: Date = new Date()): Proxy
 
   return {
     mandateId: mandate.mandate,
+    mandateHash: mandateHash(mandate),
     expiresAt: new Date(now.getTime() + mandate.expiresInMinutes * 60_000).toISOString(),
     allowedTools: [...new Set(rules.map((r) => r.tool))],
     rules,
