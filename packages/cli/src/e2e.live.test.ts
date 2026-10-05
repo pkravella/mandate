@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
@@ -10,7 +12,10 @@ import { loadCeiling, validate, type UserAuthority } from "@mandate-dev/validato
 import {
   compileRules, enforcementReport, githubAppDeps, mintToken, revokeToken,
 } from "@mandate-dev/compiler";
-import { createProxyServer, makeArgumentEnforcer, pauseRecord, type Decision } from "@mandate-dev/proxy";
+import {
+  createProxyServer, makeArgumentEnforcer, parseJsonl, pauseRecord, Recorder,
+  type Decision,
+} from "@mandate-dev/proxy";
 import { writeMandate } from "@mandate-dev/writer";
 import { renderPermissionDiff, renderRejections } from "./diff.js";
 
@@ -91,6 +96,13 @@ describe.skipIf(!live)("the whole loop, live", () => {
 
     const rules = compileRules(mandate);
     const decisions: Decision[] = [];
+    // R8. The recorder has only ever seen a fake upstream; this is the first
+    // time it meets real github-mcp-server results.
+    const recorder = new Recorder({
+      mode: "enforced", mandateId: rules.mandateId, mandateHash: rules.mandateHash,
+    });
+    /** Which real results carry which result shape — the open question in Task 14. */
+    const shapes = { structured: 0, textOnly: 0, emptyContent: 0, legacy: 0 };
     let upstream: Client | undefined;
 
     try {
@@ -115,6 +127,7 @@ describe.skipIf(!live)("the whole loop, live", () => {
       const proxy = createProxyServer({
         rules, upstream, enforceArguments: makeArgumentEnforcer(rules),
         onDecision: (d) => decisions.push(d),
+        recorder,
       });
       const [a, b] = InMemoryTransport.createLinkedPair();
       const agentSide = new Client({ name: "agent", version: "0.1.0" });
@@ -168,6 +181,10 @@ describe.skipIf(!live)("the whole loop, live", () => {
             ? (call.input as Record<string, unknown>)
             : {};
           const out = await agentSide.callTool({ name: call.name, arguments: args });
+          if (out.structuredContent !== undefined) shapes.structured += 1;
+          else if (out["toolResult"] !== undefined) shapes.legacy += 1;
+          else if (Array.isArray(out.content) && out.content.length > 0) shapes.textOnly += 1;
+          else shapes.emptyContent += 1;
           console.log(`    ${out.isError === true ? "DENY " : "allow"} ${call.name} `
             + `${JSON.stringify(args).slice(0, 110)}`);
           results.push({
@@ -207,6 +224,41 @@ describe.skipIf(!live)("the whole loop, live", () => {
         const record = pauseRecord({ mandateId: rules.mandateId, decision: d, observed: {} });
         console.log(`    ${d.clause}  widen=${record.widenRequest === undefined ? "no" : "yes"}`);
       }
+
+      // ---- 8. the action graph (R8) ------------------------------------
+      const graph = recorder.graph();
+      console.log(`\n--- result shapes from the real server: ${JSON.stringify(shapes)}`);
+      console.log(`--- recorded ${graph.nodes.length} nodes`);
+      for (const n of graph.nodes) {
+        console.log(`    ${String(n.seq).padStart(2)} ${n.decision === "deny" ? "DENY " : "allow"} `
+          + `${n.tool} ${n.action ?? "(no action)"} ${n.resource ?? ""} `
+          + `${n.branch ?? ""} ${n.paths.join(",")} `
+          + `${n.outcome ?? n.clause ?? ""} ${n.outputBytes}b ${n.durationMs}ms`);
+      }
+
+      // The recorder and onDecision must see the same number of events. A path
+      // that reports a decision but records no node is how a denial disappears
+      // from the trace Task 17 scores against, and only a real run exercises
+      // every path at once.
+      expect(graph.nodes.length).toBe(decisions.length);
+      expect(graph.nodes.map((n) => n.decision))
+        .toEqual(decisions.map((d) => (d.kind === "deny" ? "deny" : "allow")));
+
+      // The format has to survive real data: real tool names, real paths, real
+      // digests, real timestamps. parseJsonl is strict and fails closed, so a
+      // trace the proxy wrote that it will not read back is a format bug.
+      const jsonl = recorder.toJsonl();
+      const traceFile = join(tmpdir(), `mandate-${rules.mandateId}.jsonl`);
+      writeFileSync(traceFile, jsonl, "utf8");
+      console.log(`--- trace written to ${traceFile}`);
+      const reread = parseJsonl(jsonl);
+      expect(reread).toEqual(graph);
+      expect(reread.mandateHash).toBe(rules.mandateHash);
+
+      // Nothing the agent read may sit in the trace in the clear. The task
+      // reads src/retry.js, so its contents are the thing to look for.
+      expect(jsonl).not.toContain("lastError");
+      expect(jsonl).not.toContain(minted.token);
     } finally {
       if (upstream !== undefined) await upstream.close().catch(() => undefined);
       await revokeToken(deps, minted.token).catch(() => undefined);
