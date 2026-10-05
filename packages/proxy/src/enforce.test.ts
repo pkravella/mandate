@@ -12,7 +12,8 @@ const prRule: ToolRule = {
   branches: ["agent/42-*"], base: "main", max: 1,
 };
 const rules: ProxyRules = {
-  mandateId: "fix-issue-42", expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+  mandateId: "fix-issue-42",
+  mandateHash: "b".repeat(64), expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
   allowedTools: [writeRule.tool, prRule.tool], rules: [writeRule, prRule],
   destinations: ["github.com/acme/api"],
 };
