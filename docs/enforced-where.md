@@ -13,10 +13,10 @@ today.
 | Mandate schema + validator | What may be granted at all: the operation set, pattern decidability, the organization ceiling, the requester's own permission level | Anything at runtime — it decides before the agent starts | Nothing; it is deterministic and fails closed | **built** |
 | GitHub App installation token | Repository set, permission set, one-hour lifetime | Branch, path, argument, call count | Nothing — but it is coarse by design, see below | **built** |
 | Token revocation on run exit | Reuse of a leaked token, after a propagation delay | The ~4 s window measured below, and work already done | Using the token inside that window | **built** |
-| MCP proxy | Tool set, branch, path, base, call count, destinations appearing in arguments | Anything not sent as an MCP call; 13 catalog operations no MCP tool reaches | An agent with a shell and another credential | rules **built**, enforcement planned (Tasks 12–13) |
+| MCP proxy | Tool set, branch, path, base, call count, destinations appearing in arguments | Anything not sent as an MCP call; 13 catalog operations no MCP tool reaches | An agent with a shell and another credential | **built** |
 | Sandbox egress allowlist | All network egress from the agent user | Data sent to an **allowed** destination | Running the agent outside the sandbox | planned (Task 15) |
-| Mandate expiry | Call acceptance after `expiresAt` | Work already done | Nothing | planned (Task 12) |
-| GitHub rulesets (backstop) | Pushes to protected branches, required reviews | Anything outside branch rules | An admin token | planned (Task 11) |
+| Mandate expiry | Call acceptance after `expiresAt` | Work already done | Nothing | **built** |
+| GitHub rulesets (backstop) | Pushes to protected branches, required reviews | Anything outside branch rules | An admin token | planned |
 
 ## The asymmetry that matters
 
