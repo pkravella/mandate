@@ -14,7 +14,7 @@ today.
 | GitHub App installation token | Repository set, permission set, one-hour lifetime | Branch, path, argument, call count | Nothing — but it is coarse by design, see below | **built** |
 | Token revocation on run exit | Reuse of a leaked token, after a propagation delay | The ~4 s window measured below, and work already done | Using the token inside that window | **built** |
 | MCP proxy | Tool set, branch, path, base, call count, destinations appearing in arguments | Anything not sent as an MCP call; 13 catalog operations no MCP tool reaches | An agent with a shell and another credential | **built** |
-| Sandbox egress allowlist | All network egress from the agent user | Data sent to an **allowed** destination | Running the agent outside the sandbox | planned (Task 15) |
+| Sandbox egress allowlist | All network egress from the `agent` user: the proxy is the only route out, and it tunnels only to an allowed host on 443 | Data sent to an **allowed** destination | Running the agent outside the sandbox, or starting it without `--cap-add=NET_ADMIN` (which the entrypoint refuses to do) | **built** |
 | Mandate expiry | Call acceptance after `expiresAt` | Work already done | Nothing | **built** |
 | GitHub rulesets (backstop) | Pushes to protected branches, required reviews | Anything outside branch rules | An admin token | planned |
 
@@ -132,6 +132,42 @@ grant's limit on that facet useless *for the tools they share*. Granting
 decorative. The enforcement report names the facet, the tool and the grant
 responsible.
 A single number would be marketing rather than measurement.
+
+## The sandbox, and why it is the layer that holds
+
+Decision D3's reasoning is the whole justification for this component: an MCP
+proxy sees MCP traffic and nothing else. An agent with a shell, a `git push` to
+a remote it configures itself, or a `curl` never transits it. Until the sandbox
+exists, destination enforcement is advisory — which is why R9a's field-based
+check and this are two different rows in the table above.
+
+`compileEgress` turns `destinations.allow` into a squid configuration, and
+`sandbox/` is the container that runs it. Inside, the `agent` user has no route
+to the network except the proxy on loopback, and the proxy tunnels only to an
+allowed host on port 443.
+
+**Subdomains follow the mandate, not the host.** A destination naming a host
+*and a path* compiles to an exact `dstdomain`, so `github.com/acme/api` does
+not permit `gist.github.com`. A destination naming a bare host compiles to a
+`.host` entry and does cover subdomains. That is deliberately the same rule the
+proxy's own `destinationAllowed` applies, because both layers read one
+destination list and a disagreement between them would mean the mandate says
+two different things.
+
+**It refuses rather than degrading.** No `NET_ADMIN` capability, a squid config
+squid will not load, or a proxy that never accepts a connection all exit
+non-zero before the agent starts. Running an agent with egress open while this
+page claims the layer holds would be worse than having no sandbox.
+
+**What it does not close.** Data sent to an *allowed* destination is not
+tracked: a public pull request body is a valid exfiltration channel, and the
+bytes travel to GitHub either way. That is R14's taint tracking, which is P1 and
+absent. The sandbox also does nothing at all if the agent is run outside it.
+
+The container is verified against a real Docker daemon rather than reviewed as a
+recipe — `MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test sandbox` —
+including negative controls that widen the ACL and strip the firewall rules to
+confirm the checks can actually fail.
 
 ## What the action graph proves, and what it does not
 

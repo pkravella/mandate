@@ -12,3 +12,6 @@ export {
   compileRules, enforcementReport, rulesForTool,
   type EnforcementRow, type ProxyRules, type ToolRule,
 } from "./rules.js";
+export {
+  compileEgress, EgressCompileError, type EgressPolicy,
+} from "./egress.js";
