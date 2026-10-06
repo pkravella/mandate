@@ -35,6 +35,16 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+    devDependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.131.0
+        version: 0.131.0(zod@4.6.5)
+      '@mandate-dev/proxy':
+        specifier: workspace:*
+        version: link:../proxy
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.32.0
+        version: 1.32.0(zod@4.6.5)
 
   packages/catalog: {}
 
