@@ -112,6 +112,21 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  packages/replay:
+    dependencies:
+      '@mandate-dev/catalog':
+        specifier: workspace:*
+        version: link:../catalog
+      '@mandate-dev/compiler':
+        specifier: workspace:*
+        version: link:../compiler
+      '@mandate-dev/proxy':
+        specifier: workspace:*
+        version: link:../proxy
+      '@mandate-dev/schema':
+        specifier: workspace:*
+        version: link:../schema
+
   packages/schema:
     dependencies:
       '@mandate-dev/catalog':
