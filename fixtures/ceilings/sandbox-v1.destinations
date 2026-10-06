@@ -1,0 +1,10 @@
+# Destination ceiling for sandbox@v1, the live-run ceiling.
+#
+# Scoped to the one sandbox repository the GitHub App is installed on, plus the
+# hosts its token is used against.
+
+github.com/pkravella/mandate-sandbox
+
+api.github.com
+codeload.github.com
+objects.githubusercontent.com

@@ -1,6 +1,6 @@
 import { atLeast, requireOperation, UnknownOperationError } from "@mandate-dev/catalog";
 import {
-  markValidated,
+  destinationsWithin, markValidated,
   type ContainmentProof, type Grant, type GrantProof,
   type ProposedMandate, type ValidatedMandate,
 } from "@mandate-dev/schema";
@@ -17,6 +17,7 @@ export type RejectionCode =
   | "user-authority"
   | "layer-disagreement"
   | "undecidable"
+  | "destination-not-permitted"
   | "lint";
 
 export interface Rejection {
@@ -118,6 +119,32 @@ export function validate(
       resourcesContained: true,
       pathsContained: true,
       branchesContained: true,
+    });
+  }
+
+  // ---- check 3: where data may go (R9) --------------------------------
+  // Separate from the grant loop and separately reported, because this is a
+  // property of the mandate rather than of any one grant. Until this existed
+  // the writer's destination list was passed through unchanged and compared to
+  // nothing: the only guard was a lint catching a literal `*`, so a mandate
+  // could name any host and the sandbox would build an egress allowlist for it.
+  //
+  // One predicate decides this and the proxy's runtime check, so the layers
+  // cannot drift: containment of a destination reduces to membership of its
+  // own string, because a destination denotes itself plus everything beneath it.
+  const dests = destinationsWithin(
+    proposed.destinations.allow, ctx.ceiling.destinations,
+  );
+  if (!dests.ok) {
+    rejections.push({
+      code: "destination-not-permitted",
+      clause: `${ctx.ceiling.id}.destinations`,
+      counterexample: dests.counterexample,
+      message: ctx.ceiling.destinations.length === 0
+        ? `the ceiling permits no destinations at all, so ${JSON.stringify(dests.counterexample)} `
+          + `cannot be granted`
+        : `destination ${JSON.stringify(dests.counterexample)} is outside the ceiling's `
+          + `allowed destinations (${ctx.ceiling.destinations.join(", ")})`,
     });
   }
 

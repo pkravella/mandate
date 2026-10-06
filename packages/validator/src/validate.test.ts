@@ -9,7 +9,10 @@ import type { UserAuthority } from "./userAuthority.js";
 const fixture = (name: string): string =>
   readFileSync(fileURLToPath(new URL(`../../../fixtures/ceilings/${name}`, import.meta.url)), "utf8");
 
-const ceiling = loadCeiling("org-policy@v12", fixture("org-policy-v12.cedar"), fixture("schema.cedarschema"));
+const ceiling = loadCeiling(
+  "org-policy@v12", fixture("org-policy-v12.cedar"), fixture("schema.cedarschema"),
+  fixture("org-policy-v12.destinations"),
+);
 const alice: UserAuthority = { login: "alice", level: "push" };
 
 const propose = (grants: unknown[]): ProposedMandate =>
@@ -228,5 +231,83 @@ describe("validate — reporting", () => {
     const r = validate(propose([READ, { ...WRITE, branches: ["**"] }]), { ceiling, authority: alice });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.rejections[0]!.grantIndex).toBe(1);
+  });
+});
+
+// Check 3 (R9). Before this, the writer passed the model's destination list
+// through unchanged and nothing compared it to anything: the only guard was a
+// lint catching a literal `*`. A mandate could name any host at all and the
+// sandbox would faithfully build an egress allowlist for it.
+describe("destination containment", () => {
+  const withDestinations = (allow: string[]): ProposedMandate =>
+    MandateSchema.parse({
+      mandate: "fix-issue-42", task: "t", requestedBy: "user:alice",
+      expiresInMinutes: 60, ceiling: "org-policy@v12",
+      grants: [{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }],
+      destinations: { allow },
+    }) as ProposedMandate;
+
+  const run = (allow: string[]) =>
+    validate(withDestinations(allow), { ceiling, authority: alice });
+
+  it("accepts a destination inside the ceiling's list", () => {
+    expect(run(["github.com/acme/api"]).ok).toBe(true);
+  });
+
+  it("accepts the ceiling entry itself", () => {
+    expect(run(["github.com/acme"]).ok).toBe(true);
+  });
+
+  it("rejects a host the ceiling never names, and says which one", () => {
+    const r = run(["github.com/acme/api", "evil.example.com"]);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("expected a rejection");
+    const d = r.rejections.find((x) => x.code === "destination-not-permitted");
+    expect(d).toBeDefined();
+    expect(d?.counterexample).toBe("evil.example.com");
+    expect(d?.message).toContain("evil.example.com");
+  });
+
+  // A bare host is wider than the ceiling's host-with-path entry: it permits
+  // every path under github.com and every subdomain of it, gist.github.com
+  // included.
+  it("rejects a bare host against a ceiling that names a path", () => {
+    const r = run(["github.com"]);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("expected a rejection");
+    expect(r.rejections.some((x) => x.code === "destination-not-permitted")).toBe(true);
+  });
+
+  it("rejects a sibling path under an allowed host", () => {
+    expect(run(["github.com/other"]).ok).toBe(false);
+  });
+
+  it("rejects a path that is not aligned to a segment", () => {
+    expect(run(["github.com/acme-evil"]).ok).toBe(false);
+  });
+
+  it("names the clause as the ceiling's destination list", () => {
+    const r = run(["evil.example.com"]);
+    if (r.ok) throw new Error("expected a rejection");
+    expect(r.rejections.find((x) => x.code === "destination-not-permitted")?.clause)
+      .toBe("org-policy@v12.destinations");
+  });
+
+  // Deny by default: a ceiling with no destination list permits no destination
+  // at all, rather than permitting everything.
+  it("permits nothing when the ceiling names no destinations", () => {
+    const empty = loadCeiling(
+      "empty@v1", fixture("org-policy-v12.cedar"), fixture("schema.cedarschema"), "",
+    );
+    const r = validate(withDestinations(["github.com/acme/api"]), {
+      ceiling: empty, authority: alice,
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("expected a rejection");
+    expect(r.rejections.some((x) => x.code === "destination-not-permitted")).toBe(true);
+  });
+
+  it("accepts a mandate that sends data nowhere", () => {
+    expect(run([]).ok).toBe(true);
   });
 });

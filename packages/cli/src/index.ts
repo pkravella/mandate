@@ -21,12 +21,17 @@ export function main(argv: readonly string[]): void {
     .argument("<file>", "mandate YAML file")
     .requiredOption("--ceiling <path>", "Cedar ceiling policy file")
     .requiredOption("--schema <path>", "Cedar schema file")
+    .requiredOption(
+      "--ceiling-destinations <path>",
+      "the ceiling's allowed-destination list; an empty file permits no destination",
+    )
     .requiredOption("--as <login>", "the requesting user's GitHub login")
     .option("--level <level>", `the user's repository permission level (${USER_LEVELS.join("|")})`, "push")
     .option("--repositories <n>", "organization repository count for the authority-cut baseline")
     .option("--no-color", "plain output")
     .action((file: string, opts: {
-      ceiling: string; schema: string; as: string; level: string;
+      ceiling: string; schema: string; ceilingDestinations: string;
+      as: string; level: string;
       repositories?: string; color?: boolean;
     }) => {
       const repositories = opts.repositories === undefined
@@ -38,7 +43,8 @@ export function main(argv: readonly string[]): void {
         return;
       }
       const args: ValidateArgs = {
-        file, ceiling: opts.ceiling, schema: opts.schema, as: opts.as,
+        file, ceiling: opts.ceiling, schema: opts.schema,
+        destinations: opts.ceilingDestinations, as: opts.as,
         level: opts.level,
         ...(repositories === undefined ? {} : { repositories }),
         ...(opts.color === undefined ? {} : { color: opts.color }),

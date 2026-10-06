@@ -12,9 +12,11 @@ const fixture = (name: string): string =>
 
 const src = fixture("org-policy-v12.cedar");
 const schema = fixture("schema.cedarschema");
-const ceiling = loadCeiling("org-policy@v12", src, schema);
+const destinations = fixture("org-policy-v12.destinations");
+const ceiling = loadCeiling("org-policy@v12", src, schema, destinations);
 
-const load = (policies: string) => loadCeiling("probe", policies, schema);
+const load = (policies: string, dests = destinations) =>
+  loadCeiling("probe", policies, schema, dests);
 
 describe("loadCeiling", () => {
   it("extracts one rule per policy, keyed by @id", () => {
@@ -191,5 +193,25 @@ describe("cedarAllows — the independent cross-check", () => {
     expect(cedarAllows(ceiling, {
       action: "pull_request.create", repo: "acme/api", branch: "agent/42", base: "release/1.0",
     }).allowed).toBe(false);
+  });
+});
+
+// The organization's destination allowlist (R9, and the handoff's "nothing
+// proves destinations sits inside a ceiling"). It is a required input: a
+// ceiling that forgot the file would otherwise silently permit every
+// destination, which is the opposite of deny-by-default.
+describe("the ceiling's destination allowlist", () => {
+  it("carries the list the sidecar names", () => {
+    expect(ceiling.destinations).toContain("github.com/acme");
+    expect(ceiling.destinations).toContain("api.github.com");
+  });
+
+  it("reads an empty source as permitting nothing", () => {
+    expect(load(src, "").destinations).toEqual([]);
+  });
+
+  it("refuses a list it cannot enforce", () => {
+    expect(() => load(src, "*\n")).toThrow(/wildcard/i);
+    expect(() => load(src, "https://github.com/acme\n")).toThrow(/scheme/i);
   });
 });

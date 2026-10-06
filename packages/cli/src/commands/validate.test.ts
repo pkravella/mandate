@@ -10,6 +10,7 @@ const fixture = (name: string): string =>
 
 const CEILING = fixture("ceilings/org-policy-v12.cedar");
 const SCHEMA = fixture("ceilings/schema.cedarschema");
+const DESTINATIONS = fixture("ceilings/org-policy-v12.destinations");
 
 const tmp = mkdtempSync(join(tmpdir(), "mandate-cli-"));
 const write = (name: string, body: string): string => {
@@ -44,8 +45,8 @@ destinations:
 `);
 
 const args = (over: Partial<ValidateArgs> = {}): ValidateArgs => ({
-  file: ACCEPTED, ceiling: CEILING, schema: SCHEMA, as: "alice", level: "push",
-  color: false, ...over,
+  file: ACCEPTED, ceiling: CEILING, schema: SCHEMA, destinations: DESTINATIONS,
+  as: "alice", level: "push", color: false, ...over,
 });
 
 const run = (over: Partial<ValidateArgs> = {}): { code: number; out: string } => {

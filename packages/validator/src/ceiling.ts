@@ -1,5 +1,8 @@
 import { getOperation } from "@mandate-dev/catalog";
-import type { CeilingDigest, CeilingRule } from "@mandate-dev/schema";
+import {
+  DestinationListError, parseDestinationList,
+  type CeilingDigest, type CeilingRule,
+} from "@mandate-dev/schema";
 import {
   CedarError, checkParse, checkParseSchema, isAuthorized, policyJson,
   splitPolicies, validatePolicies, type PatternToken,
@@ -165,7 +168,19 @@ function push(m: Map<Facet, string[]>, k: Facet, v: string): void {
   else m.set(k, [v]);
 }
 
-export function loadCeiling(id: string, cedarSource: string, cedarSchema: string): Ceiling {
+/**
+ * Loads an organization ceiling: the Cedar policies, and the destination
+ * allowlist that sits beside them.
+ *
+ * `destinationsSource` is a **required** parameter rather than an option with a
+ * default. An absent list has to mean "no destination is permitted", and an
+ * optional parameter would quietly make it mean "every destination is
+ * permitted" for any caller that forgot it — which is how destinations went
+ * unchecked up to now. Passing `""` is allowed and says so explicitly.
+ */
+export function loadCeiling(
+  id: string, cedarSource: string, cedarSchema: string, destinationsSource: string,
+): Ceiling {
   try {
     checkParseSchema(cedarSchema);
     checkParse(cedarSource);
@@ -255,7 +270,19 @@ export function loadCeiling(id: string, cedarSource: string, cedarSchema: string
     );
   }
 
-  return { id, rules, policiesById, cedarSchema };
+  // A malformed list is a load failure, not a silently empty allowlist:
+  // an empty one permits nothing, so a parse error that degraded to `[]`
+  // would read as a very strict ceiling instead of a broken one.
+  let destinations: readonly string[];
+  try {
+    destinations = parseDestinationList(destinationsSource);
+  } catch (e) {
+    throw new CeilingProfileError(
+      e instanceof DestinationListError ? e.message : String(e),
+    );
+  }
+
+  return { id, rules, destinations, policiesById, cedarSchema };
 }
 
 export function rulesFor(c: Ceiling, action: string): readonly CeilingRule[] {
