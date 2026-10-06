@@ -9,7 +9,7 @@ export type EnforcedBy = "token" | "proxy" | "ruleset" | "sandbox";
  * rather than at containment time, because an undecidable pattern must never
  * reach the point where a decision is expected.
  */
-const GlobString = z
+export const GlobString = z
   .string()
   .min(1)
   .refine((s) => !/[?[\]{}!()|+@\\]/.test(s), {

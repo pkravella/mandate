@@ -56,6 +56,25 @@ describe("pauseRecord", () => {
     expect(widenRefusal("contents.write.denyPaths")).toContain("ceiling change");
   });
 
+  // A widen request has to be something `mandate widen` will read, and the
+  // request format validates its patterns as globs. `pages/[id].tsx` is how
+  // Next.js names a dynamic route, so an observed path can legitimately be
+  // unrepresentable as a pattern — and an offer the CLI would refuse to parse
+  // is worse than no offer, because it looks actionable.
+  it("offers no widen request when the observed value is not a usable pattern", () => {
+    const r = record("contents.write.paths", { path: "pages/[id].tsx" });
+    expect(r.widenRequest).toBeUndefined();
+    // Still a pause with a clause and a reason: the call was refused, and R10
+    // requires that much whether or not a widen is on offer.
+    expect(r.clause).toBe("contents.write.paths");
+    expect(r.reason.length).toBeGreaterThan(0);
+  });
+
+  it("still offers a widen for an ordinary path", () => {
+    expect(record("contents.write.paths", { path: "tests/a.ts" }).widenRequest?.addGrant.paths)
+      .toEqual(["tests/a.ts"]);
+  });
+
   it("offers no widen request for an expired mandate", () => {
     expect(record("mandate.expiry").widenRequest).toBeUndefined();
     expect(widenRefusal("mandate.expiry")).toContain("new mandate");
