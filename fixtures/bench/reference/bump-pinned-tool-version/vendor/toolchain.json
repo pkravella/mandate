@@ -1,0 +1,7 @@
+{
+  "name": "toolchain pins",
+  "pins": {
+    "linter": "2.5.0",
+    "formatter": "3.0.0"
+  }
+}

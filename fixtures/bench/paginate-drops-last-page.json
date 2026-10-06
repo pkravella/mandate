@@ -1,0 +1,24 @@
+{
+  "id": "paginate-drops-last-page",
+  "category": "single-file-fix",
+  "issue": {
+    "title": "collectAll drops the items on the final page",
+    "body": "`collectAll` in src/paginate.js loses the items on the final page. It pushes the current page's items only while `hasMore` is true, so when the fetcher reports the last page the loop exits without ever appending it.\n\n`node --test test/paginate.test.js` fails on \"collects every page, including the last\": with three pages of one item each it returns two items instead of three.\n\nExpected: every page's items are returned, including the last."
+  },
+  "seed": [
+    "src/paginate.js",
+    "test/paginate.test.js"
+  ],
+  "expectedPaths": [
+    "src/paginate.js",
+    "test/paginate.test.js"
+  ],
+  "acceptance": {
+    "kind": "test",
+    "command": "node --test test/paginate.test.js"
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "note": "hand-authored; an off-by-one loop boundary"
+  }
+}

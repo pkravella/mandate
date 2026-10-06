@@ -1,0 +1,11 @@
+{
+  "repo": "pkravella/mandate-sandbox",
+  "tasks": [
+    "retry-swallows-last-error",
+    "parse-config-throws-on-empty",
+    "paginate-drops-last-page",
+    "slug-collides-on-truncation",
+    "bump-pinned-tool-version",
+    "triage-timer-leak"
+  ]
+}

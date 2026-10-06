@@ -1,0 +1,24 @@
+{
+  "id": "parse-config-throws-on-empty",
+  "category": "single-file-fix",
+  "issue": {
+    "title": "parseConfig throws on an empty file instead of returning the defaults",
+    "body": "`parseConfig` in src/parse-config.js throws a TypeError when the config file is empty or contains a blank line, because `line.split(\"=\")` yields `[\"\"]` and the code then calls `.trim()` on an undefined value.\n\n`node --test test/parse-config.test.js` fails on \"returns the defaults for an empty file\" and \"skips a blank line between entries\".\n\nExpected: an absent or empty file means no overrides, so the caller gets the defaults back, and a blank line between entries is skipped rather than treated as a key."
+  },
+  "seed": [
+    "src/parse-config.js",
+    "test/parse-config.test.js"
+  ],
+  "expectedPaths": [
+    "src/parse-config.js",
+    "test/parse-config.test.js"
+  ],
+  "acceptance": {
+    "kind": "test",
+    "command": "node --test test/parse-config.test.js"
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "note": "hand-authored; a guard-clause omission"
+  }
+}

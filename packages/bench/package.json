@@ -1,0 +1,24 @@
+{
+  "name": "@mandate-dev/bench",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --build"
+  },
+  "dependencies": {
+    "@mandate-dev/compiler": "workspace:*",
+    "@mandate-dev/schema": "workspace:*",
+    "zod": "^4.6.5"
+  }
+}
