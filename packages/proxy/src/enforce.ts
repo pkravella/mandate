@@ -142,17 +142,32 @@ const repoPath = (p: string): string => p.replace(/^\/+/, "");
  * clause, because an exception escaping a request handler gives the agent a
  * protocol error instead of a reason, and R10 requires a reason.
  */
-export function makeArgumentEnforcer(
+/**
+ * The same decision, taken over already-extracted facets.
+ *
+ * Exists because the replay evaluator (R11) has to reach the *identical*
+ * decision the proxy would have reached, and a recorded action node already
+ * **is** an `ArgExtract` — it was produced by `extractArgs` when the call was
+ * made. Rebuilding synthetic arguments from a node and re-extracting them is
+ * lossy in at least two ways that were measured: a destination re-expanded into
+ * a field name the extractor does not recognise is never checked, and a
+ * recorded root path of `""` rebuilds into no path at all, so a replay would
+ * check one fewer facet than the run did.
+ *
+ * So the proxy and the replay share this, and `makeArgumentEnforcer` is the
+ * thin wrapper that extracts first. One decision function, no drift.
+ */
+export function makeFacetEnforcer(
   rules: ProxyRules,
-): (rule: ToolRule, args: Record<string, unknown>) => Decision {
-  // `max` is per-rule and per-process: the proxy runs for one mandate.
+): (rule: ToolRule, extract: ArgExtract) => Decision {
+  // `max` is per-rule and per-process: the proxy runs for one mandate, and a
+  // replay scores one trace.
   const counts = new Map<string, number>();
 
-  return (rule, args) => {
+  return (rule, e) => {
     const tool = rule.tool;
     const deny = (clause: string, reason: string): Decision =>
       ({ kind: "deny", tool, clause, reason });
-    const e = extractArgs(tool, args);
 
     /** Membership that reports undecidability instead of throwing. */
     const matches = (globs: readonly string[], value: string):
@@ -279,4 +294,18 @@ export function makeArgumentEnforcer(
 
     return { kind: "allow", tool };
   };
+}
+
+/**
+ * R7's argument half and R9a, over the raw tool arguments.
+ *
+ * Nothing in here throws. An undecidable value is a denial that names its
+ * clause, because an exception escaping a request handler gives the agent a
+ * protocol error instead of a reason, and R10 requires a reason.
+ */
+export function makeArgumentEnforcer(
+  rules: ProxyRules,
+): (rule: ToolRule, args: Record<string, unknown>) => Decision {
+  const enforce = makeFacetEnforcer(rules);
+  return (rule, args) => enforce(rule, extractArgs(rule.tool, args));
 }
