@@ -63,6 +63,23 @@ node packages/cli/dist/index.js validate mandate.yaml \
 Exit 0 prints the permission diff, 1 prints the rejection with the ceiling
 clause and a counterexample, 2 means the input could not be read.
 
+A paused call can be re-reviewed with more scope. `mandate widen` takes the
+pause record the proxy emitted and re-validates the whole mandate from scratch,
+so the agent can never grant itself anything:
+
+```bash
+node packages/cli/dist/index.js widen mandate.yaml pause.json \
+  --ceiling fixtures/ceilings/org-policy-v12.cedar \
+  --schema  fixtures/ceilings/schema.cedarschema \
+  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
+  --as alice
+```
+
+Not every denial is widenable, and the refusal list is the contract: a deny
+path, an expired mandate, an ungranted operation, a disallowed destination and
+an internal error are all refused with the reason instead. A one-click "add
+`.github/workflows/**` to your paths" would make the deny list decorative.
+
 A refusal looks like this:
 
 ```

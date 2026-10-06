@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { runValidate, USER_LEVELS, type ValidateArgs } from "./commands/validate.js";
+import { runWiden } from "./commands/widen.js";
 
 export { runValidate, USER_LEVELS, type ValidateArgs } from "./commands/validate.js";
 export {
@@ -50,6 +51,43 @@ export function main(argv: readonly string[]): void {
         ...(opts.color === undefined ? {} : { color: opts.color }),
       };
       process.exitCode = runValidate(args, (s) => { console.log(s); });
+    });
+
+  program
+    .command("widen")
+    .description("re-validate a mandate with a widen request applied (R10)")
+    .argument("<mandate>", "the current mandate YAML")
+    .argument("<request>", "the pause record the proxy emitted, or a bare widen request")
+    .requiredOption("--ceiling <path>", "Cedar ceiling policy file")
+    .requiredOption("--schema <path>", "Cedar schema file")
+    .requiredOption(
+      "--ceiling-destinations <path>",
+      "the ceiling's allowed-destination list; an empty file permits no destination",
+    )
+    .requiredOption("--as <login>", "the requesting user's GitHub login")
+    .option(
+      "--level <level>",
+      `the user's repository permission level (${USER_LEVELS.join("|")})`,
+      "push",
+    )
+    .action((mandateFile: string, requestFile: string, opts: {
+      ceiling: string; schema: string; ceilingDestinations: string;
+      as: string; level: string;
+    }) => {
+      // Checked here rather than trusted, for the same reason `validate` does:
+      // an unrecognised level otherwise made atLeast() false for everything and
+      // every grant was rejected for "user authority" with nothing naming the flag.
+      const level = USER_LEVELS.find((l) => l === opts.level);
+      if (level === undefined) {
+        console.log(`--level must be one of ${USER_LEVELS.join(", ")}, not ${JSON.stringify(opts.level)}`);
+        process.exitCode = 2;
+        return;
+      }
+      process.exitCode = runWiden({
+        mandateFile, requestFile,
+        ceiling: opts.ceiling, schema: opts.schema,
+        destinations: opts.ceilingDestinations, as: opts.as, level,
+      }, (s) => { console.log(s); });
     });
 
   program.parse(argv, { from: "user" });

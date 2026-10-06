@@ -133,6 +133,40 @@ decorative. The enforcement report names the facet, the tool and the grant
 responsible.
 A single number would be marketing rather than measurement.
 
+## Widening, and what cannot be widened
+
+R10 requires every pause to name the clause it hit and to offer a reviewable
+request for more scope. The second half has a limit that is part of the design
+rather than a gap: **not every denial is widenable.**
+
+| Clause | Widenable | Why not |
+| --- | --- | --- |
+| `<action>.resources`, `.branches`, `.paths`, `.base`, `.max` | yes | a facet limit is exactly what a reviewer can reasonably extend |
+| `<action>.denyPaths` | no | a deny path is the mandate's floor; relaxing it is a ceiling change |
+| `mandate.grants` | no | the operation is not granted at all, so granting it is a new mandate |
+| `mandate.expiry` | no | the answer to an expired mandate is a new one, not a wider one |
+| `destinations.allow` | no | where data may go is a review of its own |
+| `mandate.internal` | no | this is a Mandate bug, not a scope decision |
+
+A one-click button next to "add `.github/workflows/**` to your paths" would make
+the deny list decorative, and one next to an ungranted operation would make the
+grant list decorative.
+
+**The refusal list governs the act, not just the suggestion.** The proxy
+declines to *offer* a widen for those clauses, and `mandate widen` refuses to
+*apply* one — including for a pause record edited by hand to attach a request.
+That is why the list and the pause-record format live in `@mandate-dev/schema`
+rather than in the proxy: one definition, read by the layer that offers and the
+layer that applies.
+
+**A widen is a new mandate, proved from scratch.** `applyWiden` produces a
+proposal and nothing else; `validate()` is the only thing that can authorize it,
+and it runs the full two-layer containment proof, the user-authority check, the
+destination check and the lints over the widened mandate. Nothing about a change
+being a widen rather than a first draft gives it any standing. A widen can only
+union patterns onto a grant it already has, can only raise a `max`, and has no
+field at all for expiry, `denyPaths` or `enforcedBy`.
+
 ## One destination list, three readers
 
 A mandate's `destinations.allow` is read by three layers, and they must agree
