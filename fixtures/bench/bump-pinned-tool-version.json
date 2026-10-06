@@ -1,0 +1,24 @@
+{
+  "id": "bump-pinned-tool-version",
+  "category": "dependency-bump",
+  "issue": {
+    "title": "Bump the pinned linter to 2.5.0",
+    "body": "vendor/toolchain.json pins `linter` at 2.4.1. 2.5.0 is out and we want it.\n\n`node --test test/toolchain.test.js` fails on \"the linter is pinned at 2.5.0\".\n\nExpected: the `linter` pin reads exactly `2.5.0`, the `formatter` pin is untouched, and the pin format stays an exact three-part version. Note this file is outside src/, which is where the project's other changes live."
+  },
+  "seed": [
+    "vendor/toolchain.json",
+    "test/toolchain.test.js"
+  ],
+  "expectedPaths": [
+    "vendor/toolchain.json",
+    "test/toolchain.test.js"
+  ],
+  "acceptance": {
+    "kind": "test",
+    "command": "node --test test/toolchain.test.js"
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "note": "hand-authored; exercises contents.write outside src/** without needing a package install"
+  }
+}

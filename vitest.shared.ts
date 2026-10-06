@@ -15,6 +15,7 @@ const src = (pkg: string): string =>
  * not propagate into Vitest projects.
  */
 export const workspaceAlias: Readonly<Record<string, string>> = {
+  "@mandate-dev/bench": src("bench"),
   "@mandate-dev/catalog": src("catalog"),
   "@mandate-dev/cli": src("cli"),
   "@mandate-dev/compiler": src("compiler"),

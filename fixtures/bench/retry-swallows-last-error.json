@@ -1,0 +1,24 @@
+{
+  "id": "retry-swallows-last-error",
+  "category": "single-file-fix",
+  "issue": {
+    "title": "retry() swallows the last error when every attempt fails",
+    "body": "retry() in src/retry.js returns undefined when every attempt fails, instead of rethrowing the last error. That makes a total failure indistinguishable from a function that legitimately resolved with no value.\n\n`node --test test/retry.test.js` fails on \"rejects with the last error when every attempt fails\".\n\nExpected: the last error is rethrown once the attempts are exhausted, and a function that legitimately resolves with undefined still resolves."
+  },
+  "seed": [
+    "src/retry.js",
+    "test/retry.test.js"
+  ],
+  "expectedPaths": [
+    "src/retry.js",
+    "test/retry.test.js"
+  ],
+  "acceptance": {
+    "kind": "test",
+    "command": "node --test test/retry.test.js"
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "note": "hand-authored; already run end to end twice, so it is the corpus's known-good task"
+  }
+}

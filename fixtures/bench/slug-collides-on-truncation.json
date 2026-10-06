@@ -1,0 +1,25 @@
+{
+  "id": "slug-collides-on-truncation",
+  "category": "multi-file-fix",
+  "issue": {
+    "title": "taskId collides for two tasks that start with the same words",
+    "body": "`taskId` in src/ids.js returns `slug(text)`, and `slug` truncates at 48 characters on a word boundary. Two different tasks whose opening words match therefore get the same id, and anything keyed on it silently overwrites.\n\n`node --test test/ids.test.js` fails on \"distinguishes two long tasks that start with the same words\".\n\nExpected: `taskId` is stable for the same input and distinct for different inputs, while staying readable \u2014 appending a short digest of the full text is the usual fix. `slug` itself should keep its current behaviour, because other callers rely on it being a plain slug."
+  },
+  "seed": [
+    "src/slug.js",
+    "src/ids.js",
+    "test/ids.test.js"
+  ],
+  "expectedPaths": [
+    "src/ids.js",
+    "test/ids.test.js"
+  ],
+  "acceptance": {
+    "kind": "test",
+    "command": "node --test test/ids.test.js"
+  },
+  "provenance": {
+    "kind": "synthetic",
+    "note": "hand-authored; mirrors the real slug() collision recorded in this project's own open items"
+  }
+}
