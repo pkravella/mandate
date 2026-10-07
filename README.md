@@ -212,6 +212,30 @@ Writing a mandate costs about **$0.03** and takes **12 seconds** at the median,
 which misses the PRD's under-ten-second target. Two sequential model calls at
 effort `high` is why, and effort is the lever.
 
+Phase 4 added the attack corpus and the commands. The adversarial suite is 34
+cases across four families — injected issue text, hostile MCP tool
+declarations, over-asking agent plans, argument-level escapes — each paired with
+the invariant it must not break. Every case assumes a **fully compromised
+writer** that proposed exactly what the attack asked for, because Mandate does
+not detect prompt injection: the question is only whether the ceiling held
+anyway. It did, and the suite found three holes in the process, all closed.
+
+`mandate run` was verified live. An agent importing nothing from this
+repository was handed an MCP config, spawned what it named, and was offered
+exactly `get_file_contents`, `list_branches` and `search_code` — three tools
+from a single `repo.read` grant, with no write tool and no merge. Calling
+`merge_pull_request` by name came back refused with `clause: mandate.grants`.
+The requester's level was read from GitHub rather than asserted, so that run is
+an authorisation record.
+
+That second check is a **negative control**, and it exists because of what
+Phase 3 measured: the proxy filters `tools/list`, so an ungranted tool is never
+offered and therefore never attempted. Across six mandated benchmark runs there
+were **zero denials while replay predicted seven under-granted calls**. A clean
+run can mean the mandate was right or that nothing ever tested it, and the two
+look identical from the outside — so the suite calls the forbidden tool by name
+rather than waiting for a model to try.
+
 Phase 3 added the runtime half and measured it. The full
 [benchmark report](docs/benchmark-report.md) is committed; the headline is:
 
