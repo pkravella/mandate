@@ -4,19 +4,31 @@ description: >-
   an agent whose only GitHub authority is that mandate.
 author: Mandate contributors
 
-# NOTE ON PERMISSIONS
+# TWO NOTES ON WHAT THIS FILE CANNOT DO
 #
-# The plan for this file said "the composite action must set `permissions: {}`
-# on its own job". An action cannot: `permissions` is a workflow- and job-level
-# key, and action metadata accepts only name, description, author, inputs,
-# outputs, runs and branding. GitHub ignores anything else here.
+# 1. PERMISSIONS. The plan for this file said "the composite action must set
+#    `permissions: {}` on its own job". An action cannot: `permissions` is a
+#    workflow- and job-level key, and action metadata accepts only name,
+#    description, author, inputs, outputs, runs and branding. GitHub ignores
+#    anything else here. So the requirement belongs to the caller, the example
+#    workflow sets it, and the first step below fails if a GITHUB_TOKEN reached
+#    this job anyway — a token the agent could reach is authority Mandate did
+#    not decide, which is the one property this project exists to provide.
 #
-# So the requirement is real but it belongs to the caller, and the only thing
-# this file can do about it is say so and refuse to paper over it. The example
-# workflow in .github/workflows/mandate.yml sets `permissions: {}`, and the
-# action checks at runtime that GITHUB_TOKEN was not handed to it — a token the
-# agent could reach is authority Mandate did not decide, which is the entire
-# property this project exists to provide.
+# 2. SHELL INJECTION. Every value below is read from the environment inside the
+#    run steps, never interpolated into the script body with ${{ }}. That is
+#    not stylistic. A `${{ inputs.x }}` inside a `run:` block is substituted
+#    into the script TEXT before bash sees it, so a value containing a quote or
+#    a semicolon runs as a command. The first version of this file did exactly
+#    that on every input, and the example workflow fed an issue title into the
+#    `agent` input — which made a packaging layer whose purpose is containing an
+#    agent's authority into a remote shell for anyone who could file an issue.
+#
+#    `agent` is therefore NEWLINE-SEPARATED, one argv element per line. A single
+#    string would have to be word-split, and the only safe split (`read -ra`)
+#    breaks a quoted prompt into separate arguments. One line per element is
+#    unambiguous: spaces inside a line are kept, and nothing in a line is ever
+#    interpreted by the shell.
 
 inputs:
   mandate:
@@ -49,8 +61,18 @@ inputs:
     required: false
   agent:
     description: >-
-      The agent command to run, with {mcpConfig} where it wants the MCP config
-      path. For example: claude --mcp-config {mcpConfig} -p "fix issue 42"
+      The agent command, ONE ARGUMENT PER LINE, with {mcpConfig} on its own line
+      where the agent wants the MCP config path. For example:
+
+        agent: |
+          claude
+          --mcp-config
+          {mcpConfig}
+          -p
+          Fix issue 42 and open a pull request
+
+      One element per line because a single string would have to be word-split,
+      and nothing in a line is ever interpreted by the shell.
     required: true
   trace:
     description: Where to write the action graph (R8). Defaults to mandate-trace.jsonl.
@@ -79,8 +101,8 @@ runs:
       shell: bash
       run: |
         # The agent's authority must come from the minted token and nothing
-        # else. A GITHUB_TOKEN in the environment is a second credential that
-        # no mandate bounds, so this fails rather than enforcing a mandate it
+        # else. A GITHUB_TOKEN in the environment is a second credential that no
+        # mandate bounds, so this fails rather than enforcing a mandate it
         # cannot actually hold.
         if [ -n "${GITHUB_TOKEN:-}" ]; then
           echo "::error::GITHUB_TOKEN is set in this job. Mandate cannot bound an" \
@@ -105,16 +127,32 @@ runs:
       id: run
       shell: bash
       env:
+        # Everything the script reads arrives here, as data. See note 2 above.
         MANDATE_APP_ID: ${{ inputs.app-id }}
         MANDATE_INSTALLATION_ID: ${{ inputs.installation-id }}
         MANDATE_APP_KEY_PATH: ${{ steps.key.outputs.path }}
+        IN_MANDATE: ${{ inputs.mandate }}
+        IN_CEILING: ${{ inputs.ceiling }}
+        IN_SCHEMA: ${{ inputs.schema }}
+        IN_DESTINATIONS: ${{ inputs.ceiling-destinations }}
+        IN_AS: ${{ inputs.as }}
+        IN_REPO: ${{ inputs.repo }}
+        IN_LEVEL: ${{ inputs.level }}
+        IN_AGENT: ${{ inputs.agent }}
+        IN_TRACE: ${{ inputs.trace }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
+
         authority=()
-        if [ -n "${{ inputs.repo }}" ]; then
-          authority=(--repo "${{ inputs.repo }}")
-        elif [ -n "${{ inputs.level }}" ]; then
-          authority=(--level "${{ inputs.level }}")
+        if [ -n "$IN_REPO" ] && [ -n "$IN_LEVEL" ]; then
+          echo "::error::Pass 'repo' or 'level', not both. They are two different" \
+               "claims about where the requester's authority came from."
+          exit 2
+        elif [ -n "$IN_REPO" ]; then
+          authority=(--repo "$IN_REPO")
+        elif [ -n "$IN_LEVEL" ]; then
+          authority=(--level "$IN_LEVEL")
         else
           echo "::error::Pass either 'repo' (read the level from GitHub) or 'level'" \
                "(assert it). There is no default: a run that has not said where the" \
@@ -122,23 +160,37 @@ runs:
           exit 2
         fi
 
-        node "${{ github.action_path }}/packages/cli/dist/index.js" run \
-          --mandate "${{ inputs.mandate }}" \
-          --ceiling "${{ inputs.ceiling }}" \
-          --schema "${{ inputs.schema }}" \
-          --ceiling-destinations "${{ inputs.ceiling-destinations }}" \
-          --as "${{ inputs.as }}" \
-          "${authority[@]}" \
-          --trace "${{ inputs.trace }}" \
-          --diff \
-          -- ${{ inputs.agent }}
+        # One argv element per line. mapfile does not interpret the contents, so
+        # a line containing ; or $( ) or a quote is an argument and not a command.
+        agent=()
+        while IFS= read -r line; do
+          [ -n "$line" ] && agent+=("$line")
+        done <<< "$IN_AGENT"
+        if [ "${#agent[@]}" -eq 0 ]; then
+          echo "::error::'agent' is empty. Give the agent command one argument per" \
+               "line, with {mcpConfig} on its own line where it wants the config path."
+          exit 2
+        fi
 
-        echo "trace=${{ inputs.trace }}" >> "$GITHUB_OUTPUT"
+        node "$ACTION_PATH/packages/cli/dist/index.js" run \
+          --mandate "$IN_MANDATE" \
+          --ceiling "$IN_CEILING" \
+          --schema "$IN_SCHEMA" \
+          --ceiling-destinations "$IN_DESTINATIONS" \
+          --as "$IN_AS" \
+          "${authority[@]}" \
+          --trace "$IN_TRACE" \
+          --diff \
+          -- "${agent[@]}"
+
+        printf 'trace=%s\n' "$IN_TRACE" >> "$GITHUB_OUTPUT"
 
     - name: Shred the App key
       if: always()
       shell: bash
-      run: rm -f "${{ steps.key.outputs.path }}"
+      env:
+        KEY_PATH: ${{ steps.key.outputs.path }}
+      run: rm -f "$KEY_PATH"
 
 branding:
   icon: shield

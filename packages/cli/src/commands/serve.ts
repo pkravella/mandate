@@ -43,14 +43,28 @@ export interface ServeDeps extends AuthorityDeps {
   readonly until?: () => Promise<void>;
 }
 
-const untilSignalled = (): Promise<void> =>
+/**
+ * Resolves when the client has gone away or the process is asked to stop.
+ *
+ * `stdin` ending is the normal case: the agent closed the pipe, so there is
+ * nobody left to serve. The transport attaches `data` and `error` to stdin and
+ * not `end`, so listening here does not conflict with it.
+ *
+ * Exported for the test. The default path revokes a live repository-scoped
+ * token, which is the single thing in this file that must not be left to a
+ * signal handler nobody has ever run — it is reachable with a pipe and so it is
+ * tested with one.
+ */
+export const untilSignalled = (
+  signals: NodeJS.EventEmitter = process,
+  input: NodeJS.EventEmitter = process.stdin,
+): Promise<void> =>
   new Promise<void>((resolve) => {
     const done = (): void => resolve();
-    process.once("SIGINT", done);
-    process.once("SIGTERM", done);
-    process.once("beforeExit", done);
-    process.stdin.once("end", done);
-    process.stdin.once("close", done);
+    signals.once("SIGINT", done);
+    signals.once("SIGTERM", done);
+    input.once("end", done);
+    input.once("close", done);
   });
 
 /** Returns the process exit code: 0 served and shut down, 1 refused, 2 bad input. */

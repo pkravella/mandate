@@ -1,8 +1,6 @@
-import { readFileSync } from "node:fs";
-import { parseMandateYaml, type ProposedMandate } from "@mandate-dev/schema";
-import { loadCeiling, validate, type Ceiling } from "@mandate-dev/validator";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
-import { resolveAuthority, type AuthorityDeps } from "../authority.js";
+import { type AuthorityDeps } from "../authority.js";
+import { prepareMandate } from "../prepare.js";
 
 export interface ValidateArgs {
   readonly file: string;
@@ -46,48 +44,28 @@ export interface ValidateArgs {
 // is how one of them stops matching the other.
 export { USER_LEVELS, type ResolveAuthority } from "../authority.js";
 
-const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-
 /** Returns the process exit code: 0 accepted, 1 rejected, 2 bad input. */
 export async function runValidate(
   args: ValidateArgs, log: (s: string) => void, deps: AuthorityDeps = {},
 ): Promise<number> {
-  const resolved = await resolveAuthority(args, deps);
-  if ("error" in resolved) {
-    log(resolved.error);
+  // One copy of read-ceiling-authority-validate, shared with `serve` and `run`.
+  // This function had its own, which is exactly the duplication `prepare.ts`
+  // was written to remove and its own docstring claimed it had: a `validate`
+  // that loaded the ceiling a shade differently from `serve` would approve a
+  // mandate under one reading and enforce it under another.
+  const prepared = await prepareMandate(args, deps);
+  if (!prepared.ok) {
+    if (prepared.code === 1) {
+      log(renderRejections(prepared.rejections, prepared.proposed));
+      log(prepared.provenance);
+      return 1;
+    }
+    log(prepared.message);
     return 2;
   }
 
-  let proposed: ProposedMandate;
-  try {
-    proposed = parseMandateYaml(readFileSync(args.file, "utf8"));
-  } catch (e) {
-    log(`Could not read a mandate from ${args.file}: ${message(e)}`);
-    return 2;
-  }
-
-  let ceiling: Ceiling;
-  try {
-    ceiling = loadCeiling(
-      proposed.ceiling,
-      readFileSync(args.ceiling, "utf8"),
-      readFileSync(args.schema, "utf8"),
-      readFileSync(args.destinations, "utf8"),
-    );
-  } catch (e) {
-    log(`Could not load the ceiling: ${message(e)}`);
-    return 2;
-  }
-
-  const result = validate(proposed, { ceiling, authority: resolved.authority });
-  if (!result.ok) {
-    log(renderRejections(result.rejections, proposed));
-    log(resolved.provenance);
-    return 1;
-  }
-
-  log(resolved.provenance);
-  log(renderPermissionDiff(proposed, {
+  log(prepared.provenance);
+  log(renderPermissionDiff(prepared.proposed, {
     ...(args.color === undefined ? {} : { color: args.color }),
     ...(args.repositories === undefined ? {} : { repositories: args.repositories }),
   }));

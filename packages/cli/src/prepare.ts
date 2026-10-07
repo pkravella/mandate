@@ -1,8 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parseMandateYaml, type ProposedMandate, type ValidatedMandate } from "@mandate-dev/schema";
-import {
-  loadCeiling, validate, type Ceiling, type Rejection,
-} from "@mandate-dev/validator";
+import { loadCeiling, validate, type Ceiling, type Rejection } from "@mandate-dev/validator";
 import { resolveAuthority, type AuthorityDeps } from "./authority.js";
 
 /**
@@ -31,7 +29,6 @@ export type Prepared =
     readonly ok: true;
     readonly mandate: ValidatedMandate;
     readonly proposed: ProposedMandate;
-    readonly ceiling: Ceiling;
     /** Whether the requester's level was read from GitHub or asserted. */
     readonly verified: boolean;
     readonly provenance: string;
@@ -96,7 +93,6 @@ export async function prepareMandate(
     ok: true,
     mandate: result.mandate,
     proposed,
-    ceiling,
     verified: resolved.verified,
     provenance: resolved.provenance,
   };

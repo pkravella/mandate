@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -10,7 +11,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import type { MintDeps } from "@mandate-dev/compiler";
 import { parseJsonl } from "@mandate-dev/proxy";
 import { runRun, MCP_CONFIG_PLACEHOLDER, type RunArgs } from "./run.js";
-import { runServe, type ServeArgs, type ServeDeps } from "./serve.js";
+import { runServe, untilSignalled, type ServeArgs, type ServeDeps } from "./serve.js";
 import type { Session } from "../session.js";
 
 const fixture = (name: string): string =>
@@ -378,5 +379,72 @@ describe("mandate serve", () => {
     );
     expect(source).not.toMatch(/console\.(log|info|debug)\(/);
     expect(source).not.toMatch(/process\.stdout\.write/);
+  });
+});
+
+/**
+ * `runServe`'s default shutdown, which every test above replaces with its own
+ * `until`.
+ *
+ * It is the path that runs in production and it revokes a live repo-scoped
+ * token, so leaving it to a signal handler nobody has executed is the wrong
+ * trade. Driving `mandate serve` by hand confirmed it works — stdin closing
+ * when the client disconnected shut the session down and revoked — but a manual
+ * check is not a regression test.
+ *
+ * `beforeExit` used to be in this set and is deliberately gone. It fires when
+ * the event loop drains, which with a live stdio transport should not happen —
+ * so it was either never reached or reached at a moment the server should still
+ * have been running, and neither is a shutdown signal worth acting on.
+ */
+describe("untilSignalled", () => {
+  const emitters = (): { signals: EventEmitter; input: EventEmitter } =>
+    ({ signals: new EventEmitter(), input: new EventEmitter() });
+
+  it("resolves when the client closes the pipe, which is the normal case", async () => {
+    const { signals, input } = emitters();
+    const waiting = untilSignalled(signals, input);
+    input.emit("end");
+    await expect(waiting).resolves.toBeUndefined();
+  });
+
+  it("resolves on a closed input as well as an ended one", async () => {
+    const { signals, input } = emitters();
+    const waiting = untilSignalled(signals, input);
+    input.emit("close");
+    await expect(waiting).resolves.toBeUndefined();
+  });
+
+  it.each(["SIGINT", "SIGTERM"])("resolves on %s", async (signal) => {
+    const { signals, input } = emitters();
+    const waiting = untilSignalled(signals, input);
+    signals.emit(signal);
+    await expect(waiting).resolves.toBeUndefined();
+  });
+
+  it("does not resolve on its own", async () => {
+    const { signals, input } = emitters();
+    let settled = false;
+    void untilSignalled(signals, input).then(() => { settled = true; });
+    // A shutdown that fires unprompted would revoke the token mid-session and
+    // leave the agent holding a server that no longer works.
+    await new Promise((r) => setImmediate(r));
+    expect(settled).toBe(false);
+  });
+
+  it("stops serving when the pipe closes, and gives the token back", async () => {
+    // The whole path, with the real default rather than an injected `until`.
+    const chunks: string[] = [];
+    const gh = fakeGithub();
+    const input = new EventEmitter();
+    const code = await runServe(serveArgs(), (s) => chunks.push(s), {
+      github: gh.deps,
+      upstream: fakeUpstream,
+      connect: async () => { setImmediate(() => input.emit("end")); },
+      until: () => untilSignalled(new EventEmitter(), input),
+    });
+    expect(code).toBe(0);
+    expect(gh.revokes(), "a session that ended must return its token").toBe(1);
+    expect(chunks.join("\n")).toContain("token revoked");
   });
 });
