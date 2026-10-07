@@ -1,0 +1,145 @@
+name: Mandate
+description: >-
+  Validate a task-scoped mandate against your organization's ceiling, then run
+  an agent whose only GitHub authority is that mandate.
+author: Mandate contributors
+
+# NOTE ON PERMISSIONS
+#
+# The plan for this file said "the composite action must set `permissions: {}`
+# on its own job". An action cannot: `permissions` is a workflow- and job-level
+# key, and action metadata accepts only name, description, author, inputs,
+# outputs, runs and branding. GitHub ignores anything else here.
+#
+# So the requirement is real but it belongs to the caller, and the only thing
+# this file can do about it is say so and refuse to paper over it. The example
+# workflow in .github/workflows/mandate.yml sets `permissions: {}`, and the
+# action checks at runtime that GITHUB_TOKEN was not handed to it — a token the
+# agent could reach is authority Mandate did not decide, which is the entire
+# property this project exists to provide.
+
+inputs:
+  mandate:
+    description: Path to the mandate YAML, relative to the workspace.
+    required: true
+  ceiling:
+    description: Path to the Cedar org ceiling policy.
+    required: true
+  schema:
+    description: Path to the Cedar schema.
+    required: true
+  ceiling-destinations:
+    description: >-
+      Path to the ceiling's allowed-destination list. Required, and an empty
+      file means no destination is permitted — which is the safe reading, not an
+      oversight.
+    required: true
+  as:
+    description: The GitHub login the mandate is requested by.
+    required: true
+  repo:
+    description: >-
+      Repository (owner/name) to read `as`'s permission from. Pass this or
+      `level`, not both. This one makes the run an authorisation record.
+    required: false
+  level:
+    description: >-
+      Assert `as`'s permission level instead of reading it. Labelled unverified
+      in the log.
+    required: false
+  agent:
+    description: >-
+      The agent command to run, with {mcpConfig} where it wants the MCP config
+      path. For example: claude --mcp-config {mcpConfig} -p "fix issue 42"
+    required: true
+  trace:
+    description: Where to write the action graph (R8). Defaults to mandate-trace.jsonl.
+    required: false
+    default: mandate-trace.jsonl
+  app-id:
+    description: GitHub App id used to mint the agent's token.
+    required: true
+  installation-id:
+    description: GitHub App installation id.
+    required: true
+  private-key:
+    description: >-
+      The App's private key (PKCS#1 PEM). Pass a secret, never a literal.
+    required: true
+
+outputs:
+  trace:
+    description: Path to the action graph the run recorded.
+    value: ${{ steps.run.outputs.trace }}
+
+runs:
+  using: composite
+  steps:
+    - name: Refuse a GITHUB_TOKEN the agent could reach
+      shell: bash
+      run: |
+        # The agent's authority must come from the minted token and nothing
+        # else. A GITHUB_TOKEN in the environment is a second credential that
+        # no mandate bounds, so this fails rather than enforcing a mandate it
+        # cannot actually hold.
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+          echo "::error::GITHUB_TOKEN is set in this job. Mandate cannot bound an" \
+               "agent that holds another credential. Set 'permissions: {}' on the" \
+               "job and do not pass GITHUB_TOKEN to this action."
+          exit 1
+        fi
+
+    - name: Write the App key
+      id: key
+      shell: bash
+      env:
+        PRIVATE_KEY: ${{ inputs.private-key }}
+      run: |
+        set -euo pipefail
+        dir="$(mktemp -d)"
+        printf '%s\n' "$PRIVATE_KEY" > "$dir/app.pem"
+        chmod 600 "$dir/app.pem"
+        echo "path=$dir/app.pem" >> "$GITHUB_OUTPUT"
+
+    - name: Validate the mandate and run the agent
+      id: run
+      shell: bash
+      env:
+        MANDATE_APP_ID: ${{ inputs.app-id }}
+        MANDATE_INSTALLATION_ID: ${{ inputs.installation-id }}
+        MANDATE_APP_KEY_PATH: ${{ steps.key.outputs.path }}
+      run: |
+        set -euo pipefail
+        authority=()
+        if [ -n "${{ inputs.repo }}" ]; then
+          authority=(--repo "${{ inputs.repo }}")
+        elif [ -n "${{ inputs.level }}" ]; then
+          authority=(--level "${{ inputs.level }}")
+        else
+          echo "::error::Pass either 'repo' (read the level from GitHub) or 'level'" \
+               "(assert it). There is no default: a run that has not said where the" \
+               "requester's authority came from has not been asked the question."
+          exit 2
+        fi
+
+        node "${{ github.action_path }}/packages/cli/dist/index.js" run \
+          --mandate "${{ inputs.mandate }}" \
+          --ceiling "${{ inputs.ceiling }}" \
+          --schema "${{ inputs.schema }}" \
+          --ceiling-destinations "${{ inputs.ceiling-destinations }}" \
+          --as "${{ inputs.as }}" \
+          "${authority[@]}" \
+          --trace "${{ inputs.trace }}" \
+          --diff \
+          -- ${{ inputs.agent }}
+
+        echo "trace=${{ inputs.trace }}" >> "$GITHUB_OUTPUT"
+
+    - name: Shred the App key
+      if: always()
+      shell: bash
+      run: rm -f "${{ steps.key.outputs.path }}"
+
+branding:
+  icon: shield
+  color: blue
