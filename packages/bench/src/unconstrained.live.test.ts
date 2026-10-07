@@ -7,7 +7,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { githubAppDeps } from "@mandate-dev/compiler";
 import { Recorder, parseJsonl } from "@mandate-dev/proxy";
-import { loadCorpus, type LoadedTask } from "./tasks.js";
+import { taskPrompt } from "./prompt.js";
+import { loadCorpus } from "./tasks.js";
 
 /**
  * The unconstrained pass (Decision D8): each task run with the recorder on and
@@ -58,15 +59,6 @@ interface TaskRun {
   readonly cost: number;
   readonly nodes: number;
   readonly tracePath: string;
-}
-
-/** The task as the agent sees it: the issue, and nothing about mandates. */
-function promptFor(task: LoadedTask, repo: string, issueNumber: number): string {
-  return `Fix issue #${issueNumber} in ${repo}.\n\n`
-    + `Title: ${task.issue.title}\n\n${task.issue.body}\n\n`
-    + `Repository: ${repo}. Read a file before updating it, because an update needs its sha. `
-    + `Work on a branch named agent/${task.id} and open a pull request when you are done, `
-    + `unless the issue says otherwise. When you are finished, say DONE.`;
 }
 
 describe.skipIf(!enabled)("the unconstrained pass", () => {
@@ -142,7 +134,7 @@ describe.skipIf(!enabled)("the unconstrained pass", () => {
         const recorder = new Recorder({ mode: "unconstrained" });
         const messages: Anthropic.MessageParam[] = [{
           role: "user",
-          content: promptFor(task, corpus.repo, issueFor.get(task.id) ?? 0),
+          content: taskPrompt(task, corpus.repo, issueFor.get(task.id) ?? 0),
         }];
 
         let turns = 0;
