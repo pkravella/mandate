@@ -26,12 +26,27 @@ importers:
 
   packages/bench:
     dependencies:
+      '@mandate-dev/cli':
+        specifier: workspace:*
+        version: link:../cli
       '@mandate-dev/compiler':
         specifier: workspace:*
         version: link:../compiler
+      '@mandate-dev/proxy':
+        specifier: workspace:*
+        version: link:../proxy
+      '@mandate-dev/replay':
+        specifier: workspace:*
+        version: link:../replay
       '@mandate-dev/schema':
         specifier: workspace:*
         version: link:../schema
+      '@mandate-dev/validator':
+        specifier: workspace:*
+        version: link:../validator
+      '@mandate-dev/writer':
+        specifier: workspace:*
+        version: link:../writer
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -39,9 +54,6 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.131.0
         version: 0.131.0(zod@4.6.5)
-      '@mandate-dev/proxy':
-        specifier: workspace:*
-        version: link:../proxy
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.0
         version: 1.32.0(zod@4.6.5)

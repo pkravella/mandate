@@ -19,11 +19,15 @@
   "dependencies": {
     "@mandate-dev/compiler": "workspace:*",
     "@mandate-dev/schema": "workspace:*",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@mandate-dev/cli": "workspace:*",
+    "@mandate-dev/replay": "workspace:*",
+    "@mandate-dev/validator": "workspace:*",
+    "@mandate-dev/writer": "workspace:*",
+    "@mandate-dev/proxy": "workspace:*"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
-    "@mandate-dev/proxy": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.0"
   }
 }
