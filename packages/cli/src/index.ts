@@ -4,12 +4,20 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { runValidate, type ValidateArgs } from "./commands/validate.js";
 import { githubResolver, resolveAuthority, USER_LEVELS } from "./authority.js";
+import { runServe } from "./commands/serve.js";
+import { runRun, MCP_CONFIG_PLACEHOLDER } from "./commands/run.js";
+import { githubAppDeps, type MintDeps } from "@mandate-dev/compiler";
 import { runWiden } from "./commands/widen.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
   openSession, dockerUpstream, type Session, type SessionOptions,
 } from "./session.js";
+export { runServe, type ServeArgs, type ServeDeps } from "./commands/serve.js";
+export {
+  runRun, MCP_CONFIG_PLACEHOLDER, type RunArgs, type RunDeps,
+} from "./commands/run.js";
+export { prepareMandate, type PrepareArgs, type Prepared } from "./prepare.js";
 export {
   githubResolver, resolveAuthority, USER_LEVELS,
   type AuthorityDeps, type AuthoritySource, type ResolveAuthority, type ResolvedAuthority,
@@ -18,6 +26,47 @@ export {
   authorityCut, derivedNotGrantedNotable, renderPermissionDiff, renderRejections,
   BASELINE_TOKEN, type AuthorityCut, type DiffOptions, type LayerCut,
 } from "./diff.js";
+
+
+/**
+ * The flags every command that reads a mandate takes.
+ *
+ * Declared once because `validate`, `serve` and `run` must name them
+ * identically: an operator who validated with one spelling and served with
+ * another would be enforcing a mandate they never approved.
+ */
+const mandateOptions = (c: Command): Command => c
+  .requiredOption("--ceiling <path>", "Cedar ceiling policy file")
+  .requiredOption("--schema <path>", "Cedar schema file")
+  .requiredOption(
+    "--ceiling-destinations <path>",
+    "the ceiling's allowed-destination list; an empty file permits no destination",
+  )
+  .requiredOption("--as <login>", "the requesting user's GitHub login")
+  .option(
+    "--repo <owner/name>",
+    "read --as's permission from GitHub; needs MANDATE_APP_ID, "
+    + "MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH",
+  )
+  .option(
+    "--level <level>",
+    `assert --as's permission level (${USER_LEVELS.join("|")}); labelled unverified in the `
+    + "output. Pass this or --repo, not both",
+  );
+
+/**
+ * The App credentials `serve` needs to mint. Absent is a clear refusal rather
+ * than a failure inside the first request.
+ */
+const appDeps = (): MintDeps | undefined => {
+  const appId = process.env["MANDATE_APP_ID"];
+  const installationId = process.env["MANDATE_INSTALLATION_ID"];
+  const privateKeyPath = process.env["MANDATE_APP_KEY_PATH"];
+  if (appId === undefined || installationId === undefined || privateKeyPath === undefined) {
+    return undefined;
+  }
+  return githubAppDeps({ appId, installationId: Number(installationId), privateKeyPath });
+};
 
 /** Only runs when this file is the entry point, so importing it is side-effect free. */
 export function main(argv: readonly string[]): void {
@@ -122,6 +171,63 @@ export function main(argv: readonly string[]): void {
       }, (s) => { console.log(s); });
       console.log(resolved.provenance);
       process.exitCode = code;
+    });
+
+  mandateOptions(
+    program
+      .command("serve")
+      .description("serve an enforced MCP server for one mandate (what an agent spawns)")
+      .requiredOption("--mandate <file>", "the validated mandate YAML"),
+  )
+    .option("--trace <path>", "write the action graph here when the session ends (R8)")
+    .action(async (opts: {
+      mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
+      as: string; level?: string; repo?: string; trace?: string;
+    }) => {
+      // stdout is the JSON-RPC stream. Every diagnostic goes to stderr, or the
+      // agent sees a parse error instead of a tool list.
+      const log = (m: string): void => { process.stderr.write(`${m}\n`); };
+      const github = appDeps();
+      if (github === undefined) {
+        log(
+          "mandate serve needs GitHub App credentials to mint the agent's token. Set "
+          + "MANDATE_APP_ID, MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH.",
+        );
+        process.exitCode = 2;
+        return;
+      }
+      const resolve = githubResolver();
+      process.exitCode = await runServe({
+        file: opts.mandate, ceiling: opts.ceiling, schema: opts.schema,
+        destinations: opts.ceilingDestinations, as: opts.as,
+        ...(opts.level === undefined ? {} : { level: opts.level }),
+        ...(opts.repo === undefined ? {} : { repo: opts.repo }),
+        ...(opts.trace === undefined ? {} : { trace: opts.trace }),
+      }, log, { github, ...(resolve === undefined ? {} : { resolve }) });
+    });
+
+  mandateOptions(
+    program
+      .command("run")
+      .description("validate a mandate, then launch an agent that can only reach GitHub through it")
+      .requiredOption("--mandate <file>", "the mandate YAML")
+      .argument("[agent...]", `the agent command, after --. Use ${MCP_CONFIG_PLACEHOLDER} where it wants the MCP config path`),
+  )
+    .option("--trace <path>", "write the action graph here when the session ends (R8)")
+    .option("--diff", "print the permission diff before launching")
+    .action(async (agent: string[], opts: {
+      mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
+      as: string; level?: string; repo?: string; trace?: string; diff?: boolean;
+    }) => {
+      const resolve = githubResolver();
+      process.exitCode = await runRun({
+        file: opts.mandate, ceiling: opts.ceiling, schema: opts.schema,
+        destinations: opts.ceilingDestinations, as: opts.as, agent,
+        ...(opts.level === undefined ? {} : { level: opts.level }),
+        ...(opts.repo === undefined ? {} : { repo: opts.repo }),
+        ...(opts.trace === undefined ? {} : { trace: opts.trace }),
+        ...(opts.diff === undefined ? {} : { diff: opts.diff }),
+      }, (m) => { console.log(m); }, resolve === undefined ? {} : { resolve });
     });
 
   program.parse(argv, { from: "user" });
