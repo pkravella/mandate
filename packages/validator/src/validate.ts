@@ -5,6 +5,7 @@ import {
   type ProposedMandate, type ValidatedMandate,
 } from "@mandate-dev/schema";
 import { globMatches, globSetContains } from "./glob/contains.js";
+import { charge, workBudget, type WorkBudget } from "./glob/budget.js";
 import { GlobParseError } from "./glob/parse.js";
 import { cedarAllows, rulesFor, type Ceiling, type CeilingRule } from "./ceiling.js";
 import { runLints } from "./lints.js";
@@ -38,10 +39,24 @@ const UNCONSTRAINED: readonly string[] = ["**"];
 
 export function validate(
   proposed: ProposedMandate,
-  ctx: { readonly ceiling: Ceiling; readonly authority: UserAuthority },
+  ctx: {
+    readonly ceiling: Ceiling;
+    readonly authority: UserAuthority;
+    /**
+     * The work allowance for this call. Supplied only by tests, which need to
+     * read what a mandate actually spent in order to calibrate the default and
+     * to assert that a legitimate mandate keeps its headroom. Production
+     * callers omit it and get `workBudget()`.
+     */
+     readonly budget?: WorkBudget;
+  },
 ): ValidationResult {
   const rejections: Rejection[] = [];
   const grantProofs: GrantProof[] = [];
+  // One allowance for the whole mandate. Every containment decision and every
+  // Cedar witness draws on it, so a mandate cannot buy unbounded work by
+  // spreading it across grants that each stay under the per-automaton cap.
+  const budget = ctx.budget ?? workBudget();
 
   for (const [i, grant] of proposed.grants.entries()) {
     // ---- check 1: the requester's own authority on the repository --------
@@ -77,7 +92,7 @@ export function validate(
       continue;
     }
 
-    const outcome = containedByAny(grant, candidates);
+    const outcome = containedByAny(grant, candidates, budget);
     if (outcome.kind === "undecidable") {
       rejections.push({ code: "undecidable", grantIndex: i, message: outcome.message });
       continue;
@@ -96,7 +111,16 @@ export function validate(
     }
 
     // ---- layer 2: the independent Cedar cross-check ----------------------
-    const cross = crossCheck(ctx.ceiling, grant, outcome.rule);
+    let cross: CrossCheck;
+    try {
+      cross = crossCheck(ctx.ceiling, grant, outcome.rule, budget);
+    } catch (e) {
+      if (e instanceof GlobParseError) {
+        rejections.push({ code: "undecidable", grantIndex: i, message: e.message });
+        continue;
+      }
+      throw e;
+    }
     if (!cross.agrees) {
       rejections.push({
         code: "layer-disagreement",
@@ -151,7 +175,7 @@ export function validate(
   // R4's lints run last: they catch a mandate that is technically inside a
   // loose ceiling but obviously wrong. A lint error is a rejection, not a
   // warning -- the point of the ceiling is that it may be loose and still safe.
-  for (const finding of runLints(proposed)) {
+  for (const finding of runLints(proposed, budget)) {
     if (finding.severity !== "error") continue;
     rejections.push({
       code: "lint",
@@ -233,7 +257,9 @@ function facetsFor(grant: Grant, rule: CeilingRule): FacetCheck[] {
 }
 
 /** A grant is contained if ANY single ceiling clause contains all of its facets. */
-function containedByAny(grant: Grant, rules: readonly CeilingRule[]): Outcome {
+function containedByAny(
+  grant: Grant, rules: readonly CeilingRule[], budget?: WorkBudget,
+): Outcome {
   let best: { readonly clause: string; readonly counterexample: string } | undefined;
 
   for (const rule of rules) {
@@ -243,6 +269,7 @@ function containedByAny(grant: Grant, rules: readonly CeilingRule[]): Outcome {
         const verdict = globSetContains(facet.outer, facet.inner, {
           ...(facet.innerMinus !== undefined ? { innerMinus: facet.innerMinus } : {}),
           ...(facet.outerMinus !== undefined ? { outerMinus: facet.outerMinus } : {}),
+          ...(budget !== undefined ? { budget } : {}),
         });
         if (!verdict.ok) {
           failure = { counterexample: verdict.counterexample };
@@ -282,15 +309,24 @@ type CrossCheck =
  * failure. The direction this catches is extraction that is too WIDE, which is
  * the direction that over-grants.
  */
-function crossCheck(ceiling: Ceiling, grant: Grant, rule: CeilingRule): CrossCheck {
-  const repos = witnesses(grant.resources);
-  const branches = grant.branches !== undefined ? witnesses(grant.branches) : [undefined];
-  const paths = grant.paths !== undefined ? witnesses(grant.paths, grant.denyPaths) : [undefined];
+function crossCheck(
+  ceiling: Ceiling, grant: Grant, rule: CeilingRule, budget?: WorkBudget,
+): CrossCheck {
+  const repos = witnesses(grant.resources, [], budget);
+  const branches = grant.branches !== undefined
+    ? witnesses(grant.branches, [], budget) : [undefined];
+  const paths = grant.paths !== undefined
+    ? witnesses(grant.paths, grant.denyPaths, budget) : [undefined];
   const permitted = new Set<string>();
 
   for (const repo of repos) {
     for (const branch of branches) {
       for (const path of paths) {
+        // A Cedar authorisation costs a unit too. The witness set is the product
+        // of three facets, so a mandate with many patterns in each can cost far
+        // more here than in the automata -- and this loop is where the 698 KB
+        // mandate actually spent its five minutes.
+        charge(budget, 1);
         const decision = cedarAllows(ceiling, {
           action: grant.action,
           repo,
@@ -319,12 +355,14 @@ function crossCheck(ceiling: Ceiling, grant: Grant, rule: CeilingRule): CrossChe
  * being used: a candidate that does not actually match would make Cedar deny
  * it for the right reason and be misreported as layer disagreement.
  */
-function witnesses(patterns: readonly string[], minus: readonly string[] = []): string[] {
+function witnesses(
+  patterns: readonly string[], minus: readonly string[] = [], budget?: WorkBudget,
+): string[] {
   const out: string[] = [];
   for (const p of patterns) {
     const candidate = p.replaceAll("**/", "w/").replaceAll("**", "w/w").replaceAll("*", "w");
-    if (!globMatches([p], candidate)) continue;
-    if (minus.length > 0 && globMatches(minus, candidate)) continue;
+    if (!globMatches([p], candidate, budget)) continue;
+    if (minus.length > 0 && globMatches(minus, candidate, budget)) continue;
     out.push(candidate);
   }
   return out.length > 0 ? out : ["w"];

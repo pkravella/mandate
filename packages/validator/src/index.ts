@@ -1,4 +1,7 @@
 export { globSetContains, globMatches, type Containment, type GlobSetOptions } from "./glob/contains.js";
+export {
+  workBudget, WorkBudgetError, DEFAULT_WORK_UNITS, type WorkBudget,
+} from "./glob/budget.js";
 export { GlobParseError, parseGlob, type Token } from "./glob/parse.js";
 export {
   loadCeiling, rulesFor, cedarAllows, CeilingProfileError,

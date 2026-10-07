@@ -1,0 +1,29 @@
+{
+  "note": "The handoff's verified rule: a destination with a path does not cover a sibling host, and gist.github.com is not github.com/acme/api.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/42-x",
+    "message": "m",
+    "content": "x",
+    "path": "src/a.ts",
+    "url": "https://gist.github.com/acme/api"
+  }
+}

@@ -56,6 +56,15 @@ export function destinationWithin(destination: string, allow: readonly string[])
     // A bare host entry also covers its subdomains, at any depth. An entry
     // naming a path does not: `github.com/acme` must not permit
     // `gist.github.com`, and the egress policy compiles the same distinction.
+    //
+    // The guard is redundant and kept deliberately. `host` is taken before the
+    // first `/`, so it never contains one, while a path-bearing `entry` always
+    // does — which makes both comparisons below unsatisfiable for such an entry
+    // whether the guard is there or not. Verified by exhausting the shapes; a
+    // mutation removing it survives, and that is recorded rather than worked
+    // around. It stays because it states the rule at the point the rule applies,
+    // and because it becomes load-bearing the moment `host` is extracted
+    // differently.
     if (!entry.includes("/")) {
       const host = d.split("/")[0] ?? "";
       return host === entry || host.endsWith(`.${entry}`);

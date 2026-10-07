@@ -1,4 +1,5 @@
 import { GlobParseError, parseGlob } from "./parse.js";
+import { charge, type WorkBudget } from "./budget.js";
 import { epsilonClosure, nfaFromGlobs, predMatches, type Nfa } from "./nfa.js";
 
 /**
@@ -42,7 +43,9 @@ export interface Dfa {
 const DEAD = 0;
 
 /** Subset construction. The result is total: state 0 is the dead state. */
-export function dfaFromGlobs(globs: readonly string[], alphabet: readonly string[]): Dfa {
+export function dfaFromGlobs(
+  globs: readonly string[], alphabet: readonly string[], budget?: WorkBudget,
+): Dfa {
   const nfa: Nfa = nfaFromGlobs(globs);
   const delta = new Map<number, Map<string, number>>();
   const accepting = new Set<number>();
@@ -73,6 +76,18 @@ export function dfaFromGlobs(globs: readonly string[], alphabet: readonly string
     const [id, set] = queue.shift()!;
     if ([...set].some((s) => nfa.accepting.has(s))) accepting.add(id);
     const row = new Map<string, number>();
+    // The unit is the INNER loop, not the state and not the transition.
+    // Computing this row walks every character of the alphabet, and for each one
+    // every NFA state in this subset and its outgoing edges -- so the cost of a
+    // row is alphabet x |set|, and a star-dense pattern is expensive precisely
+    // because its subsets are large.
+    //
+    // Measured, which is the only reason this is the unit: charging per
+    // transition (alphabet alone) made `pattern-flood` cost 380_160 units in
+    // 2_513 ms while a legitimate 19-grant monorepo mandate cost 738_040 units
+    // in 427 ms. Units ran opposite to time, so no threshold separated an
+    // attack from real work. Multiplying by |set| is what makes them agree.
+    charge(budget, alphabet.length * set.size);
     for (const ch of alphabet) {
       const targets = new Set<number>();
       for (const s of set) {
@@ -101,7 +116,7 @@ function step(d: Dfa, s: number, ch: string): number {
 }
 
 /** L(a) \ L(b). Both must share an alphabet. */
-export function difference(a: Dfa, b: Dfa): Dfa {
+export function difference(a: Dfa, b: Dfa, budget?: WorkBudget): Dfa {
   const alphabet = a.alphabet;
   const delta = new Map<number, Map<string, number>>();
   const accepting = new Set<number>();
@@ -125,6 +140,7 @@ export function difference(a: Dfa, b: Dfa): Dfa {
     // In the difference, a string is accepted when `a` accepts it and `b` does not.
     if (a.accepting.has(x) && !b.accepting.has(y)) accepting.add(id);
     const row = new Map<string, number>();
+    charge(budget, alphabet.length);
     for (const ch of alphabet) {
       const nx = step(a, x, ch);
       const ny = step(b, y, ch);
@@ -150,7 +166,7 @@ export type Containment =
  * that accepts in `inner` and rejects in `outer`. Breadth-first with parent
  * pointers, so the first such state yields a shortest distinguishing string.
  */
-export function isSubsetOf(inner: Dfa, outer: Dfa): Containment {
+export function isSubsetOf(inner: Dfa, outer: Dfa, budget?: WorkBudget): Containment {
   const alphabet = inner.alphabet;
   const parents = new Map<string, { readonly prev: string; readonly ch: string }>();
   const startKey = `${inner.start}|${outer.start}`;
@@ -175,6 +191,7 @@ export function isSubsetOf(inner: Dfa, outer: Dfa): Containment {
     if (inner.accepting.has(x) && !outer.accepting.has(y)) {
       return { ok: false, counterexample: reconstruct(key) };
     }
+    charge(budget, alphabet.length);
     for (const ch of alphabet) {
       const nx = step(inner, x, ch);
       const ny = step(outer, y, ch);

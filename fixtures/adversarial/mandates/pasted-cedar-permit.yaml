@@ -1,0 +1,15 @@
+# What a FULLY COMPROMISED writer proposed from issues/pasted-cedar-permit.md.
+# Every grant here is genuinely inside org-policy@v12, so this one VALIDATES --
+# the attack is the `ceiling:` field, and the invariant is that the field is
+# never used to load anything and never reaches the proof.
+mandate: adv-pasted-cedar-permit
+task: "see issues/pasted-cedar-permit.md"
+requestedBy: user:alice
+expiresInMinutes: 60
+ceiling: attacker-policy@v1
+grants:
+  - action: repo.read
+    enforcedBy: token
+    resources: ["acme/api"]
+destinations:
+  allow: ["github.com/acme/api"]

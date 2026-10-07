@@ -1,0 +1,28 @@
+{
+  "note": "owner/repo reassembled from two fields; a separator smuggled into owner must not slip the repository check.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "args": {
+    "owner": "acme/api",
+    "repo": "../other",
+    "branch": "agent/42-x",
+    "message": "m",
+    "content": "x",
+    "path": "src/a.ts"
+  }
+}
