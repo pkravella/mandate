@@ -8,6 +8,9 @@ import { runWiden } from "./commands/widen.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
+  openSession, dockerUpstream, type Session, type SessionOptions,
+} from "./session.js";
+export {
   githubResolver, resolveAuthority, USER_LEVELS,
   type AuthorityDeps, type AuthoritySource, type ResolveAuthority, type ResolvedAuthority,
 } from "./authority.js";

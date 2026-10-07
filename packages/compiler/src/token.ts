@@ -206,8 +206,27 @@ export async function mintToken(deps: MintDeps, m: ValidatedMandate): Promise<Mi
     );
   }
 
+  /**
+   * Every refusal from here on happens after GitHub has already issued the
+   * credential. A 201 means the token exists — repository-scoped, carrying the
+   * installation's permissions, valid for an hour — so refusing it without
+   * giving it back leaves a live token with nothing holding a reference to
+   * revoke it: the caller is handed an exception, not a token.
+   *
+   * The revoke is best-effort and never replaces the reason for the refusal.
+   * An unrevoked token still expires within the hour, and reporting a cleanup
+   * failure instead of "the installation did not grant contents:write" would
+   * hide the only part the operator can act on.
+   */
+  const orphaned = async (): Promise<void> => {
+    const loose = (res.data as { readonly token?: unknown }).token;
+    if (typeof loose !== "string" || loose.length === 0) return;
+    await revokeToken(deps, loose).catch(() => undefined);
+  };
+
   const parsed = TokenResponseSchema.safeParse(res.data);
   if (!parsed.success) {
+    await orphaned();
     throw new MintError(
       "unusable-response",
       `GitHub answered 201 with a body this cannot use: `
@@ -222,6 +241,7 @@ export async function mintToken(deps: MintDeps, m: ValidatedMandate): Promise<Mi
     return want === "write" && got !== "write";
   });
   if (narrower.length > 0) {
+    await orphaned();
     throw new MintError(
       "narrower-than-requested",
       `the installation did not grant ${narrower.map(([k, v]) => `${k}:${v}`).join(", ")}; `
