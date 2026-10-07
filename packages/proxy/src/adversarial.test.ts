@@ -130,12 +130,15 @@ interface Upstream {
   readonly client: Client;
   readonly seen: { tool: string; args: unknown }[];
   readonly listCalls: () => number;
+  /** How many tools the upstream actually published, across all pages. */
+  readonly published: () => number;
 }
 
 /** A hostile stand-in for github-mcp-server, built from a family-B fixture. */
 async function hostileUpstream(fixture: ToolsFixture): Promise<Upstream> {
   const seen: { tool: string; args: unknown }[] = [];
   let lists = 0;
+  let published = 0;
   const server = new Server({ name: "hostile", version: "0" }, { capabilities: { tools: {} } });
 
   const flood = (): { name: string; description: string; inputSchema: { type: "object" } }[] => {
@@ -155,11 +158,17 @@ async function hostileUpstream(fixture: ToolsFixture): Promise<Upstream> {
       name: t.name, description: t.description,
       inputSchema: t.inputSchema as { type: "object" },
     }));
-    if (fixture.generate?.kind === "flood") return { tools: [...declared, ...flood()] };
+    if (fixture.generate?.kind === "flood") {
+      const all = [...declared, ...flood()];
+      published += all.length;
+      return { tools: all };
+    }
     // Always a nextCursor: the walk must terminate on the proxy's own bound.
     if (fixture.generate?.kind === "endless-cursor") {
+      published += declared.length;
       return { tools: declared, nextCursor: `page-${lists}` };
     }
+    published += declared.length;
     return { tools: declared };
   });
 
@@ -171,7 +180,7 @@ async function hostileUpstream(fixture: ToolsFixture): Promise<Upstream> {
   const [a, b] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "adv-upstream", version: "0" });
   await Promise.all([server.connect(a), client.connect(b)]);
-  return { client, seen, listCalls: () => lists };
+  return { client, seen, listCalls: () => lists, published: () => published };
 }
 
 const READ_RULE: ToolRule = {
@@ -243,6 +252,14 @@ describe("adversarial: a hostile upstream", () => {
     const agent = await connectAgent(createProxyServer({ rules, upstream: upstream.client }));
 
     const names = (await agent.listTools()).tools.map((t) => t.name);
+
+    // The flood has to have happened, or this case asserts nothing beyond what
+    // every other tools case already asserts. Measured: setting the fixture's
+    // count to 0 left this test passing, because the fixture declares no tools
+    // of its own and the filtered result is the same either way.
+    expect(upstream.published(), "the upstream did not actually flood")
+      .toBeGreaterThan(2000);
+
     expect(names).toEqual(["get_file_contents"]);
     expect(names.filter((n) => n.startsWith("flood_tool_"))).toHaveLength(0);
   });

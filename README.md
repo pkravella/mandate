@@ -156,6 +156,31 @@ There is also an [Action](action.yml) and an
 `permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
 because a second credential is authority no mandate bounds.
 
+The Action takes the agent command **one argument per line**:
+
+```yaml
+agent: |
+  claude
+  --mcp-config
+  {mcpConfig}
+  -p
+  Fix issue 42 and open a pull request.
+```
+
+That shape is deliberate. A single string would have to be word-split by the
+shell, and a value reaching a shell from a workflow input is the classic
+injection route — the first version of this Action interpolated every input
+into its script and was a remote shell for anyone who could set one. One
+element per line means spaces inside a line are kept and nothing in a line is
+ever interpreted. It is enforced by a test that reads `action.yml` and fails on
+an interpolation inside a `run:` block.
+
+Note what that does **not** protect: an issue title placed in the prompt is
+still attacker-controlled text going to the model. Mandate's answer to that is
+the mandate — an injected agent is bounded by what was granted — but the two
+are different problems. [docs/threat-model.md](docs/threat-model.md) §5 says
+what to do about it.
+
 ## Documentation
 
 | | |
@@ -354,10 +379,10 @@ pnpm test
 pnpm build
 ```
 
-Requires Node 22 or newer. **695 tests run offline with no credentials**, and
+Requires Node 22 or newer. **830 tests run offline with no credentials**, and
 that is what CI runs.
 
-Twenty-three more are gated, each behind its own variable, because they spend
+Twenty-five more are gated, each behind its own variable, because they spend
 money, mint real credentials, or write to a real repository. CI never runs any
 of them and needs no secrets.
 

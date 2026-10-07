@@ -212,3 +212,20 @@ the tool schemas actually sent to the model and fails if one appears.
 6. **Keep the App's permission set minimal.** The token can never be narrower
    than the installation; `actions` is deliberately absent from the
    development App, which is what makes the 422 path a test fixture.
+7. **Never splice untrusted text into the agent's prompt.** An issue title or
+   body passed through the Action's `agent` input reaches the model as
+   instructions. Mandate bounds what an injected agent can *do*, which is the
+   whole premise — but that is a different guarantee from the text not being
+   injected in the first place, and conflating them is how an operator ends up
+   surprised. Pass identifiers, and let the agent fetch the content through its
+   granted read tools, where the fetch is recorded in the action graph.
+
+   Separately: the Action takes `agent` as one argument per line and never lets
+   a line reach a shell. That is a *shell* injection defence, not a prompt one.
+   The first version of the Action interpolated every input into its script with
+   `${{ }}`, which GitHub substitutes into the script text before bash sees it —
+   so a value containing a semicolon ran as a command, and the example workflow
+   fed issue text into exactly that path. A packaging layer whose purpose is
+   bounding an agent's authority was a remote shell for anyone who could file an
+   issue. A test now reads `action.yml` and fails on an interpolation inside a
+   `run:` block.

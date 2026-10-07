@@ -1,19 +1,19 @@
-# Example: run an agent under a mandate, triggered by a comment on an issue.
+# Example: run an agent under a mandate.
 #
-# This workflow is an example and is not enabled for this repository — it has no
-# `on:` trigger that fires here, because running an agent against a real
-# repository on a comment is a decision each organization makes for itself.
-# Copy it, set the trigger, and read the two notes below before you do.
+# This workflow is an example and is deliberately NOT wired to a trigger that
+# fires here — running an agent against a real repository is a decision each
+# organization makes for itself. Copy it, set the trigger, and read the three
+# notes below before you do.
 name: Mandate (example)
 
 on:
   workflow_dispatch:
     inputs:
-      task:
-        description: The task the mandate was written for.
+      issue:
+        description: The issue number to fix.
         required: true
 
-# THE IMPORTANT LINE.
+# NOTE 1 — THE IMPORTANT LINE.
 #
 # The agent's authority must be the minted token and nothing else. An empty
 # permissions block means GITHUB_TOKEN is not issued for this job at all, so
@@ -37,14 +37,28 @@ jobs:
 
       - run: corepack enable && pnpm install --frozen-lockfile && pnpm build
 
-      # NOTE ON WHO MAY ASK.
+      # NOTE 2 — NEVER INTERPOLATE UNTRUSTED TEXT INTO `agent`.
+      #
+      # `agent` is one argv element per line and the action never lets the shell
+      # interpret a line, so a semicolon or a backtick in a line is an argument.
+      # That protects the shell. It does NOT make the content safe as a *prompt*:
+      # an issue title or body placed here is attacker-controlled text going
+      # straight into the model's instructions.
+      #
+      # Mandate's answer to that is the mandate itself — an injected agent is
+      # bounded by what was granted, which is the entire premise — but do not
+      # confuse the two. If you pass issue text to the agent, pass it as data
+      # the agent fetches through its granted read tools, not as instructions
+      # spliced into the prompt. This example passes only a number.
+      #
+      # NOTE 3 — WHO MAY ASK.
       #
       # `--as` names the requester whose authority bounds the mandate, and
-      # `--repo` makes Mandate read that person's real permission from GitHub.
-      # On a comment trigger, the person who commented is NOT automatically the
-      # person entitled to ask: check that yourself before this step, because
-      # the PRD's R2 is "task text and context arrive from an authorized
-      # source" and a drive-by comment is not one.
+      # `repo` makes Mandate read that person's real permission from GitHub. On
+      # a comment or issue trigger the person who wrote it is NOT automatically
+      # entitled to ask: check that yourself before this step. R2 is that task
+      # text and context arrive from an authorized source, and a drive-by
+      # comment is not one.
       - uses: ./
         with:
           mandate: mandate.yaml
@@ -53,7 +67,12 @@ jobs:
           ceiling-destinations: fixtures/ceilings/org-policy-v12.destinations
           as: ${{ github.actor }}
           repo: ${{ github.repository }}
-          agent: claude --mcp-config {mcpConfig} -p "${{ inputs.task }}"
+          agent: |
+            claude
+            --mcp-config
+            {mcpConfig}
+            -p
+            Fix issue ${{ inputs.issue }} and open a pull request.
           app-id: ${{ secrets.MANDATE_APP_ID }}
           installation-id: ${{ secrets.MANDATE_INSTALLATION_ID }}
           private-key: ${{ secrets.MANDATE_APP_PRIVATE_KEY }}
