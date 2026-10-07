@@ -24,9 +24,14 @@ coverage/
 **/secrets.json
 **/installation-token*
 
-# Runtime artifacts. Action-graph traces record repository paths and output
-# digests, so they are generated locally and never committed. Test fixtures
-# under fixtures/ are checked in deliberately and are not matched here.
+# Runtime artifacts.
+#
+# `bench/out/` is scratch output from a local run. The benchmark's traces under
+# `fixtures/bench/traces/` ARE committed, deliberately: an action graph records
+# operations, paths and output digests but never output contents, and the
+# ground-truth traces are what the replay evaluator scores mandates against —
+# committing them makes that scoring reproducible offline and free, instead of
+# a $3 re-record every time someone wants to check a number.
 bench/out/
 .mandate/
 

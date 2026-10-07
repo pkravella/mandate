@@ -88,16 +88,35 @@ written, passed, and turned out to assert nothing until that was done.
 
 ### Tests that cost money
 
-The offline suite needs no credentials and is what CI runs. A handful of tests
-are gated behind `MANDATE_LIVE=1` **and** the relevant credentials, because they
-call the Anthropic API, mint real GitHub App tokens, or start the real
-`github-mcp-server` in Docker:
+The offline suite needs no credentials and is what CI runs. The gated tests
+need an environment variable **and** the relevant credentials, because they call
+the Anthropic API, mint real GitHub App tokens, start the real
+`github-mcp-server` in Docker, or write to a real repository:
 
 ```bash
-MANDATE_LIVE=1 pnpm --filter @mandate-dev/writer test     # ~$0.03
-MANDATE_LIVE=1 pnpm --filter @mandate-dev/compiler test    # free, mints tokens
-MANDATE_LIVE=1 pnpm --filter @mandate-dev/cli test         # ~$0.25, writes a PR
+MANDATE_LIVE=1 pnpm --filter @mandate-dev/writer test      # ~$0.03
+MANDATE_LIVE=1 pnpm --filter @mandate-dev/compiler test     # free, mints tokens
+MANDATE_LIVE=1 pnpm --filter @mandate-dev/cli test          # ~$0.30, writes a PR
+MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test   # free, needs Docker
 ```
+
+The benchmark's gates are separate from each other on purpose, and each one is
+its own variable rather than a shared `MANDATE_BENCH`:
+
+```bash
+MANDATE_SEED=1 pnpm --filter @mandate-dev/bench test \
+  src/seed.live                 # free; writes the default branch, opens issues
+MANDATE_GROUND_TRUTH=1 pnpm --filter @mandate-dev/bench test \
+  src/unconstrained             # ~$3; OVERWRITES the committed ground truth
+MANDATE_BENCH=1 pnpm --filter @mandate-dev/bench test \
+  src/bench.live                # ~$1.15; the mandated sweep and the report
+```
+
+**Why those three are not one gate.** They were briefly two, and the
+unconstrained pass shared `MANDATE_BENCH` with the mandated sweep — so running
+the bench package to get a sweep also re-recorded the ground-truth traces every
+later score is measured against, and spent an extra $3 doing it. A gate that
+has a side effect nobody asked for is a gate that is too wide.
 
 Two gates, not one, so `pnpm test` can never bill anyone by accident. Keep it
 that way: a live test that runs on a bare `pnpm test` is a defect.
@@ -105,7 +124,14 @@ that way: a live test that runs on a bare `pnpm test` is a defect.
 They have earned their keep. Every live run so far has found something the
 offline suite could not see — two catalog tool names that do not exist, a tool
 schema the API rejects outright, a writer that refused its own first mandate,
-and two false pauses that blocked an agent's very first call.
+two false pauses that blocked an agent's very first call, a generated squid
+config that squid refused to load, and a benchmark whose two passes were asked
+different questions.
+
+**The benchmark's budget stop is predictive, and should stay that way.** Both
+sweeps refuse to *start* a task that would take the run past the budget, rather
+than noticing afterwards. A run that discovers the overspend once it has
+happened has overspent.
 
 If you add a GitHub operation to the catalog, you must also give it a risk
 class, the GitHub App permission it needs, its minimum user permission level,

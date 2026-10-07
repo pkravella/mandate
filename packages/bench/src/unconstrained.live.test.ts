@@ -8,6 +8,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { githubAppDeps } from "@mandate-dev/compiler";
 import { Recorder, parseJsonl } from "@mandate-dev/proxy";
 import { taskPrompt } from "./prompt.js";
+import { seededIssues } from "./seed.js";
 import { loadCorpus } from "./tasks.js";
 
 /**
@@ -25,12 +26,21 @@ import { loadCorpus } from "./tasks.js";
  * Nodes carry no `action`, because no rule attributed the call. That is what
  * `ActionNode.action` being optional is for, and the scorer keys on `tool`.
  *
- * Spends money. Gated on its own variable, with a hard budget stop:
+ * Gated on `MANDATE_GROUND_TRUTH`, **not** on `MANDATE_BENCH`. Two reasons, and
+ * both were nearly paid for: this pass costs 2.4x the mandated one, because the
+ * agent is shown all 46 of the server's tools rather than the handful a mandate
+ * grants; and it **overwrites the committed ground-truth traces**, which every
+ * later score is measured against. Sharing a gate with the mandated sweep meant
+ * running the bench package re-recorded ground truth and spent an extra ~$3 as a
+ * side effect of asking for something else.
  *
- *   MANDATE_BENCH=1 pnpm --filter @mandate-dev/bench exec vitest run src/unconstrained
+ * Re-record only when the corpus or the task prompt changes, because a trace
+ * recorded against a different question is not ground truth for this one.
+ *
+ *   MANDATE_GROUND_TRUTH=1 pnpm --filter @mandate-dev/bench exec vitest run src/unconstrained
  */
 const env = (n: string): string | undefined => process.env[n];
-const enabled = env("MANDATE_BENCH") === "1"
+const enabled = env("MANDATE_GROUND_TRUTH") === "1"
   && env("ANTHROPIC_API_KEY") !== undefined
   && env("MANDATE_APP_ID") !== undefined
   && env("MANDATE_INSTALLATION_ID") !== undefined
@@ -40,7 +50,7 @@ const CORPUS = fileURLToPath(new URL("../../../fixtures/bench", import.meta.url)
 const TRACES = join(CORPUS, "traces");
 
 /** Dollars this run may spend in total. Measured per task at roughly $0.63. */
-const BUDGET = Number(env("MANDATE_BENCH_BUDGET") ?? "5.00");
+const BUDGET = Number(env("MANDATE_GROUND_TRUTH_BUDGET") ?? "5.00");
 /** Charged against the budget before a task starts, so the stop is predictive. */
 const ESTIMATE_PER_TASK = 0.75;
 
@@ -64,7 +74,7 @@ interface TaskRun {
 describe.skipIf(!enabled)("the unconstrained pass", () => {
   it("records a ground-truth trace for every task the budget allows", async () => {
     const corpus = loadCorpus(CORPUS);
-    const [owner = "", name = ""] = corpus.repo.split("/");
+    const name = corpus.repo.split("/")[1] ?? "";
     const deps = githubAppDeps({
       appId: env("MANDATE_APP_ID") ?? "",
       installationId: Number(env("MANDATE_INSTALLATION_ID") ?? "0"),
@@ -86,19 +96,9 @@ describe.skipIf(!enabled)("the unconstrained pass", () => {
     expect(tokenRes.status, JSON.stringify(tokenRes.data)).toBe(201);
     const token = String((tokenRes.data as { token?: unknown }).token);
 
-    const issuesRes = await deps.asInstallation(
-      "GET /repos/{owner}/{repo}/issues", token,
-      { owner, repo: name, state: "all", per_page: 100 },
-    );
-    const issueFor = new Map<string, number>();
-    for (const raw of Array.isArray(issuesRes.data) ? issuesRes.data : []) {
-      const issue = raw as { number?: unknown; body?: unknown };
-      if (typeof issue.body !== "string" || typeof issue.number !== "number") continue;
-      const m = /<!-- mandate-bench:([a-z0-9-]+) -->/.exec(issue.body);
-      if (m?.[1] !== undefined) issueFor.set(m[1], issue.number);
-    }
+    const issueFor = await seededIssues(deps, token, corpus.repo);
     for (const task of corpus.tasks) {
-      expect(issueFor.get(task.id), `${task.id} has no seeded issue`).toBeDefined();
+      expect(issueFor[task.id], `${task.id} has no seeded issue`).toBeDefined();
     }
 
     const client = new Anthropic();
@@ -134,7 +134,7 @@ describe.skipIf(!enabled)("the unconstrained pass", () => {
         const recorder = new Recorder({ mode: "unconstrained" });
         const messages: Anthropic.MessageParam[] = [{
           role: "user",
-          content: taskPrompt(task, corpus.repo, issueFor.get(task.id) ?? 0),
+          content: taskPrompt(task, corpus.repo, issueFor[task.id] ?? 0),
         }];
 
         let turns = 0;

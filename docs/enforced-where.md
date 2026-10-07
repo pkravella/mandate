@@ -133,6 +133,39 @@ decorative. The enforcement report names the facet, the tool and the grant
 responsible.
 A single number would be marketing rather than measurement.
 
+## Filtering is not refusing, and it changes what a denial looks like
+
+The proxy enforces in two places, and they fail differently.
+
+`tools/list` is **filtered**: the agent is only ever shown the tools the
+mandate's operations reach. `tools/call` is **checked**: a call that gets past
+the tool gate is decided against the rule's facets and refused with a clause.
+
+Filtering is the half that does most of the work — an agent that is never shown
+`merge_pull_request` mostly does not try to call it. But it means an
+under-granted operation produces **no denial at all**, because the agent never
+attempts a tool it cannot see. Measured across the benchmark's six mandated
+runs: the proxy issued **zero denials** while the replay evaluator predicted
+**seven under-granted calls**.
+
+So R10's requirement that every pause names the clause it hit is satisfied, and
+is *vacuous where there is no pause*. An under-grant surfaces instead as a
+silent workaround or a silent failure:
+
+- the agent finds another route and finishes anyway — five of the six benchmark
+  tasks completed despite a blocked `issue_read`, because the task text already
+  carried what the call would have fetched; or
+- the agent has no route and stops without an error. The benchmark's triage
+  task is the clean case: seven allowed reads, zero denials, and a failure,
+  because the mandate granted no `issue.comment` and the agent had no way to
+  report what it had found.
+
+**The consequence for anyone reading a run.** A false-pause count of zero is not
+evidence a mandate was the right size; it may only mean nothing was refused out
+loud. Under-grant, scored by replaying the run against a trace of the same task
+run unconstrained, is the measurement that sees this — and it needs that trace,
+which is why `fixtures/bench/traces/` is committed.
+
 ## Widening, and what cannot be widened
 
 R10 requires every pause to name the clause it hit and to offer a reviewable

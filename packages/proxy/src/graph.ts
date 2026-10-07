@@ -15,7 +15,16 @@ import type { Decision } from "./proxy.js";
  * it must stay that way.
  */
 export interface ActionNode {
-  /** 1-based, strictly increasing, in the order the proxy decided. */
+  /**
+   * 1-based and strictly increasing, in the order nodes were **completed**.
+   *
+   * Not the order the proxy decided: an allowed call's node is written when its
+   * upstream result arrives, so two calls in flight at once are numbered by
+   * which finished first. Reserving the number at decision time instead would
+   * make an abandoned handle leave a gap, and `parseJsonl` rejects a gap — a
+   * trace that will not load is worse than one ordered by completion. Every
+   * agent here calls tools one at a time, so the two orders coincide today.
+   */
   readonly seq: number;
   /** When the call reached the proxy, not when it finished. */
   readonly at: string;

@@ -60,20 +60,41 @@ async function getFile(
  * thing most likely to be edited by hand, and matching on it would create a
  * duplicate issue the moment someone reworded one.
  */
+/**
+ * Every issue in the repository, following pagination.
+ *
+ * One page of 100 is enough for six tasks and not for fifty — plus whatever
+ * issues the agents themselves opened. A marker on page two would be missed,
+ * the seeder would open a duplicate, and the task would point at whichever
+ * issue it found first. The failure is silent, so it is paged rather than
+ * capped.
+ */
+async function allIssues(
+  deps: MintDeps, token: string, repo: string,
+): Promise<readonly { number?: unknown; body?: unknown }[]> {
+  const [owner = "", name = ""] = repo.split("/");
+  const out: { number?: unknown; body?: unknown }[] = [];
+  // A repository with more issues than this is not a benchmark fixture.
+  for (let page = 1; page <= 20; page += 1) {
+    const res = await deps.asInstallation(
+      "GET /repos/{owner}/{repo}/issues", token,
+      { owner, repo: name, state: "all", per_page: 100, page },
+    );
+    if (res.status >= 300) {
+      throw new Error(`GET issues failed (${res.status}): ${JSON.stringify(res.data)}`);
+    }
+    const batch = Array.isArray(res.data) ? res.data : [];
+    out.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return out;
+}
+
 async function findIssue(
   deps: MintDeps, token: string, repo: string, taskId: string,
 ): Promise<number | undefined> {
-  const [owner = "", name = ""] = repo.split("/");
-  const res = await deps.asInstallation(
-    "GET /repos/{owner}/{repo}/issues", token,
-    { owner, repo: name, state: "all", per_page: 100 },
-  );
-  if (res.status >= 300) {
-    throw new Error(`GET issues failed (${res.status}): ${JSON.stringify(res.data)}`);
-  }
   const marker = taskMarker(taskId);
-  const issues = Array.isArray(res.data) ? res.data : [];
-  for (const raw of issues) {
+  for (const raw of await allIssues(deps, token, repo)) {
     const issue = raw as { number?: unknown; body?: unknown };
     if (typeof issue.body === "string" && issue.body.includes(marker)
       && typeof issue.number === "number") {
@@ -81,6 +102,20 @@ async function findIssue(
     }
   }
   return undefined;
+}
+
+/** The task each seeded issue belongs to, by its marker. */
+export async function seededIssues(
+  deps: MintDeps, token: string, repo: string,
+): Promise<Readonly<Record<string, number>>> {
+  const out: Record<string, number> = {};
+  for (const raw of await allIssues(deps, token, repo)) {
+    const issue = raw as { number?: unknown; body?: unknown };
+    if (typeof issue.body !== "string" || typeof issue.number !== "number") continue;
+    const m = /<!-- mandate-bench:([a-z0-9-]+) -->/.exec(issue.body);
+    if (m?.[1] !== undefined) out[m[1]] = issue.number;
+  }
+  return out;
 }
 
 export async function seedTask(
