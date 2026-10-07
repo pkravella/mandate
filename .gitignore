@@ -58,3 +58,5 @@ pnpm-debug.log*
 mandate-prd.md
 docs/superpowers/
 docs/handoff/
+# Scratch for the live agent stand-in (packages/cli/.live-agent)
+.live-agent/

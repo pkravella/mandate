@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -107,7 +107,25 @@ export async function runRun(
   log(prepared.provenance);
   if (args.diff === true) log(renderPermissionDiff(prepared.proposed, { color: false }));
 
+  /**
+   * The entry point the agent's config will name.
+   *
+   * `../index.js` is right in the shipped layout — `dist/commands/run.js` sits
+   * beside `dist/index.js` — and wrong anywhere that layout does not hold, such
+   * as a checkout that has not been built. Checked rather than assumed, because
+   * the failure otherwise surfaces as a MODULE_NOT_FOUND thrown inside the
+   * agent's MCP client, followed by "Connection closed": two errors, neither of
+   * which names the actual problem. Measured on the first live run.
+   */
   const self = deps.selfPath ?? fileURLToPath(new URL("../index.js", import.meta.url));
+  if (!existsSync(self)) {
+    log(
+      `Cannot find the mandate entry point at ${self}, so the agent would be given a `
+      + "config naming a file that does not exist. Run `pnpm build`, or pass the built "
+      + "entry point explicitly.",
+    );
+    return 2;
+  }
   const dir = mkdtempSync(join(tmpdir(), "mandate-run-"));
   const configPath = join(dir, "mcp.json");
 

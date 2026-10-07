@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { parseJsonl } from "@mandate-dev/proxy";
 import { githubResolver } from "./authority.js";
 import { runRun } from "./commands/run.js";
@@ -40,6 +40,26 @@ const live = env("MANDATE_LIVE") === "1"
 const REPO = env("MANDATE_TEST_REPO") ?? "";
 
 /**
+ * The agent script has to live INSIDE the repository tree.
+ *
+ * Node resolves a bare import from the importing file's location upwards, not
+ * from the working directory, so an agent written to the system temp directory
+ * cannot find `@anthropic-ai/sdk` however it is launched — measured, on the
+ * first live run, which failed before spending anything. A real agent is an
+ * installed binary with its own dependencies; this stand-in borrows the
+ * repository's, so it goes where they are reachable.
+ */
+/** What a real install runs. The default resolves against the source tree under vitest. */
+const builtEntry = (): string =>
+  fileURLToPath(new URL("../dist/index.js", import.meta.url));
+
+const agentDir = (): string => {
+  const dir = fileURLToPath(new URL("../.live-agent", import.meta.url));
+  mkdirSync(dir, { recursive: true });
+  return dir;
+};
+
+/**
  * The real lookup. Required here rather than optional: this run is an
  * authorisation record or it is nothing, and a live test that quietly fell back
  * to an asserted level would be testing the wrong path.
@@ -52,9 +72,12 @@ const resolver = (): NonNullable<ReturnType<typeof githubResolver>> => {
 const fixture = (n: string): string =>
   fileURLToPath(new URL(`../../../fixtures/ceilings/${n}`, import.meta.url));
 
+/** What the agent is asked to do. Read-only, so the sandbox needs no reset. */
+const TASK = `Read src/retry.js in ${REPO} and say in one sentence what it does.`;
+
 /** The agent: an MCP client that knows nothing about Mandate. */
 const AGENT = `
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -69,7 +92,9 @@ await client.connect(new StdioClientTransport({
 }));
 
 const offered = (await client.listTools()).tools;
-console.log("AGENT_TOOLS=" + JSON.stringify(offered.map((t) => t.name)));
+const report = { tools: offered.map((t) => t.name), calls: [], denials: 0 };
+const flush = () => writeFileSync(process.env.AGENT_REPORT, JSON.stringify(report));
+flush();
 
 const tools = offered.map((t) => ({
   name: t.name, description: t.description ?? "", input_schema: t.inputSchema,
@@ -91,7 +116,9 @@ for (let turn = 0; turn < 6; turn += 1) {
   for (const call of calls) {
     const out = await client.callTool({ name: call.name, arguments: call.input ?? {} });
     if (out.isError) denials += 1;
-    console.log("AGENT_CALL=" + JSON.stringify({ tool: call.name, isError: out.isError === true }));
+    report.calls.push({ tool: call.name, isError: out.isError === true });
+    report.denials = denials;
+    flush();
     results.push({
       type: "tool_result", tool_use_id: call.id,
       content: JSON.stringify(out.content).slice(0, 3000),
@@ -100,14 +127,19 @@ for (let turn = 0; turn < 6; turn += 1) {
   }
   messages.push({ role: "user", content: results });
 }
-console.log("AGENT_DENIALS=" + denials);
+report.denials = denials;
+flush();
 await client.close();
 `;
 
 describe.skipIf(!live)("mandate run, live", () => {
+  afterAll(() => {
+    rmSync(fileURLToPath(new URL("../.live-agent", import.meta.url)), { recursive: true, force: true });
+  });
+
   it("runs an unaware agent whose only route to GitHub is the mandate", async () => {
     const dir = mkdtempSync(join(tmpdir(), "mandate-live-run-"));
-    const agentPath = join(dir, "agent.mjs");
+    const agentPath = join(agentDir(), "run-agent.mjs");
     writeFileSync(agentPath, AGENT, "utf8");
 
     const tracePath = join(dir, "trace.jsonl");
@@ -128,6 +160,7 @@ destinations:
   allow: ["github.com/${REPO}"]
 `, "utf8");
 
+    const reportPath = join(dir, "report.json");
     const lines: string[] = [];
     const code = await runRun({
       file: mandatePath,
@@ -142,17 +175,29 @@ destinations:
       // The real lookup, which is the point: this run is an authorisation
       // record or it is nothing.
       resolve: resolver(),
+      selfPath: builtEntry(),
+      // The agent reports through a file. `runRun` gives a real agent the
+      // terminal, which is right for an interactive tool and means its output
+      // never reaches the log callback — the first version of this test scraped
+      // the log and found nothing while the run itself had worked.
+      launch: async (command, argv, agentEnv) => {
+        const { spawnSync } = await import("node:child_process");
+        const r = spawnSync(command, [...argv], {
+          stdio: "inherit",
+          env: { ...process.env, ...agentEnv, AGENT_REPORT: reportPath, AGENT_TASK: TASK },
+        });
+        return r.status ?? 1;
+      },
     });
 
     expect(code, lines.join("\n")).toBe(0);
 
-    // The agent saw only what the mandate reaches. `repo.read` maps to a
-    // handful of read tools and nothing that writes.
-    const toolsLine = lines.concat().find((l) => l.includes("AGENT_TOOLS="));
-    const offered: string[] = toolsLine === undefined
-      ? []
-      : JSON.parse(toolsLine.slice(toolsLine.indexOf("[")));
+    const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
+      tools: string[]; calls: { tool: string; isError: boolean }[]; denials: number;
+    };
+    const offered = report.tools;
     console.log(`\n--- offered ${offered.length} tool(s): ${offered.join(", ")}`);
+    console.log(`--- the agent made ${report.calls.length} call(s), ${report.denials} denied`);
     expect(offered.length).toBeGreaterThan(0);
     expect(offered).not.toContain("merge_pull_request");
     expect(offered).not.toContain("create_or_update_file");
@@ -197,9 +242,9 @@ destinations:
 
     // An "agent" that makes one ungranted call and reports the answer. No model,
     // so this costs nothing beyond the token mint.
-    const agentPath = join(dir, "agent.mjs");
+    const agentPath = join(agentDir(), "deny-agent.mjs");
     writeFileSync(agentPath, `
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 const config = JSON.parse(readFileSync(process.env.MANDATE_MCP_CONFIG, "utf8"));
@@ -209,15 +254,17 @@ await c.connect(new StdioClientTransport({
   command: s.command, args: s.args, env: { ...process.env, ...s.env },
 }));
 const names = (await c.listTools()).tools.map((t) => t.name);
-console.log("DENY_OFFERED=" + JSON.stringify(names));
 const out = await c.callTool({
   name: "merge_pull_request",
   arguments: { owner: "${REPO.split("/")[0] ?? ""}", repo: "${REPO.split("/")[1] ?? ""}", pullNumber: 1 },
 });
-console.log("DENY_RESULT=" + JSON.stringify({ isError: out.isError === true, text: JSON.stringify(out.content).slice(0, 400) }));
+writeFileSync(process.env.AGENT_REPORT, JSON.stringify({
+  offered: names, isError: out.isError === true, text: JSON.stringify(out.content).slice(0, 600),
+}));
 await c.close();
 `, "utf8");
 
+    const reportPath = join(dir, "report.json");
     const lines: string[] = [];
     const code = await runRun({
       file: mandatePath,
@@ -230,13 +277,29 @@ await c.close();
       agent: [process.execPath, agentPath],
     }, (s) => { lines.push(s); console.log(s); }, {
       resolve: resolver(),
+      selfPath: builtEntry(),
+      launch: async (command, argv, agentEnv) => {
+        const { spawnSync } = await import("node:child_process");
+        const r = spawnSync(command, [...argv], {
+          stdio: "inherit",
+          env: { ...process.env, ...agentEnv, AGENT_REPORT: reportPath },
+        });
+        return r.status ?? 1;
+      },
     });
 
     expect(code, lines.join("\n")).toBe(0);
-    const result = lines.find((l) => l.includes("DENY_RESULT="));
-    expect(result, "the probe did not report").toBeDefined();
-    expect(result).toContain('"isError":true');
+    const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
+      offered: string[]; isError: boolean; text: string;
+    };
+    console.log(`\n--- merge refused: ${report.isError}`);
+    console.log(`--- ${report.text}`);
+    // The tool was not even offered, AND calling it by name is refused. Both
+    // matter: the first is the authority cut, the second is what happens when
+    // something calls it anyway.
+    expect(report.offered).not.toContain("merge_pull_request");
+    expect(report.isError).toBe(true);
     // R10: the refusal names the clause it hit.
-    expect(result).toMatch(/mandate\.grants/);
+    expect(report.text).toMatch(/mandate\.grants/);
   }, 180_000);
 });

@@ -27,6 +27,14 @@ const write = (name: string, body: string): string => {
   return path;
 };
 
+/**
+ * A stand-in for the built entry point. It has to exist on disk: `runRun`
+ * checks, because a config naming a file that is not there fails inside the
+ * agent as a MODULE_NOT_FOUND and then "Connection closed", neither of which
+ * names the cause.
+ */
+const SELF = write("mandate-entry.js", "// stands in for dist/index.js\n");
+
 const GOOD = write("good.yaml", `
 mandate: fix-issue-42
 task: "Fix issue #42 and open a PR"
@@ -115,7 +123,7 @@ const runWith = async (
       }
       return exitCode;
     },
-    selfPath: "/opt/mandate/index.js",
+    selfPath: SELF,
   });
   return { code, out: chunks.join("\n"), launched };
 };
@@ -171,7 +179,7 @@ describe("mandate run", () => {
     };
     const args = config.mcpServers?.["github"]?.args ?? [];
     expect(args).toContain("serve");
-    expect(args).toContain("/opt/mandate/index.js");
+    expect(args).toContain(SELF);
     // The same mandate and the same ceiling the operator just had validated.
     // A serve started on a different ceiling would enforce something nobody
     // approved.
@@ -210,7 +218,7 @@ describe("mandate run", () => {
           if (path !== undefined) launched.configAtLaunch = readFileSync(path, "utf8");
           return 0;
         },
-        selfPath: "/opt/mandate/index.js",
+        selfPath: SELF,
       });
     const config = JSON.parse(launched.configAtLaunch ?? "{}") as {
       mcpServers?: Record<string, { args?: string[] }>;
@@ -237,6 +245,25 @@ describe("mandate run", () => {
     expect(text).not.toContain("ghs_");
     expect(text.toLowerCase()).not.toContain("token");
     expect(text.toLowerCase()).not.toContain("private");
+  });
+
+  /**
+   * The config is consumed by a process Mandate does not control, so a path in
+   * it that does not resolve becomes two errors inside the agent — a
+   * MODULE_NOT_FOUND and then "Connection closed" — neither of which names the
+   * cause. Caught on the first live run, where the default resolved to
+   * `src/index.js` under vitest instead of the built `dist/index.js`.
+   */
+  it("refuses when its own entry point does not exist, rather than naming it anyway", async () => {
+    const chunks: string[] = [];
+    let launched = false;
+    const code = await runRun(baseArgs(), (s) => chunks.push(s), {
+      launch: async () => { launched = true; return 0; },
+      selfPath: "/nonexistent/mandate/index.js",
+    });
+    expect(code).toBe(2);
+    expect(chunks.join("\n")).toContain("Cannot find the mandate entry point");
+    expect(launched, "nothing should be launched against a config that cannot work").toBe(false);
   });
 
   it("removes the config once the agent exits", async () => {
