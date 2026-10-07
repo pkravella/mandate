@@ -1,10 +1,11 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import { githubAppDeps } from "@mandate-dev/compiler";
 import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
+import { seededIssues } from "./seed.js";
 import { loadCorpus, compositionOf } from "./tasks.js";
 import { loadGroundTruth, runBench } from "./harness.js";
 import { renderReport, type CorpusMeta } from "./report.js";
@@ -27,6 +28,13 @@ const enabled = env("MANDATE_BENCH") === "1"
   && env("MANDATE_APP_KEY_PATH") !== undefined;
 
 const CORPUS = fileURLToPath(new URL("../../../fixtures/bench", import.meta.url));
+/** Scratch output. Gitignored, because a sweep's traces are not fixtures. */
+const OUT = fileURLToPath(new URL("../../../bench/out", import.meta.url));
+/**
+ * The report is a published document, so it lives in `docs/` rather than under
+ * `fixtures/`: it is the deliverable, not an input to a test.
+ */
+const REPORT = fileURLToPath(new URL("../../../docs/benchmark-report.md", import.meta.url));
 const CEILINGS = fileURLToPath(new URL("../../../fixtures/ceilings", import.meta.url));
 const read = (p: string): string => readFileSync(p, "utf8");
 
@@ -54,7 +62,7 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
     // Issue numbers come from the seeder's marker, not from the records: an
     // issue number is a fact about the repository and hard-coding one would
     // point a run at the wrong issue after a re-seed.
-    const [owner = "", name = ""] = corpus.repo.split("/");
+    const name = corpus.repo.split("/")[1] ?? "";
     const tokenRes = await github.asApp(
       "POST /app/installations/{installation_id}/access_tokens",
       {
@@ -65,16 +73,12 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
     );
     expect(tokenRes.status, JSON.stringify(tokenRes.data)).toBe(201);
     const listToken = String((tokenRes.data as { token?: unknown }).token);
-    const issuesRes = await github.asInstallation(
-      "GET /repos/{owner}/{repo}/issues", listToken,
-      { owner, repo: name, state: "all", per_page: 100 },
-    );
-    const issues: Record<string, number> = {};
-    for (const raw of Array.isArray(issuesRes.data) ? issuesRes.data : []) {
-      const issue = raw as { number?: unknown; body?: unknown };
-      if (typeof issue.body !== "string" || typeof issue.number !== "number") continue;
-      const m = /<!-- mandate-bench:([a-z0-9-]+) -->/.exec(issue.body);
-      if (m?.[1] !== undefined) issues[m[1]] = issue.number;
+    // The shared lookup, not a third copy of the marker regex. Two copies of
+    // the task *prompt* is what silently invalidated a whole sweep; the same
+    // duplication here would point runs at the wrong issue after a re-seed.
+    const issues = await seededIssues(github, listToken, corpus.repo);
+    for (const task of corpus.tasks) {
+      expect(issues[task.id], `${task.id} has no seeded issue`).toBeDefined();
     }
 
     const results = await runBench(corpus, {
@@ -85,7 +89,7 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       authority,
       groundTruth,
       issues,
-      corpusDir: CORPUS,
+      outDir: OUT,
       budget: Number(env("MANDATE_BENCH_BUDGET") ?? "2.50"),
       log: (s) => { console.log(`    ${s}`); },
     });
@@ -103,9 +107,9 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
     };
 
     const report = renderReport(results, meta);
-    const reportPath = join(CORPUS, "report.md");
-    writeFileSync(reportPath, `${report}\n`, "utf8");
-    console.log(`\n--- report written to ${reportPath}\n`);
+    mkdirSync(dirname(REPORT), { recursive: true });
+    writeFileSync(REPORT, `${report}\n`, "utf8");
+    console.log(`\n--- report written to ${REPORT}\n`);
     console.log(report);
 
     expect(results.length).toBeGreaterThan(0);

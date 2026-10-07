@@ -10,13 +10,18 @@ validator proves the mandate grants nothing beyond what the user and the
 organization already allow. Mandate then compiles it into controls GitHub and
 MCP gateways already enforce, and watches the run against it.
 
-> **Status: the loop works end to end, but there is no one-command way to run
-> it yet.** A live model writes a mandate, the validator proves it, a real
-> GitHub App token is minted for one repository, and the real
-> `github-mcp-server` runs behind the proxy with the agent limited to the tools
-> the mandate reaches. That whole path is exercised by a test, not by a
-> command: `mandate validate` is the only CLI subcommand so far, and
-> `mandate run` does not exist. See [Build status](#build-status).
+> **Status: the loop works end to end and is measured, but there is still no
+> one-command way to run it.** A live model writes a mandate, the validator
+> proves it against a Cedar ceiling and a destination allowlist, a real GitHub
+> App token is minted for one repository, and the real `github-mcp-server` runs
+> behind the proxy with the agent limited to the tools the mandate reaches. Every
+> decision is recorded as an action graph, and a replay evaluator scores mandates
+> against traces of unconstrained runs.
+>
+> The CLI has `mandate validate` and `mandate widen`. The full loop is still
+> driven by a test harness rather than by `mandate run`, which does not exist.
+> See [Build status](#build-status) and the
+> [benchmark report](docs/benchmark-report.md).
 
 ## What a mandate looks like
 
@@ -124,7 +129,7 @@ The v0.1 plan runs in four phases.
 | --- | --- | --- |
 | 1 | Contract and ceiling: operation catalog, mandate schema, containment engine, Cedar ceiling, validator, lints | exit criterion **met** — 21/21 seeded over-grants rejected |
 | 2 | Write and enforce: mandate writer, scoped GitHub App tokens, MCP proxy, argument enforcement, permission diff | exit criterion **met** — see below |
-| 3 | Runtime and measurement: action graph, destination rules, sandbox, widen flow, replay evaluator, 50-task benchmark | not started |
+| 3 | Runtime and measurement: action graph, destination rules, egress sandbox, widen flow, replay evaluator, benchmark | built; exit criterion **not met as written** — it asks for 50 tasks and the corpus has 6 |
 | 4 | Adversarial testing and launch | not started |
 
 Phase 2's exit criterion was *"an agent fixes a real issue end to end under a
@@ -136,10 +141,33 @@ specifically, and opened a pull request. Six turns, $0.23. The merge attempt
 came back refused with `clause: mandate.grants`. Ten proxy decisions, one
 denial, and that denial was the merge.
 
-Writing a mandate costs about **$0.03** and takes roughly **16 seconds**, which
-misses the PRD's under-ten-second target; two sequential model calls at effort
-`high` is why, and effort is the lever once Phase 3 can measure what lowering it
-costs in proposal quality.
+Writing a mandate costs about **$0.03** and takes **12 seconds** at the median,
+which misses the PRD's under-ten-second target. Two sequential model calls at
+effort `high` is why, and effort is the lever.
+
+Phase 3 added the runtime half and measured it. The full
+[benchmark report](docs/benchmark-report.md) is committed; the headline is:
+
+| Metric | Result | v0.1 target |
+| --- | --- | --- |
+| Task completion | 83.3% | at least 90% |
+| Authority cut, token layer | 32.0% | at least 80% |
+| Authority cut, proxy layer | **87.0%** | at least 80% |
+| Over-grant | **0.0%** | under 10% |
+| Write latency | 11,915 ms | under 10 s |
+
+Two caveats the report states at length and this table cannot: the corpus is
+**6 tasks, not the 50** Phase 3's exit criterion asks for, and those tasks are
+**synthetic**, so the completion figure is optimistic.
+
+**The finding worth reading the report for.** The proxy issued **zero denials**
+across all six runs while replay predicted **seven under-granted calls**.
+Filtering `tools/list` means a tool no grant reaches is never offered, so it is
+never attempted — R10's promise that every pause names the clause it hit is true
+and *vacuous where there is no pause*. An under-grant surfaces as a silent
+workaround or a silent failure instead. The triage task is the clean case: seven
+allowed reads, zero denials, and a failure, because the mandate granted no
+`issue.comment` and the agent had no way to report what it found.
 
 ### Packages
 
@@ -154,8 +182,19 @@ upstream of it is untrusted; everything downstream takes only a
 | `@mandate-dev/validator` | Glob-set containment by DFA inclusion, the constrained Cedar ceiling profile, the two-layer subset proof, and the R4 lints. |
 | `@mandate-dev/writer` | The one model-driven component, and untrusted. Covers from the catalog, prunes, and emits a `ProposedMandate` that only `validate()` accepts. |
 | `@mandate-dev/compiler` | Mints a repository-scoped GitHub App token, refreshes and revokes it, and compiles the mandate into proxy rules plus the token-versus-proxy enforcement report. |
-| `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list`, checks every call's repository, branch, base, paths, destinations and count, and turns a denial into a clause and a reviewable widen request. |
-| `@mandate-dev/cli` | The permission diff, the rejection report, and `mandate validate`. |
+| `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list`, checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. |
+| `@mandate-dev/replay` | Scores a mandate by replaying a recorded action graph through the production argument enforcer, reporting over-grant, under-grant, and which operations a task needed that the mandate lacked. |
+| `@mandate-dev/cli` | The permission diff, the rejection report, `mandate validate` and `mandate widen`. |
+| `@mandate-dev/bench` | Private. The benchmark corpus loader, the seeder, the two-pass harness and the report renderer. |
+
+**The egress sandbox is the layer that actually holds.** An MCP proxy sees MCP
+traffic and nothing else, so an agent with a shell, a `git push` to a remote it
+configures itself, or a `curl` never transits it. [`sandbox/`](sandbox/README.md)
+is a container whose only route out is a `CONNECT` proxy allowlist compiled from
+the mandate's destinations, with `iptables` rejecting everything else from the
+agent's uid. It verifies itself — including negative controls that widen the
+allowlist and strip the firewall rules to confirm the checks can fail — and it
+exits rather than starting the agent if it cannot install the rules.
 
 **Running the proxy needs the right upstream toolsets.** `github-mcp-server`
 exposes 46 tools by default and 91 with `GITHUB_TOOLSETS=all`. Six catalog
@@ -179,14 +218,25 @@ pnpm test
 pnpm build
 ```
 
-Requires Node 22 or newer. 410 tests run offline with no credentials.
+Requires Node 22 or newer. **695 tests run offline with no credentials**, and
+that is what CI runs.
 
-Nine more are gated behind `MANDATE_LIVE=1` because they spend money or mint
-real credentials: they call the Anthropic API, a real GitHub App, and the real
-`github-mcp-server` in Docker. CI never runs them and needs no secrets. They
-also need `ANTHROPIC_API_KEY`, `MANDATE_APP_ID`, `MANDATE_INSTALLATION_ID`,
-`MANDATE_APP_KEY_PATH` and `MANDATE_TEST_REPO`. See [CONTRIBUTING.md](CONTRIBUTING.md) — in
-particular the one rule that is not negotiable.
+Twenty-three more are gated, each behind its own variable, because they spend
+money, mint real credentials, or write to a real repository. CI never runs any
+of them and needs no secrets.
+
+| Gate | What it does | Cost |
+| --- | --- | --- |
+| `MANDATE_LIVE=1` | The writer against the live model, token minting against a real GitHub App, and the whole loop end to end | ~$0.03 to ~$0.30 |
+| `MANDATE_SANDBOX=1` | Builds the egress container and verifies it, with negative controls | free, needs Docker |
+| `MANDATE_SEED=1` | Seeds the benchmark corpus into the bench repository — **writes to its default branch and opens issues** | free |
+| `MANDATE_GROUND_TRUTH=1` | Re-records the benchmark's ground-truth traces, **overwriting the committed ones** | ~$3 |
+| `MANDATE_BENCH=1` | The mandated sweep and the report | ~$1.15 |
+
+The credential-backed gates also need `ANTHROPIC_API_KEY`, `MANDATE_APP_ID`,
+`MANDATE_INSTALLATION_ID`, `MANDATE_APP_KEY_PATH` and `MANDATE_TEST_REPO`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) — in particular the one rule that is not
+negotiable.
 
 ## License
 

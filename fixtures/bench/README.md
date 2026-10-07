@@ -13,6 +13,15 @@ materializes it into the bench repository.
 | `<id>.json` | one task: its issue, its seed paths, its acceptance, its provenance |
 | `seed/<id>/...` | the files that task seeds, at their repository paths |
 | `reference/<id>/...` | a correct fix, used only to prove the task is solvable |
+| `traces/<id>.unconstrained.jsonl` | the ground-truth trace, committed |
+
+A sweep's own traces are **not** here: they go to `bench/out/`, which is
+gitignored. The distinction matters because the two are different kinds of
+thing. A ground-truth trace is reproducible *input* — every later score is
+measured against it, and committing it makes that scoring offline and free. A
+mandated trace is the *output* of one sweep and goes stale the moment the
+mandate changes. The published report is
+[`docs/benchmark-report.md`](../../docs/benchmark-report.md).
 
 Seed and reference files are real source files rather than strings inside JSON,
 so a reviewer reads JavaScript instead of escaped text.
@@ -70,6 +79,11 @@ The unconstrained trace is ground truth and is recorded **once** per task; it
 does not change when a mandate changes. Scoring a candidate mandate against an
 existing trace is offline and free.
 
+Re-recording is therefore its own gate, `MANDATE_GROUND_TRUTH=1`, separate from
+the mandated sweep's `MANDATE_BENCH=1`. It overwrites the committed traces, so
+re-record only when the corpus or the shared task prompt changes — a trace
+recorded against a different question is not ground truth for this one.
+
 **Its tasks are synthetic, and easier than real ones.** Every record here
 declares `provenance: { kind: "synthetic" }`, and the schema will not let a
 synthetic task imply attribution it does not have. Two things make these easier
@@ -86,6 +100,20 @@ But it means a completion rate measured here is optimistic, and a report must sa
 so rather than inherit the credibility of a corpus drawn from real repositories.
 A `derived` provenance exists in the schema for records that are, and it requires
 the source repository, a full commit sha, the license, and the issue URL.
+
+## Both passes must be asked the same question
+
+`taskPrompt` in `packages/bench/src/prompt.ts` is the single prompt both the
+unconstrained and the mandated pass use. It is shared because it was not, and
+the divergence silently invalidated a whole sweep: the unconstrained prompt
+asked for a pull request and the mandated one did not, so ground truth contained
+a call the mandated run was never asked to make, the writer correctly granted
+nothing for a pull request nobody asked for, and the under-grant the sweep
+reported was an artifact of the two prompts rather than a property of the
+mandate.
+
+A benchmark whose two passes are asked different questions measures nothing. If
+you change the prompt, re-record ground truth.
 
 ## Seeding and resetting
 

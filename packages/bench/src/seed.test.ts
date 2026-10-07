@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GitHubResponse, MintDeps } from "@mandate-dev/compiler";
-import { seedCorpus, seedTask, taskMarker } from "./seed.js";
+import { seedCorpus, seedTask, seededIssues, taskMarker } from "./seed.js";
 import type { Corpus, LoadedTask } from "./tasks.js";
 
 const task = (over: Partial<LoadedTask> = {}): LoadedTask => ({
@@ -48,7 +48,9 @@ function fakeGitHub(opts: {
       return { status: 200, data: { commit: { sha: "c" } } };
     }
     if (route === "GET /repos/{owner}/{repo}/issues") {
-      return { status: 200, data: issues };
+      // One page: the real route is paged, and `seededIssues` stops on a short
+      // page, so returning everything once is the single-page case.
+      return { status: 200, data: Number(p["page"] ?? 1) === 1 ? issues : [] };
     }
     if (route === "POST /repos/{owner}/{repo}/issues") {
       const n = nextIssue++;
@@ -162,6 +164,52 @@ describe("seedTask", () => {
     } as unknown as MintDeps;
     await expect(seedTask(deps, "tok", "acme/bench", task()))
       .rejects.toThrow(/GET issues failed/);
+  });
+});
+
+describe("seededIssues", () => {
+  it("maps each marker to its issue number", async () => {
+    const gh = fakeGitHub({
+      issues: [
+        { number: 7, body: `a\n\n${taskMarker("first")}` },
+        { number: 8, body: `b\n\n${taskMarker("second")}` },
+        { number: 9, body: "an issue nobody seeded" },
+      ],
+    });
+    expect(await seededIssues(gh.deps, "tok", "acme/bench"))
+      .toEqual({ first: 7, second: 8 });
+  });
+
+  // One page of 100 is enough for six tasks and not for fifty, plus whatever
+  // the agents opened. A marker on page two was previously invisible, so the
+  // seeder opened a duplicate and runs pointed at whichever it found first.
+  it("follows pagination, so a marker on a later page is still found", async () => {
+    const pages: { number: number; body: string }[][] = [
+      Array.from({ length: 100 }, (_v, i) => ({ number: i + 1, body: "filler" })),
+      [{ number: 201, body: taskMarker("late-task") }],
+    ];
+    const seen: number[] = [];
+    const deps = {
+      asApp: async () => { throw new Error("unused"); },
+      asInstallation: async (
+        route: string, _t: string, p?: Readonly<Record<string, unknown>>,
+      ): Promise<GitHubResponse> => {
+        if (route !== "GET /repos/{owner}/{repo}/issues") return { status: 404, data: {} };
+        const page = Number(p?.["page"] ?? 1);
+        seen.push(page);
+        return { status: 200, data: pages[page - 1] ?? [] };
+      },
+    } as unknown as MintDeps;
+
+    expect(await seededIssues(deps, "tok", "acme/bench")).toEqual({ "late-task": 201 });
+    expect(seen).toEqual([1, 2]);
+  });
+
+  it("stops at the first short page rather than paging forever", async () => {
+    const gh = fakeGitHub({ issues: [{ number: 1, body: taskMarker("x") }] });
+    await seededIssues(gh.deps, "tok", "acme/bench");
+    const issueCalls = gh.calls.filter((c) => c.route === "GET /repos/{owner}/{repo}/issues");
+    expect(issueCalls).toHaveLength(1);
   });
 });
 

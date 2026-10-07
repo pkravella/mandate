@@ -93,6 +93,28 @@ describe("applyWiden", () => {
     }))).toThrow(/disagree/i);
   });
 
+  // A hand-written request can name a facet the catalog says the operation
+  // cannot carry. The grant schema rejects it, and the refusal has to read as a
+  // reason rather than as a validation dump — R10 asks for a reason.
+  it("refuses a facet the operation cannot carry, in words", () => {
+    const withRead: Mandate = MandateSchema.parse({
+      ...current,
+      grants: [{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }],
+    });
+    let caught: unknown;
+    try {
+      applyWiden(withRead, req({
+        action: "repo.read",
+        addGrant: { action: "repo.read", paths: ["src/**"] },
+      }));
+    } catch (e) { caught = e; }
+    expect(caught).toBeInstanceOf(Error);
+    const message = (caught as Error).message;
+    expect(message).toContain("repo.read");
+    expect(message).toMatch(/cannot be constrained by paths/);
+    expect(message).not.toMatch(/ZodError|\[\s*\{/);
+  });
+
   it("refuses an empty delta, which looks actionable and is not", () => {
     expect(() => applyWiden(current, req({ addGrant: {} }))).toThrow(/nothing/i);
     expect(() => applyWiden(current, req({ addGrant: { action: "contents.write" } })))

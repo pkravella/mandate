@@ -32,6 +32,11 @@ import type { Corpus, LoadedTask } from "./tasks.js";
 const IN_PER_M = 4;
 const OUT_PER_M = 20;
 const MAX_TURNS = 18;
+/**
+ * Charged against the budget before a task starts, so the stop is predictive.
+ * Measured at $0.14–$0.27 per task; the margin is deliberate.
+ */
+const ESTIMATED_COST_PER_TASK = 0.40;
 
 const dollars = (inTok: number, outTok: number): number =>
   (inTok / 1e6) * IN_PER_M + (outTok / 1e6) * OUT_PER_M;
@@ -68,7 +73,8 @@ export interface BenchDeps {
   readonly groundTruth: Readonly<Record<string, ActionGraph>>;
   /** Issue number per task, discovered from the seeder's marker. */
   readonly issues: Readonly<Record<string, number>>;
-  readonly corpusDir: string;
+  /** Where a sweep's own traces go. Scratch, not a fixture. */
+  readonly outDir: string;
   /** Stop before a task that would take the sweep past this. */
   readonly budget?: number;
   readonly log?: (s: string) => void;
@@ -99,8 +105,32 @@ async function pullRequestFor(
   return undefined;
 }
 
+/**
+ * The paths a pull request changed.
+ *
+ * Read from the pull request rather than guessed from the task record. Grading
+ * only `seed ∪ expectedPaths` silently omits a file the agent added that the
+ * record did not anticipate — no run has done that yet, but the acceptance
+ * command would then run against an incomplete tree and fail for a reason that
+ * has nothing to do with the mandate.
+ */
+async function changedPaths(
+  deps: BenchDeps, token: string, repo: string, pullNumber: number,
+): Promise<readonly string[]> {
+  const [owner = "", name = ""] = repo.split("/");
+  const res = await deps.github.asInstallation(
+    "GET /repos/{owner}/{repo}/pulls/{pull_number}/files", token,
+    { owner, repo: name, pull_number: pullNumber, per_page: 100 },
+  );
+  if (res.status !== 200) return [];
+  return (Array.isArray(res.data) ? res.data : [])
+    .map((f) => (f as { filename?: unknown }).filename)
+    .filter((f): f is string => typeof f === "string");
+}
+
 async function acceptancePasses(
   deps: BenchDeps, token: string, repo: string, task: LoadedTask, branch: string,
+  pullNumber: number | undefined,
 ): Promise<{ passed: boolean; evidence: string }> {
   if (task.acceptance.kind === "comment") {
     const issue = deps.issues[task.id];
@@ -131,9 +161,15 @@ async function acceptancePasses(
     writeFileSync(target, content);
   }
 
-  // Whatever the agent changed on its branch wins over the seed.
+  // Whatever the agent changed on its branch wins over the seed. The file list
+  // comes from the pull request when there is one, and falls back to what the
+  // record anticipated only when there is not.
   const [owner = "", name = ""] = repo.split("/");
-  for (const path of new Set([...task.seed, ...task.expectedPaths])) {
+  const fromPr = pullNumber === undefined
+    ? []
+    : await changedPaths(deps, token, repo, pullNumber);
+  const toFetch = new Set([...task.seed, ...task.expectedPaths, ...fromPr]);
+  for (const path of toFetch) {
     const res = await deps.github.asInstallation(
       "GET /repos/{owner}/{repo}/contents/{path}", token,
       { owner, repo: name, path, ref: branch },
@@ -170,7 +206,7 @@ export async function runBench(
       continue;
     }
     // Predictive: a sweep that notices the overspend afterwards has overspent.
-    if (spent + 0.40 > budget) {
+    if (spent + ESTIMATED_COST_PER_TASK > budget) {
       log(`skip ${task.id}: would exceed the $${budget.toFixed(2)} budget`);
       continue;
     }
@@ -231,7 +267,29 @@ export async function runBench(
     const cut = authorityCut(written.proposed);
 
     // ---- mint and enforce -------------------------------------------
-    const minted = await mintToken(deps.github, mandate);
+    // A per-task failure — a refused mint, a Docker that will not start, an API
+    // outage — used to abort the sweep and lose every result before it. The
+    // task is recorded as failed and the sweep goes on, because five measured
+    // tasks and one error are worth more than nothing.
+    let minted;
+    try {
+      minted = await mintToken(deps.github, mandate);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      log(`${task.id}: mint FAILED — ${detail}`);
+      spent += writerCost;
+      results.push({
+        taskId: task.id, category: task.category, completed: false,
+        completionEvidence: `the token could not be minted: ${detail}`,
+        pullRequestOpened: false, deniedCalls: 0,
+        widenRequests: 0, widenRefusals: 0, falsePauses: 0, proposalRejected: false,
+        score, writeLatencyMs: written.latencyMs,
+        authorityCut: { token: cut.token.cutPercent / 100, proxy: cut.proxy.cutPercent / 100 },
+        cost: writerCost,
+      });
+      continue;
+    }
+
     const rules = compileRules(mandate);
     const recorder = new Recorder({
       mode: "enforced", mandateId: rules.mandateId, mandateHash: rules.mandateHash,
@@ -310,17 +368,20 @@ export async function runBench(
       const cost = dollars(inTok, outTok) + writerCost;
       spent += cost;
 
-      const accepted = await acceptancePasses(
-        deps, minted.token, corpus.repo, task, branch,
-      );
       // Every non-triage task's issue asks for a pull request, so a run that
       // only pushed a branch has not finished the task as stated. Measured
-      // separately from the acceptance command: the first sweep scored four
+      // separately from the acceptance command: an early sweep scored four
       // tasks complete whose mandate never granted pull_request.create, because
       // a branch-only check cannot see the difference.
+      //
+      // Found first, because the pull request is also what says which files to
+      // grade.
       const prNumber = task.category === "triage"
         ? undefined
         : await pullRequestFor(deps, minted.token, corpus.repo, branch);
+      const accepted = await acceptancePasses(
+        deps, minted.token, corpus.repo, task, branch, prNumber,
+      );
       const prRequired = task.category !== "triage";
       const completed = accepted.passed && (!prRequired || prNumber !== undefined);
       const evidence = prRequired && prNumber === undefined
@@ -342,10 +403,17 @@ export async function runBench(
       const neededTools = new Set(groundTruth.nodes.map((nd) => nd.tool));
       const falsePauses = denials.filter((d) => neededTools.has(d.tool)).length;
 
+      // Written to the scratch output directory, not into `fixtures/`. A
+      // mandated trace is the *output* of one sweep and goes stale the moment
+      // the mandate changes; the ground-truth traces under `fixtures/bench/`
+      // are reproducible *input*. Mixing them meant a sweep dirtied the
+      // fixtures and left six files nothing reads.
       const trace = recorder.toJsonl();
-      const outPath = join(deps.corpusDir, "traces", `${task.id}.mandated.jsonl`);
+      const outPath = join(deps.outDir, `${task.id}.mandated.jsonl`);
       mkdirSync(dirname(outPath), { recursive: true });
       writeFileSync(outPath, trace, "utf8");
+      // A trace the recorder wrote that parseJsonl will not read back is a
+      // format bug, so it is checked on every run rather than trusted.
       parseJsonl(trace);
 
       results.push({
@@ -364,6 +432,20 @@ export async function runBench(
         + `${denials.length} denial(s), ${score.underGrants.length} under-grant(s), `
         + `over-grant ${(score.overGrantRate * 100).toFixed(0)}%, $${cost.toFixed(4)} `
         + `(spent $${spent.toFixed(4)})`);
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      log(`${task.id}: run FAILED — ${detail}`);
+      const cost = dollars(inTok, outTok) + writerCost;
+      spent += cost;
+      results.push({
+        taskId: task.id, category: task.category, completed: false,
+        completionEvidence: `the run did not finish: ${detail}`,
+        pullRequestOpened: false, deniedCalls: 0,
+        widenRequests: 0, widenRefusals: 0, falsePauses: 0, proposalRejected: false,
+        score, writeLatencyMs: written.latencyMs,
+        authorityCut: { token: cut.token.cutPercent / 100, proxy: cut.proxy.cutPercent / 100 },
+        cost,
+      });
     } finally {
       if (upstream !== undefined) await upstream.close().catch(() => undefined);
       await revokeToken(deps.github, minted.token).catch(() => undefined);

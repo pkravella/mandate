@@ -77,7 +77,7 @@ export function applyWiden(current: Mandate, request: WidenRequest): Mandate {
     );
   }
 
-  const widened: Grant = GrantSchema.parse({
+  const candidate = {
     ...existing,
     resources: union(existing.resources, delta.resources) ?? existing.resources,
     ...(union(existing.branches, delta.branches) !== undefined
@@ -93,7 +93,20 @@ export function applyWiden(current: Mandate, request: WidenRequest): Mandate {
     // wearing a widen's name, and a reviewer approving "more scope" would be
     // approving less.
     ...(delta.max !== undefined ? { max: Math.max(existing.max ?? 0, delta.max) } : {}),
-  });
+  };
+
+  // Parsed, and a failure turned into a refusal a human can read. The grant
+  // schema rejects a facet the catalog says the operation cannot carry — a
+  // hand-written request adding `paths` to `repo.read`, say — and letting the
+  // Zod error out would answer R10's "name the reason" with a validation dump.
+  const parsed = GrantSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new WidenRefused(
+      `the widened ${request.action} grant is not valid: `
+      + parsed.error.issues.map((i) => i.message).join("; "),
+    );
+  }
+  const widened: Grant = parsed.data;
 
   // `denyPaths` and `enforcedBy` are carried over from `existing` untouched and
   // cannot appear in a delta at all — WidenDeltaSchema has no field for either.
