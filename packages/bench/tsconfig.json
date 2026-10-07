@@ -1,10 +1,39 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "dist", "types": ["node"] },
-  "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
+  ],
   "references": [
-    { "path": "../schema" },
-    { "path": "../compiler" }
+    {
+      "path": "../schema"
+    },
+    {
+      "path": "../validator"
+    },
+    {
+      "path": "../compiler"
+    },
+    {
+      "path": "../proxy"
+    },
+    {
+      "path": "../writer"
+    },
+    {
+      "path": "../replay"
+    },
+    {
+      "path": "../cli"
+    }
   ]
 }
