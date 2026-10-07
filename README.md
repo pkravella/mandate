@@ -10,18 +10,17 @@ validator proves the mandate grants nothing beyond what the user and the
 organization already allow. Mandate then compiles it into controls GitHub and
 MCP gateways already enforce, and watches the run against it.
 
-> **Status: the loop works end to end and is measured, but there is still no
-> one-command way to run it.** A live model writes a mandate, the validator
-> proves it against a Cedar ceiling and a destination allowlist, a real GitHub
-> App token is minted for one repository, and the real `github-mcp-server` runs
-> behind the proxy with the agent limited to the tools the mandate reaches. Every
-> decision is recorded as an action graph, and a replay evaluator scores mandates
-> against traces of unconstrained runs.
+> **Status: v0.1. The loop runs end to end from one command, and is measured —
+> but three of the seven headline metrics miss their target and the corpus is
+> six tasks rather than fifty.** A model writes a mandate, the validator proves
+> it against a Cedar ceiling and a destination allowlist, a repo-scoped GitHub
+> App token is minted, and `mandate run` launches an agent whose only route to
+> GitHub is the enforced proxy. Every decision is recorded as an action graph,
+> and a replay evaluator scores mandates against traces of unconstrained runs.
 >
-> The CLI has `mandate validate` and `mandate widen`. The full loop is still
-> driven by a test harness rather than by `mandate run`, which does not exist.
-> See [Build status](#build-status) and the
-> [benchmark report](docs/benchmark-report.md).
+> What is measured and what is missed: the
+> [benchmark report](docs/benchmark-report.md), which states its own shortfalls
+> before any metric. What is not built: [below](#not-built).
 
 ## What a mandate looks like
 
@@ -62,8 +61,27 @@ node packages/cli/dist/index.js validate mandate.yaml \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
-  --as alice --repositories 20
+  --as alice --repo acme/api --repositories 20
 ```
+
+`--repo` reads `alice`'s permission on `acme/api` from GitHub, which is what
+makes the output an authorisation record. It needs `MANDATE_APP_ID`,
+`MANDATE_INSTALLATION_ID` and `MANDATE_APP_KEY_PATH`; the token it mints carries
+`metadata: read` and nothing else, and is revoked straight after the lookup.
+
+Without credentials, assert the level instead — and the output says, every
+time, that it is an assertion:
+
+```bash
+node packages/cli/dist/index.js validate mandate.yaml \
+  --ceiling fixtures/ceilings/org-policy-v12.cedar \
+  --schema  fixtures/ceilings/schema.cedarschema \
+  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
+  --as alice --level push
+```
+
+There is no default. `--level` used to default to `push`, so every run quietly
+asserted push authority with nothing in the output saying so.
 
 Exit 0 prints the permission diff, 1 prints the rejection with the ceiling
 clause and a counterexample, 2 means the input could not be read.
@@ -77,7 +95,7 @@ node packages/cli/dist/index.js widen mandate.yaml pause.json \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
-  --as alice
+  --as alice --repo acme/api
 ```
 
 Not every denial is widenable, and the refusal list is the contract: a deny
@@ -98,8 +116,57 @@ Mandate rejected.
 Nothing was minted. Narrow the mandate, or request a ceiling change.
 ```
 
-`--level` is operator-supplied and trusted, so local output is not an
-authorisation record: the real GitHub permission lookup is not wired in yet.
+Which of the two you used is printed with the result, because "verified
+against GitHub" and "asserted by whoever ran the command" are different claims
+and output that does not distinguish them reads like an authorisation record
+without being one.
+
+## Running an agent under a mandate
+
+`mandate serve` is an MCP server that enforces one mandate. `mandate run`
+validates, writes a config pointing at it, and launches the command you give:
+
+```bash
+node packages/cli/dist/index.js run \
+  --mandate mandate.yaml \
+  --ceiling fixtures/ceilings/org-policy-v12.cedar \
+  --schema  fixtures/ceilings/schema.cedarschema \
+  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
+  --as alice --repo acme/api --trace run.jsonl --diff \
+  -- claude --mcp-config '{mcpConfig}' -p "Fix issue #42 and open a PR"
+```
+
+`{mcpConfig}` becomes the config path, and `MANDATE_MCP_CONFIG` is set in the
+agent's environment, so an agent that takes a flag and one that reads the
+environment both work.
+
+Mandate does not drive a particular agent. Every MCP client already knows how to
+start a server from a config, so *being* that server is the whole integration —
+which is also what makes vendor neutrality true rather than aspirational. The
+cost of that choice: Mandate bounds the authority it mints, and cannot bound an
+agent holding a credential of its own. That is the sandbox's job, and
+[docs/threat-model.md](docs/threat-model.md) §3.1 says so.
+
+Nothing is minted and no agent is launched until the mandate validates. The
+config the agent reads carries no credential: `mandate serve` mints its own
+token in its own process.
+
+There is also an [Action](action.yml) and an
+[example workflow](.github/workflows/mandate.yml). The workflow sets
+`permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
+because a second credential is authority no mandate bounds.
+
+## Documentation
+
+| | |
+| --- | --- |
+| [Quickstart](docs/quickstart.md) | Validate a mandate, run an agent under it |
+| [Mandate format](docs/mandate-format.md) | Every field, and what the lints refuse |
+| [Writing a ceiling](docs/ceiling-authoring.md) | The constrained Cedar profile, as a contract |
+| [Enforced where](docs/enforced-where.md) | Which control bounds what, and what defeats each |
+| [Threat model](docs/threat-model.md) | What holds, what is out of scope, what breaks it |
+| [Architecture](docs/architecture.md) | The package graph and why it is shaped that way |
+| [Benchmark report](docs/benchmark-report.md) | Measured completion, authority cut, over-grant |
 
 ## Three things worth knowing up front
 
@@ -130,7 +197,7 @@ The v0.1 plan runs in four phases.
 | 1 | Contract and ceiling: operation catalog, mandate schema, containment engine, Cedar ceiling, validator, lints | exit criterion **met** — 21/21 seeded over-grants rejected |
 | 2 | Write and enforce: mandate writer, scoped GitHub App tokens, MCP proxy, argument enforcement, permission diff | exit criterion **met** — see below |
 | 3 | Runtime and measurement: action graph, destination rules, egress sandbox, widen flow, replay evaluator, benchmark | built; exit criterion **not met as written** — it asks for 50 tasks and the corpus has 6 |
-| 4 | Adversarial testing and launch | not started |
+| 4 | Adversarial testing and launch: the attack corpus, `mandate run`, packaging, docs | exit criterion **met** — zero ceiling breaches across 34 adversarial cases |
 
 Phase 2's exit criterion was *"an agent fixes a real issue end to end under a
 mandate, and an attempted merge is blocked."* Run against a throwaway
@@ -207,6 +274,51 @@ one needs, and `unreachableOperations()` reports the gap for a running server.
 The npm scope is `@mandate-dev` because `@mandate` is already taken; the CLI
 binary is still `mandate`. The project name is provisional pending a trademark
 check.
+
+<a id="not-built"></a>
+## Not built in v0.1
+
+Stated here rather than left to be discovered.
+
+**No GitHub App webhook service.** The plan had an App that subscribed to
+`issue_comment`, wrote a mandate on `/mandate <task>`, and posted the permission
+diff with an approval checkbox. It is not built, for two reasons. It needs
+persistent state that nothing in this project has — "approval recorded against
+`mandateHash`" is a database — and more importantly it would spend money writing
+a mandate in response to **untrusted input**, since any commenter could trigger
+it. The PRD's own R2 is that task text arrives from an authorized source, and a
+drive-by comment is not one. Half of it, shipped, would look like the reviewed
+approval flow R5 describes while being neither reviewed nor authorized.
+
+The CLI half of R5 — the permission diff — is built and is what `--diff` prints.
+
+**`app:` principals are unbounded.** `requestedBy: app:admin` validates. The
+schema admits any `app:<id>` and nothing yet checks which app principals are
+authorized to request a mandate.
+`fixtures/adversarial/mandates/requested-by-app.yaml` pins the current
+behaviour, so closing it has a test to flip.
+
+**R12's other backends and R16's audit log are interfaces only.** `Backend` in
+`compiler/src/rules.ts` and `GraphSink` in `proxy/src/graph.ts` are the seams
+the Docker MCP Gateway, Cedar/AgentCore, OPA and gh-aw exports and a signed
+append-only log slot into. Shipping four half-implemented backends would be four
+things that look supported and are not.
+
+**Thirteen catalog operations no MCP tool reaches**, so the proxy is not in the
+way of them at all. Most are classed `forbidden` and the lints reject them,
+which is the real mitigation. `branch.delete` is the sharp one.
+
+**The corpus is six synthetic tasks, not fifty derived ones.** A 50-task sweep
+costs about $45 and this project's whole budget was $10. The corpus schema
+records `synthetic` as a provenance that cannot imply attribution it lacks, and
+`loadCorpus` reports the shortfall as a number so nothing can present six as
+fifty.
+
+**A zero false-pause count is not evidence.** The proxy filters `tools/list`, so
+an ungranted tool is never offered and therefore never attempted — measured,
+zero denials across six mandated runs while replay predicted seven under-granted
+calls. [docs/threat-model.md](docs/threat-model.md) §3.3 explains why this
+matters more than it sounds.
 
 ## Development
 

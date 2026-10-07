@@ -426,3 +426,31 @@ export function parseJsonl(src: string): ActionGraph {
     nodes,
   };
 }
+
+/**
+ * The seam R16's signed append-only log replaces the in-memory array through.
+ * **Interface only in v0.1.**
+ *
+ * R16 is P1: "signed, append-only log of mandates, approvals and decisions,
+ * exportable as compliance evidence". `Recorder` currently holds its nodes in
+ * memory and serialises them at the end, which is fine for a run that finishes
+ * and useless for one that is killed — the evidence dies with the process.
+ *
+ * A sink receives each node as it completes, so an implementation can append
+ * and sign incrementally. Two properties any implementation must keep:
+ *
+ *   - **It must not be able to change a decision.** `append` returns
+ *     `Promise<void>`, so a sink has no way to signal "do not allow this". A
+ *     sink that could veto would be a second enforcement point whose rules
+ *     nothing validated, and R15's "a model may flag, never allow" exists for
+ *     the same reason.
+ *   - **A failing sink must not fail the call.** Audit is not authorisation:
+ *     losing a log line is bad, and refusing a granted call because the logger
+ *     was unreachable turns an audit outage into a denial of service.
+ *
+ * `seq` is completion order, so a sink receives nodes in the order
+ * `parseJsonl` will demand to read them back.
+ */
+export interface GraphSink {
+  append(node: ActionNode): Promise<void>;
+}

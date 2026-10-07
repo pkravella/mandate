@@ -205,6 +205,67 @@ describe("mintToken", () => {
     await expect(mintToken(deps(GITHUB.ok({ token: "" })), validated([READ_GRANT])))
       .rejects.toThrow(/cannot use/);
   });
+
+  /**
+   * Every refusal above happens AFTER GitHub has already issued a live token.
+   *
+   * A 201 means the credential exists: repository-scoped, carrying the
+   * installation's permissions, valid for an hour. Rejecting it and throwing
+   * without giving it back leaves it live with nothing holding a reference to
+   * revoke it — the caller has an exception, not a token. Found while building
+   * an offline test for the benchmark harness, whose fake response was missing
+   * `metadata: read` and so took exactly this path.
+   */
+  it("gives back a token it minted and then rejected as too narrow", async () => {
+    const revoked: string[] = [];
+    const d: MintDeps = {
+      installationId: 1,
+      asApp: async () => GITHUB.ok({ permissions: { metadata: "read" } }),
+      asInstallation: async (route, token) => {
+        if (route === "DELETE /installation/token") revoked.push(token);
+        return { status: 204, data: null };
+      },
+    };
+    await expect(mintToken(d, validated([WRITE_GRANT]))).rejects.toThrow(/did not grant/);
+    expect(revoked, "a minted-then-rejected token is a live credential").toEqual(["ghs_fake_value"]);
+  });
+
+  it("gives back a token whose response was otherwise unusable", async () => {
+    const revoked: string[] = [];
+    const d: MintDeps = {
+      installationId: 1,
+      // A body carrying a usable token string but no expiry: the schema refuses
+      // it, and the token it names is still real.
+      asApp: async () => ({ status: 201, data: { token: "ghs_orphan", permissions: {} } }),
+      asInstallation: async (route, token) => {
+        if (route === "DELETE /installation/token") revoked.push(token);
+        return { status: 204, data: null };
+      },
+    };
+    await expect(mintToken(d, validated([READ_GRANT]))).rejects.toThrow(MintError);
+    expect(revoked).toEqual(["ghs_orphan"]);
+  });
+
+  it("reports the original refusal even when giving the token back fails", async () => {
+    // A revoke that fails must not replace the reason the mint was refused.
+    const d: MintDeps = {
+      installationId: 1,
+      asApp: async () => GITHUB.ok({ permissions: { metadata: "read" } }),
+      asInstallation: async () => { throw new Error("network"); },
+    };
+    await expect(mintToken(d, validated([WRITE_GRANT]))).rejects.toThrow(/did not grant/);
+  });
+
+  it("does not try to revoke when no token was issued at all", async () => {
+    const calls: string[] = [];
+    const d: MintDeps = {
+      installationId: 1,
+      asApp: async () => GITHUB.permissionNotGranted,
+      asInstallation: async (route) => { calls.push(route); return { status: 204, data: null }; },
+    };
+    await expect(mintToken(d, validated([WRITE_GRANT]))).rejects.toThrow(MintError);
+    expect(calls).not.toContain("DELETE /installation/token");
+  });
 });
 
 describe("revokeToken", () => {

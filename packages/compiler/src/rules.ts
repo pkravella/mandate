@@ -183,3 +183,27 @@ export function enforcementReport(m: ValidatedMandate): readonly EnforcementRow[
     };
   });
 }
+
+/**
+ * The seam R12's other backends slot into. **Interface only in v0.1.**
+ *
+ * R12 is P1: a Docker MCP Gateway interceptor, a Cedar export for AWS
+ * AgentCore Policy, OPA, and gh-aw safe-outputs. None is implemented, and this
+ * file deliberately ships the shape rather than a stub of each — a half
+ * implementation of four backends would be four things that look supported and
+ * are not.
+ *
+ * The constraint that matters is the argument type. A backend compiles a
+ * `ValidatedMandate` and nothing else, so a new backend cannot become a second
+ * path by which model output reaches an enforcement surface without passing
+ * `validate()` first. `ValidatedMandate`'s brand is private to the validator,
+ * so that is enforced by the compiler rather than by review.
+ *
+ * `compileRules` and `compileEgress` are the two v0.1 implementations of this
+ * shape, for the MCP proxy and the sandbox's egress allowlist respectively.
+ */
+export interface Backend<T = unknown> {
+  /** A stable identifier for the enforcement surface, e.g. "mcp-proxy". */
+  readonly name: string;
+  compile(mandate: ValidatedMandate): T;
+}

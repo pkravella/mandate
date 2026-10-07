@@ -1,0 +1,67 @@
+# Example: run an agent under a mandate, triggered by a comment on an issue.
+#
+# This workflow is an example and is not enabled for this repository — it has no
+# `on:` trigger that fires here, because running an agent against a real
+# repository on a comment is a decision each organization makes for itself.
+# Copy it, set the trigger, and read the two notes below before you do.
+name: Mandate (example)
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: The task the mandate was written for.
+        required: true
+
+# THE IMPORTANT LINE.
+#
+# The agent's authority must be the minted token and nothing else. An empty
+# permissions block means GITHUB_TOKEN is not issued for this job at all, so
+# there is no second credential for an injected agent to reach for. The action
+# fails if it finds one anyway, because a mandate it cannot actually hold is
+# worse than none: the audit log would claim a bound the run did not have.
+permissions: {}
+
+jobs:
+  mandated-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Do not leave a credential in .git/config for the agent to use.
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - run: corepack enable && pnpm install --frozen-lockfile && pnpm build
+
+      # NOTE ON WHO MAY ASK.
+      #
+      # `--as` names the requester whose authority bounds the mandate, and
+      # `--repo` makes Mandate read that person's real permission from GitHub.
+      # On a comment trigger, the person who commented is NOT automatically the
+      # person entitled to ask: check that yourself before this step, because
+      # the PRD's R2 is "task text and context arrive from an authorized
+      # source" and a drive-by comment is not one.
+      - uses: ./
+        with:
+          mandate: mandate.yaml
+          ceiling: fixtures/ceilings/org-policy-v12.cedar
+          schema: fixtures/ceilings/schema.cedarschema
+          ceiling-destinations: fixtures/ceilings/org-policy-v12.destinations
+          as: ${{ github.actor }}
+          repo: ${{ github.repository }}
+          agent: claude --mcp-config {mcpConfig} -p "${{ inputs.task }}"
+          app-id: ${{ secrets.MANDATE_APP_ID }}
+          installation-id: ${{ secrets.MANDATE_INSTALLATION_ID }}
+          private-key: ${{ secrets.MANDATE_APP_PRIVATE_KEY }}
+
+      # The action graph is the audit record for the run: every call, its
+      # decision, and the clause behind every refusal.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mandate-trace
+          path: mandate-trace.jsonl

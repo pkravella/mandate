@@ -4,18 +4,17 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Ceiling, UserAuthority } from "@mandate-dev/validator";
 import { validate } from "@mandate-dev/validator";
-import { compileRules, mintToken, revokeToken, type MintDeps } from "@mandate-dev/compiler";
+import type { MintDeps } from "@mandate-dev/compiler";
 import {
-  createProxyServer, makeArgumentEnforcer, pauseRecord, Recorder, parseJsonl,
+  pauseRecord, parseJsonl,
   type ActionGraph, type Decision,
 } from "@mandate-dev/proxy";
 import { writeMandate } from "@mandate-dev/writer";
 import { scoreMandate } from "@mandate-dev/replay";
-import { authorityCut } from "@mandate-dev/cli";
+import { authorityCut, openSession } from "@mandate-dev/cli";
 import { branchFor, taskPrompt } from "./prompt.js";
 import type { BenchResult } from "./report.js";
 import type { Corpus, LoadedTask } from "./tasks.js";
@@ -75,6 +74,15 @@ export interface BenchDeps {
   readonly issues: Readonly<Record<string, number>>;
   /** Where a sweep's own traces go. Scratch, not a fixture. */
   readonly outDir: string;
+  /**
+   * Connects the upstream MCP server, given the minted token.
+   *
+   * Injectable only so the loop can be tested offline. It was a hardcoded
+   * `docker run` here, which is the whole reason the function that produces the
+   * published metrics had no test but the $1.15 live gate. Defaults to the real
+   * Docker upstream, so a sweep is unchanged.
+   */
+  readonly upstream?: (token: string) => Promise<Client>;
   /** Stop before a task that would take the sweep past this. */
   readonly budget?: number;
   readonly log?: (s: string) => void;
@@ -271,16 +279,24 @@ export async function runBench(
     // outage — used to abort the sweep and lose every result before it. The
     // task is recorded as failed and the sweep goes on, because five measured
     // tasks and one error are worth more than nothing.
-    let minted;
+    // One seam, shared with `mandate run` and `mandate serve`. The benchmark
+    // and the command must enforce the same thing or the published numbers
+    // describe something nobody can run.
+    const decisions: Decision[] = [];
+    let session;
     try {
-      minted = await mintToken(deps.github, mandate);
+      session = await openSession({
+        mandate, github: deps.github,
+        ...(deps.upstream === undefined ? {} : { upstream: deps.upstream }),
+        onDecision: (d: Decision) => decisions.push(d),
+      });
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
-      log(`${task.id}: mint FAILED — ${detail}`);
+      log(`${task.id}: session FAILED — ${detail}`);
       spent += writerCost;
       results.push({
         taskId: task.id, category: task.category, completed: false,
-        completionEvidence: `the token could not be minted: ${detail}`,
+        completionEvidence: `the enforced session could not be opened: ${detail}`,
         pullRequestOpened: false, deniedCalls: 0,
         widenRequests: 0, widenRefusals: 0, falsePauses: 0, proposalRejected: false,
         score, writeLatencyMs: written.latencyMs,
@@ -290,33 +306,14 @@ export async function runBench(
       continue;
     }
 
-    const rules = compileRules(mandate);
-    const recorder = new Recorder({
-      mode: "enforced", mandateId: rules.mandateId, mandateHash: rules.mandateHash,
-    });
-    const decisions: Decision[] = [];
-    let upstream: Client | undefined;
+    const { rules, minted, recorder } = session;
     let inTok = 0;
     let outTok = 0;
 
     try {
-      const transport = new StdioClientTransport({
-        command: "docker",
-        args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
-          "ghcr.io/github/github-mcp-server:latest"],
-        env: { ...process.env, GITHUB_PERSONAL_ACCESS_TOKEN: minted.token } as Record<string, string>,
-      });
-      upstream = new Client({ name: "bench-upstream", version: "0.1.0" });
-      await upstream.connect(transport);
-
-      const proxy = createProxyServer({
-        rules, upstream, enforceArguments: makeArgumentEnforcer(rules),
-        onDecision: (d) => decisions.push(d),
-        recorder,
-      });
       const [a, b] = InMemoryTransport.createLinkedPair();
       const agent = new Client({ name: "agent", version: "0.1.0" });
-      await Promise.all([proxy.connect(a), agent.connect(b)]);
+      await Promise.all([session.proxy.connect(a), agent.connect(b)]);
 
       const offered = (await agent.listTools()).tools;
       const tools: Anthropic.Tool[] = offered.map((t) => ({
@@ -447,8 +444,7 @@ export async function runBench(
         cost,
       });
     } finally {
-      if (upstream !== undefined) await upstream.close().catch(() => undefined);
-      await revokeToken(deps.github, minted.token).catch(() => undefined);
+      await session.close();
     }
   }
 
