@@ -62,8 +62,27 @@ node packages/cli/dist/index.js validate mandate.yaml \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
-  --as alice --repositories 20
+  --as alice --repo acme/api --repositories 20
 ```
+
+`--repo` reads `alice`'s permission on `acme/api` from GitHub, which is what
+makes the output an authorisation record. It needs `MANDATE_APP_ID`,
+`MANDATE_INSTALLATION_ID` and `MANDATE_APP_KEY_PATH`; the token it mints carries
+`metadata: read` and nothing else, and is revoked straight after the lookup.
+
+Without credentials, assert the level instead — and the output says, every
+time, that it is an assertion:
+
+```bash
+node packages/cli/dist/index.js validate mandate.yaml \
+  --ceiling fixtures/ceilings/org-policy-v12.cedar \
+  --schema  fixtures/ceilings/schema.cedarschema \
+  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
+  --as alice --level push
+```
+
+There is no default. `--level` used to default to `push`, so every run quietly
+asserted push authority with nothing in the output saying so.
 
 Exit 0 prints the permission diff, 1 prints the rejection with the ceiling
 clause and a counterexample, 2 means the input could not be read.
@@ -77,7 +96,7 @@ node packages/cli/dist/index.js widen mandate.yaml pause.json \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
-  --as alice
+  --as alice --repo acme/api
 ```
 
 Not every denial is widenable, and the refusal list is the contract: a deny
@@ -98,8 +117,10 @@ Mandate rejected.
 Nothing was minted. Narrow the mandate, or request a ceiling change.
 ```
 
-`--level` is operator-supplied and trusted, so local output is not an
-authorisation record: the real GitHub permission lookup is not wired in yet.
+Which of the two you used is printed with the result, because "verified
+against GitHub" and "asserted by whoever ran the command" are different claims
+and output that does not distinguish them reads like an authorisation record
+without being one.
 
 ## Three things worth knowing up front
 
