@@ -131,6 +131,47 @@ function pathIsSuspicious(p: string): boolean {
   return p.split("/").includes("..") || p.includes("\0");
 }
 
+/**
+ * Rejects a ref that could escape the branch pattern that admits it.
+ *
+ * Paths had this check and refs did not, and the asymmetry was reachable: the
+ * ceiling authors `context.branch like "agent/*"` in Cedar, whose `*` spans
+ * `/`, so `likeToGlob` faithfully translates it to `agent/**`. A mandate
+ * granting `branches: ["agent/**"]` is therefore schema-legal AND inside the
+ * ceiling — and under it `agent/../main`, `agent/x/../../main` and `agent/..`
+ * all matched the pattern and were forwarded. The plan's own case
+ * (`agent/42-../main`) was denied only because `agent/42-*` cannot cross a
+ * separator: by accident of the pattern, not by a check.
+ *
+ * `..` is rejected anywhere rather than only as a whole segment, which is what
+ * `git check-ref-format` does: a ref name may not contain `..` at all. So this
+ * cannot deny a branch that git would have accepted.
+ *
+ * github-mcp-server v1.14.0 does guard paths this way ("path must not contain
+ * '..' due to auth vulnerability issue", measured 2026-10-07) and does not
+ * guard refs. Relying on an upstream for a control Mandate claims to enforce
+ * is how the reason goes missing from the audit log even when the call fails.
+ */
+function refIsSuspicious(ref: string): boolean {
+  return ref.includes("..") || ref.includes("\0");
+}
+
+/**
+ * The most paths one call may name.
+ *
+ * Every path costs a containment decision, and a decision builds an automaton.
+ * Measured before this cap: a `files` array of 10000 individually-legal paths
+ * took 5.6 s inside a single call against a grant with both `paths` and
+ * `denyPaths`. Nothing was over-granted — the attack is cost, the same shape as
+ * the validator's pattern flood — and nothing bounded the array.
+ *
+ * 256 is far above any real agent commit and the denial names the cap, so a
+ * genuine bulk change is retried in batches rather than silently truncated.
+ * Truncating would be the unsafe failure: the paths past the cap would reach
+ * the upstream unchecked.
+ */
+const MAX_PATHS_PER_CALL = 256;
+
 /** A repository-relative path, with any leading slashes removed. */
 const repoPath = (p: string): string => p.replace(/^\/+/, "");
 
@@ -200,6 +241,15 @@ export function makeFacetEnforcer(
     }
 
     // --- branch ----------------------------------------------------------
+    // Checked whatever the rule constrains, exactly as a path is: a traversing
+    // ref is never one this proxy should forward, even on a grant with no
+    // branch limit.
+    if (e.branch !== undefined && refIsSuspicious(e.branch)) {
+      return deny(
+        `${rule.action}.branches`,
+        `branch ${JSON.stringify(e.branch)} is not a plain ref name`,
+      );
+    }
     if (rule.branches !== undefined) {
       const clause = `${rule.action}.branches`;
       if (e.branch === undefined) {
@@ -218,6 +268,13 @@ export function makeFacetEnforcer(
     }
 
     // --- base ------------------------------------------------------------
+    // A base is a ref too.
+    if (e.base !== undefined && refIsSuspicious(e.base)) {
+      return deny(
+        `${rule.action}.base`,
+        `base ${JSON.stringify(e.base)} is not a plain ref name`,
+      );
+    }
     if (rule.base !== undefined) {
       const clause = `${rule.action}.base`;
       if (e.base === undefined) {
@@ -235,6 +292,15 @@ export function makeFacetEnforcer(
     }
 
     // --- paths -----------------------------------------------------------
+    // Bounded before the loop, not inside it: the cost is per path, so a cap
+    // that only stopped after 256 decisions would have already paid for them.
+    if (e.paths.length > MAX_PATHS_PER_CALL) {
+      return deny(
+        `${rule.action}.paths`,
+        `${tool} names ${e.paths.length} paths and at most ${MAX_PATHS_PER_CALL} are checked per `
+        + `call; split the change into smaller calls`,
+      );
+    }
     for (const p of e.paths) {
       // Checked whatever the rule constrains: a traversal is never a path this
       // proxy should forward, even on a grant with no path limit.

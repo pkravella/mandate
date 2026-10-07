@@ -1,0 +1,11 @@
+{
+  "note": "A tools/list flood. Filtering is by allowedTools, so the count upstream publishes cannot change what the agent sees.",
+  "generate": {
+    "kind": "flood",
+    "count": 2000,
+    "includeAllowed": [
+      "get_file_contents"
+    ]
+  },
+  "tools": []
+}

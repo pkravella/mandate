@@ -1,0 +1,28 @@
+{
+  "note": "The plan's own case. Denied, but only because agent/42-* cannot cross a separator -- by accident of the pattern, not by a traversal check.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/42-../main",
+    "message": "m",
+    "content": "x",
+    "path": "src/a.ts"
+  }
+}

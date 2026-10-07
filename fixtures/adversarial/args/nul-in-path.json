@@ -1,0 +1,28 @@
+{
+  "note": "A NUL truncates in anything written in C. The path check rejects it outright.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/42-x",
+    "message": "m",
+    "content": "x",
+    "path": "src/a.ts\u0000/../../.github/workflows/ci.yml"
+  }
+}

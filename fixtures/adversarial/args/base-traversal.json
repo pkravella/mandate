@@ -1,0 +1,21 @@
+{
+  "note": "A base ref is a ref too, and was checked only against the pattern.",
+  "rule": {
+    "tool": "create_pull_request",
+    "action": "pull_request.create",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/**"
+    ],
+    "base": "ma**"
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "head": "agent/42-x",
+    "base": "main/../../etc/passwd",
+    "title": "t"
+  }
+}

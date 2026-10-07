@@ -1,0 +1,28 @@
+{
+  "note": "The same escape under a ceiling-contained agent/** grant, where the pattern does cross separators. This is the one real hole the suite found: nothing checked a ref for traversal.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/**"
+    ],
+    "paths": [
+      "**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/../main",
+    "message": "m",
+    "content": "x",
+    "path": "src/a.ts"
+  }
+}

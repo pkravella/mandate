@@ -1,10 +1,18 @@
 import { alphabetOf, dfaAccepts, dfaFromGlobs, difference, isSubsetOf, type Containment } from "./dfa.js";
+import { type WorkBudget } from "./budget.js";
 
 export interface GlobSetOptions {
   /** Patterns subtracted from the inner (mandate) set, e.g. a grant's denyPaths. */
   readonly innerMinus?: readonly string[];
   /** Patterns subtracted from the outer (ceiling) set. */
   readonly outerMinus?: readonly string[];
+  /**
+   * A work allowance shared with every other decision in the same
+   * `validate()` call. Absent means unmetered, which is what every caller
+   * outside the validator wants: the proxy decides one value at a time and the
+   * per-automaton `MAX_DFA_STATES` already bounds that.
+   */
+  readonly budget?: WorkBudget;
 }
 
 /**
@@ -20,19 +28,28 @@ export function globSetContains(
 ): Containment {
   const innerMinus = opts.innerMinus ?? [];
   const outerMinus = opts.outerMinus ?? [];
+  const budget = opts.budget;
   const alphabet = alphabetOf([...outer, ...inner, ...innerMinus, ...outerMinus]);
 
   const innerDfa =
     innerMinus.length === 0
-      ? dfaFromGlobs(inner, alphabet)
-      : difference(dfaFromGlobs(inner, alphabet), dfaFromGlobs(innerMinus, alphabet));
+      ? dfaFromGlobs(inner, alphabet, budget)
+      : difference(
+        dfaFromGlobs(inner, alphabet, budget),
+        dfaFromGlobs(innerMinus, alphabet, budget),
+        budget,
+      );
 
   const outerDfa =
     outerMinus.length === 0
-      ? dfaFromGlobs(outer, alphabet)
-      : difference(dfaFromGlobs(outer, alphabet), dfaFromGlobs(outerMinus, alphabet));
+      ? dfaFromGlobs(outer, alphabet, budget)
+      : difference(
+        dfaFromGlobs(outer, alphabet, budget),
+        dfaFromGlobs(outerMinus, alphabet, budget),
+        budget,
+      );
 
-  return isSubsetOf(innerDfa, outerDfa);
+  return isSubsetOf(innerDfa, outerDfa, budget);
 }
 
 /**
@@ -40,7 +57,9 @@ export function globSetContains(
  * membership primitive the proxy uses on real tool arguments, and the oracle
  * the containment tests check their counterexamples against.
  */
-export function globMatches(globs: readonly string[], value: string): boolean {
+export function globMatches(
+  globs: readonly string[], value: string, budget?: WorkBudget,
+): boolean {
   // Only the GLOBS are parsed for their alphabet. `value` is a concrete string,
   // not a pattern, and passing it through alphabetOf meant parseGlob ran over
   // it -- so any real filename containing a glob metacharacter threw
@@ -52,7 +71,8 @@ export function globMatches(globs: readonly string[], value: string): boolean {
   // well as wrong.
   const withValueChars = new Set(alphabetOf(globs));
   for (const ch of value) withValueChars.add(ch);
-  return dfaAccepts(dfaFromGlobs(globs, [...withValueChars]), value);
+  return dfaAccepts(dfaFromGlobs(globs, [...withValueChars], budget), value);
 }
 
 export { type Containment } from "./dfa.js";
+export { workBudget, charge, WorkBudgetError, DEFAULT_WORK_UNITS, type WorkBudget } from "./budget.js";

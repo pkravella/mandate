@@ -1,0 +1,28 @@
+{
+  "note": "ALLOWED at the proxy, and that is correct. Probed 2026-10-07 against both upstreams: github-mcp-server v1.14.0 refuses it ('path must not contain ..') and GitHub's contents API writes a literal directory named %2e%2e inside src/. Neither escapes, so decoding here would only add a way to be wrong.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/42-x",
+    "message": "m",
+    "content": "x",
+    "path": "src/%2e%2e/.github/workflows/ci.yml"
+  }
+}

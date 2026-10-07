@@ -3,6 +3,7 @@ import {
   SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles, type Mandate,
 } from "@mandate-dev/schema";
 import { globMatches, globSetContains } from "./glob/contains.js";
+import { type WorkBudget } from "./glob/budget.js";
 import { GlobParseError } from "./glob/parse.js";
 
 export type LintSeverity = "error" | "warn";
@@ -36,9 +37,9 @@ const DEFAULT_BRANCHES = ["main", "master", "develop", "release", "release/1.0"]
 export { SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles };
 
 /** Membership that degrades to "no match" on an undecidable pattern. */
-function matchesSafely(globs: readonly string[], value: string): boolean {
+function matchesSafely(globs: readonly string[], value: string, budget?: WorkBudget): boolean {
   try {
-    return globMatches(globs, value);
+    return globMatches(globs, value, budget);
   } catch (e) {
     if (e instanceof GlobParseError) return false;
     throw e;
@@ -46,9 +47,11 @@ function matchesSafely(globs: readonly string[], value: string): boolean {
 }
 
 /** Containment that degrades to "not contained" on an undecidable pattern. */
-function containsSafely(outer: readonly string[], inner: readonly string[]): boolean {
+function containsSafely(
+  outer: readonly string[], inner: readonly string[], budget?: WorkBudget,
+): boolean {
   try {
-    return globSetContains(outer, inner).ok;
+    return globSetContains(outer, inner, budget !== undefined ? { budget } : {}).ok;
   } catch (e) {
     if (e instanceof GlobParseError) return false;
     throw e;
@@ -63,7 +66,15 @@ function containsSafely(outer: readonly string[], inner: readonly string[]): boo
  * validation: an undecidable pattern is already rejected by containment, and a
  * lint pass over one degrades to a finding.
  */
-export function runLints(m: Mandate): readonly LintFinding[] {
+/**
+ * `budget` is optional and shared with the containment decisions in the same
+ * `validate()` call. The lints run even when a grant has already been rejected
+ * -- more reasons are better than fewer -- so an unmetered lint pass over a
+ * pattern flood would spend the time the budget just refused to spend. A
+ * budget error degrades here the same way an unparseable pattern does, to "not
+ * contained", which is still a lint error and still a rejection.
+ */
+export function runLints(m: Mandate, budget?: WorkBudget): readonly LintFinding[] {
   const out: LintFinding[] = [];
   const add = (rule: string, severity: LintSeverity, message: string, grantIndex?: number): void => {
     out.push(grantIndex === undefined ? { rule, severity, message } : { rule, severity, message, grantIndex });
@@ -102,7 +113,7 @@ export function runLints(m: Mandate): readonly LintFinding[] {
         add("require-branch-constraint", "error",
           `${g.action} must name the branches it may write`, i);
       } else {
-        const reachable = DEFAULT_BRANCHES.filter((b) => matchesSafely(g.branches!, b));
+        const reachable = DEFAULT_BRANCHES.filter((b) => matchesSafely(g.branches!, b, budget));
         if (reachable.length > 0) {
           add("no-default-branch-write", "error",
             `${g.action} can reach ${reachable.join(", ")} via ${JSON.stringify(g.branches)}`, i);
@@ -112,7 +123,7 @@ export function runLints(m: Mandate): readonly LintFinding[] {
       const denies = g.denyPaths ?? [];
       const uncovered = denies.length === 0
         ? SENSITIVE_PATHS
-        : SENSITIVE_PATHS.filter((s) => !containsSafely(denies, [s]));
+        : SENSITIVE_PATHS.filter((s) => !containsSafely(denies, [s], budget));
       if (uncovered.length > 0) {
         add("require-sensitive-deny-paths", "error",
           `${g.action} does not exclude ${uncovered.join(", ")}`, i);

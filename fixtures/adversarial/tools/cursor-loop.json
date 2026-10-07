@@ -1,0 +1,24 @@
+{
+  "note": "Upstream always returns a nextCursor. listAllUpstreamTools bounds the walk at 50 pages; stopping early can only ever hide tools, never reveal one.",
+  "generate": {
+    "kind": "endless-cursor",
+    "perPage": 3
+  },
+  "tools": [
+    {
+      "name": "get_file_contents",
+      "description": "Reads a file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}

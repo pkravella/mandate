@@ -1,0 +1,32 @@
+{
+  "note": "10000 paths in one call. Every path is individually inside the grant, so nothing is over-granted -- the attack is cost, and the proxy had no cap.",
+  "rule": {
+    "tool": "create_or_update_file",
+    "action": "contents.write",
+    "resources": [
+      "acme/api"
+    ],
+    "branches": [
+      "agent/42-*"
+    ],
+    "paths": [
+      "src/**"
+    ],
+    "denyPaths": [
+      ".github/workflows/**",
+      "**.env**"
+    ]
+  },
+  "generate": {
+    "kind": "files",
+    "count": 10000,
+    "template": "src/f%d.ts"
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "branch": "agent/42-x",
+    "message": "m",
+    "content": "x"
+  }
+}

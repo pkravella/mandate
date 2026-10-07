@@ -109,6 +109,39 @@ so a mandate allowing `github.com/acme/api` does not permit
 `github.com/evil/api` or `github.com/acme/api-private`. A bare host entry also
 covers its subdomains.
 
+**A traversal is refused in a ref as well as in a path, and refused here rather
+than upstream.** A path containing a `..` segment or a NUL is denied whatever the
+grant constrains, and since 2026-10-07 so is a *ref* containing `..` anywhere,
+for `branch` and for `base` alike. The asymmetry mattered: the ceiling authors
+`context.branch like "agent/*"` in Cedar, whose `*` spans `/`, so the faithful
+glob translation is `agent/**` — and a mandate granting `branches: ["agent/**"]`
+is both schema-legal and ceiling-contained, under which `agent/../main` matched
+the pattern and was forwarded. `..` is rejected anywhere in a ref rather than as
+a whole segment, which is what `git check-ref-format` does, so no ref git would
+accept is denied.
+
+A percent-encoded traversal (`src/%2e%2e/…`) is **allowed** by the proxy, and
+that is deliberate. Probed on 2026-10-07 against both upstreams: github-mcp-server
+v1.14.0 refuses it outright (`path must not contain '..' due to auth
+vulnerability issue`), and GitHub's contents API treats `%2e%2e` as a literal
+directory name and writes the file *inside* `src/`. Neither decodes it into an
+escape, so decoding here would add a decoder to disagree with and no protection.
+
+**One call cannot buy unbounded work, and neither can one mandate.** A call
+naming more than 256 paths is denied, naming the cap — truncating instead would
+send the paths past it upstream unchecked. On the validator side,
+`MAX_DFA_STATES` bounds a single automaton, not a mandate, and a mandate is up to
+64 grants of several facets each plus a Cedar cross-check whose witness set is a
+product. Measured before the bound: a 22 KB mandate of star-dense patterns, all
+of them inside the ceiling and over-granting nothing, validated `ok: true` in
+2.6 s, and a 698 KB one built the same way ran for over five minutes. A work
+budget is now shared across the whole `validate()` call and exhausting it is a
+rejection, because R3's "reject on any doubt" includes doubt about termination.
+The budget is deterministic — the same mandate spends the same units on any
+machine — rather than a wall-clock deadline, because a validator whose verdict
+depends on how busy the runner is cannot be something a mandate is proved
+against.
+
 **A granted operation can be unreachable, depending on how the upstream is
 run.** `github-mcp-server`'s default toolsets expose 46 tools;
 `GITHUB_TOOLSETS=all` exposes 91. Six catalog operations —
