@@ -132,8 +132,10 @@ sandbox's egress allowlist. One artifact decides all three, which is the
 "merge" the PRD is named for — the policy that mints the token is the policy
 that pauses the run.
 
-**During:** the agent's only credential is that token, and its tool calls go
-through the proxy.
+**During:** the agent never holds the token — `mandate serve` does — and its
+GitHub tool calls go through the proxy. With `--sandbox` the agent also holds no
+other GitHub credential and reaches the network only through the egress
+allowlist; without it, the agent runs on the host as the operator.
 
 ```
 agent ──MCP──► mandate serve ──MCP──► github-mcp-server ──REST──► GitHub
@@ -150,7 +152,25 @@ adapter, and `mandate run` just writes a config pointing at it and launches the
 command the operator gives it.
 
 The token is minted inside the `serve` process, so the config the agent reads
-carries no credential.
+carries no credential. Without the sandbox, though, the agent is what spawns
+serve, so it runs with the environment that names the App key.
+
+With `--sandbox` the integration inverts, because the agent must not be able to
+start serve:
+
+```
+host                                       container (agent uid: no network)
+mandate run ─starts─► mandate serve        agent ──stdio──► mandate-mcp.mjs
+                      --listen 127.0.0.1            │
+                         ▲                          ▼ /run/mandate/mcp.sock
+                         └──TCP + secret──── mandate-relay.mjs (relay uid,
+                                             one iptables hole: that port)
+```
+
+serve accepts exactly one connection, and only one that opens with the secret,
+because on Docker Desktop every container can reach a host loopback port. The
+session ends when that connection closes, or a margin before the token expires,
+whichever is first.
 
 **One enforced session, shared.** `openSession` in `cli/src/session.ts` does the
 five steps — mint, compile, connect upstream, build the proxy, give the token
@@ -168,6 +188,8 @@ under- and over-granting a number rather than an opinion.
 The trace format is a mode-tagged discriminated contract: an `ActionGraph`
 carries `mode: "enforced" | "unconstrained"`, and the mandate id and hash are
 present *only* when enforced, so an unconstrained trace cannot claim a mandate.
+An enforced header also names the ceiling the mandate was proved against, by
+label and by the sha256 of its contents.
 `parseJsonl` is strict and fails closed — an unknown line type, an unrecognised
 field, a second header, a denial with no clause, an allow with no outcome, or
 any gap or repeat in the sequence is a rejection rather than a dropped row. It

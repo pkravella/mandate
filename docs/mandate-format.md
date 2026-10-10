@@ -180,7 +180,7 @@ reach sensitive paths; an unbounded count on a side-effecting operation; and an
 `enforcedBy` claiming token enforcement for a grant carrying a branch or path
 limit the token cannot express.
 
-`fixtures/overgrants/` holds 22 mandates that must each be refused, and
+`fixtures/overgrants/` holds 21 mandates that must each be refused, and
 `fixtures/adversarial/` holds 42 written as attacks.
 
 ---

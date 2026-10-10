@@ -10,13 +10,18 @@ validator proves the mandate grants nothing beyond what the user and the
 organization already allow. Mandate then compiles it into controls GitHub and
 MCP gateways already enforce, and watches the run against it.
 
-> **Status: v0.1. The loop runs end to end from one command, and is measured —
-> but three of the seven headline metrics miss their target and the corpus is
-> six tasks rather than fifty.** A model writes a mandate, the validator proves
-> it against a Cedar ceiling and a destination allowlist, a repo-scoped GitHub
-> App token is minted, and `mandate run` launches an agent whose only route to
-> GitHub is the enforced proxy. Every decision is recorded as an action graph,
-> and a replay evaluator scores mandates against traces of unconstrained runs.
+> **Status: v0.1 plus Phase 5 of the post-MVP plan. The loop runs end to end
+> from one command, and is measured — but three of the seven headline metrics
+> miss their target and the corpus is six tasks rather than fifty.** A model
+> writes a mandate, the validator proves it against a Cedar ceiling and a
+> destination allowlist, a repo-scoped GitHub App token is minted, and
+> `mandate run` launches an agent whose GitHub tools all go through the enforced
+> proxy. With `--sandbox` the agent runs in a container that holds no GitHub
+> credential at all and reaches only the mandate's destinations; without it,
+> any credential the agent can find is its own (see the
+> [threat model](docs/threat-model.md) §3.1). Every decision is recorded as an
+> action graph, and a replay evaluator scores mandates against traces of
+> unconstrained runs.
 >
 > What is measured and what is missed: the
 > [benchmark report](docs/benchmark-report.md), which states its own shortfalls
@@ -84,7 +89,10 @@ There is no default. `--level` used to default to `push`, so every run quietly
 asserted push authority with nothing in the output saying so.
 
 Exit 0 prints the permission diff, 1 prints the rejection with the ceiling
-clause and a counterexample, 2 means the input could not be read.
+clause and a counterexample, 2 means the input could not be read or the command
+was mistyped. Every result names the ceiling it was checked against by its file
+and the sha256 of its contents; a mandate's own `ceiling:` field is shown only
+as the claim it is.
 
 A paused call can be re-reviewed with more scope. `mandate widen` takes the
 pause record the proxy emitted and re-validates the whole mandate from scratch,
@@ -149,7 +157,38 @@ agent holding a credential of its own. That is the sandbox's job, and
 
 Nothing is minted and no agent is launched until the mandate validates. The
 config the agent reads carries no credential: `mandate serve` mints its own
-token in its own process.
+token in its own process. But without the sandbox the agent spawns that process
+itself, with the operator's environment — which names the App's private key,
+readable by the agent's own user. That is what `--sandbox` is for.
+
+### In the sandbox
+
+```bash
+docker build -t mandate-sandbox sandbox
+docker build -t mandate-agent-claude sandbox/examples/claude-code
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+
+node packages/cli/dist/index.js run --mandate mandate.yaml \
+  --ceiling fixtures/ceilings/sandbox-v1.cedar \
+  --schema  fixtures/ceilings/schema.cedarschema \
+  --ceiling-destinations fixtures/ceilings/sandbox-v1.destinations \
+  --as pkravella --repo pkravella/mandate-sandbox \
+  --sandbox --image mandate-agent-claude --agent-egress api.anthropic.com \
+  --pass-env ANTHROPIC_API_KEY --pass-env CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC \
+  -- claude -p "read src/retry.js and say what it does" \
+     --mcp-config '{mcpConfig}' --strict-mcp-config --allowedTools mcp__github
+```
+
+`mandate run` starts `mandate serve` itself, on the host, and runs the agent in a
+container built from an allowlist: a clone of HEAD (no host `.git`, hook or
+ignored `.env`; a dirty tree is refused), egress to the mandate's destinations
+plus the hosts named with `--agent-egress`, and only the environment variables
+named with `--pass-env` — known credentials are refused outright. The agent
+reaches serve through a relay with a secret handshake. Verified live with
+Claude Code: the allowed read succeeded, a read of another repository was
+refused at `repo.read.resources`, and the only egress was two tunnels to the
+model's API. macOS with Docker Desktop only; `--sandbox` refuses elsewhere,
+which includes the Action's Linux runners.
 
 There is also an [Action](action.yml) and an
 [example workflow](.github/workflows/mandate.yml). The workflow sets
@@ -215,7 +254,7 @@ credential vault, or another MCP gateway.
 
 ## Build status
 
-The v0.1 plan runs in four phases.
+The v0.1 plan ran in four phases; the post-MVP plan continues from Phase 5.
 
 | Phase | Scope | State |
 | --- | --- | --- |
@@ -223,6 +262,18 @@ The v0.1 plan runs in four phases.
 | 2 | Write and enforce: mandate writer, scoped GitHub App tokens, MCP proxy, argument enforcement, permission diff | exit criterion **met** — see below |
 | 3 | Runtime and measurement: action graph, destination rules, egress sandbox, widen flow, replay evaluator, benchmark | built; exit criterion **not met as written** — it asks for 50 tasks and the corpus has 6 |
 | 4 | Adversarial testing and launch: the attack corpus, `mandate run`, packaging, docs | exit criterion **met** — zero ceiling breaches across 34 adversarial cases |
+| 5 | Make the trust story true: the agent in the sandbox, destination extraction, requester and ceiling identity, the token clock, `max` | exit criterion **met** — every security property the docs assert is exercised by a test, threat-model §3 is shorter, and no module is tested but unreachable |
+
+Phase 5 closed the distance between what the docs claimed and what the shipped
+path did, and most of what it fixed was found by probing rather than planned:
+an agent could leave the sandbox over IPv6; destination extraction read
+`https://github.com@evil.example.com/` as github.com, missed `HTTPS://` and
+`../` traversal, and never saw the one destination field the real server has (a
+fork's `organization`); the CLI printed a ceiling name chosen by the mandate's
+writer; a mandate could name any requester; and `max: 1` on `issue.create` let
+three issues through when updates were also granted. It also ran a real agent
+in the sandbox for the first time, which found that no agent image could be
+built on the base image at all.
 
 Phase 2's exit criterion was *"an agent fixes a real issue end to end under a
 mandate, and an attempted merge is blocked."* Run against a throwaway
@@ -300,7 +351,7 @@ upstream of it is untrusted; everything downstream takes only a
 | `@mandate-dev/compiler` | Mints a repository-scoped GitHub App token and revokes it, and compiles the mandate into proxy rules — capped to end before the token does — plus the token-versus-proxy enforcement report. |
 | `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list`, checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. |
 | `@mandate-dev/replay` | Scores a mandate by replaying a recorded action graph through the production argument enforcer, reporting over-grant, under-grant, and which operations a task needed that the mandate lacked. |
-| `@mandate-dev/cli` | The permission diff, the rejection report, `mandate validate` and `mandate widen`. |
+| `@mandate-dev/cli` | `mandate validate`, `widen`, `serve` and `run` (with `--sandbox`: the workspace clone, the container launch and the relay listener), the permission diff, the rejection report, and the enforced session the CLI and the benchmark share. |
 | `@mandate-dev/bench` | Private. The benchmark corpus loader, the seeder, the two-pass harness and the report renderer. |
 
 **The egress sandbox is the layer that actually holds.** An MCP proxy sees MCP
@@ -366,6 +417,16 @@ records `synthetic` as a provenance that cannot imply attribution it lacks, and
 `loadCorpus` reports the shortfall as a number so nothing can present six as
 fifty.
 
+**The sandbox is macOS and Docker Desktop only.** On Linux the relay needs
+`host-gateway` and serve would have to bind the bridge address; that path has
+never been run, so `--sandbox` refuses there rather than claim it.
+
+**`max` limits a session, not a task.** A new session starts the count at zero —
+with `--sandbox` only the operator can start one, without it the agent can, by
+restarting its MCP server — and where operations share a tool and a call cannot
+say which it is, their limits combine. [docs/mandate-format.md](docs/mandate-format.md)
+has the exact rule.
+
 **A zero false-pause count is not evidence.** The proxy filters `tools/list`, so
 an ungranted tool is never offered and therefore never attempted — measured,
 zero denials across six mandated runs while replay predicted seven under-granted
@@ -382,17 +443,19 @@ pnpm test
 pnpm build
 ```
 
-Requires Node 22 or newer. **830 tests run offline with no credentials**, and
-that is what CI runs.
+Requires Node 22 or newer. **953 tests run offline with no credentials**, and
+that is what CI runs. Rebuild with the root `pnpm build`: the packages have no
+build script of their own, so `pnpm --filter <pkg> build` exits 0 having done
+nothing.
 
-Twenty-five more are gated, each behind its own variable, because they spend
-money, mint real credentials, or write to a real repository. CI never runs any
-of them and needs no secrets.
+Forty-two more are gated, each behind its own variable, because they spend
+money, mint real credentials, write to a real repository, or need Docker. CI
+never runs any of them and needs no secrets.
 
 | Gate | What it does | Cost |
 | --- | --- | --- |
 | `MANDATE_LIVE=1` | The writer against the live model, token minting against a real GitHub App, and the whole loop end to end | ~$0.03 to ~$0.30 |
-| `MANDATE_SANDBOX=1` | Builds the egress container and verifies it, with negative controls | free, needs Docker |
+| `MANDATE_SANDBOX=1` | Builds the sandbox and verifies its egress, the relay to `mandate serve`, and `mandate run --sandbox` end to end, each with negative controls (the last two on macOS) | free, needs Docker |
 | `MANDATE_SEED=1` | Seeds the benchmark corpus into the bench repository — **writes to its default branch and opens issues** | free |
 | `MANDATE_GROUND_TRUTH=1` | Re-records the benchmark's ground-truth traces, **overwriting the committed ones** | ~$3 |
 | `MANDATE_BENCH=1` | The mandated sweep and the report | ~$1.15 |
