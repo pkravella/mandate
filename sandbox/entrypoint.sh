@@ -136,6 +136,14 @@ if [ -d /mnt/mandate-workspace ]; then
   cd /home/agent/workspace
 fi
 
+# Belt: a well-behaved tool honours these. Braces: the iptables rules reject
+# everything else from the agent uid, so a tool that ignores them fails at the
+# network layer instead of reaching the internet. Set here rather than as image
+# ENV, which would leak into the build steps of every image built FROM this one.
+export HTTP_PROXY=http://127.0.0.1:3128 HTTPS_PROXY=http://127.0.0.1:3128
+export http_proxy=http://127.0.0.1:3128 https_proxy=http://127.0.0.1:3128
+export NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
+
 # The secret is the relay's, and the squid config is root's business. Neither
 # goes to the agent. `env -u` names variables, so no value reaches any argv.
 exec env -u MANDATE_RELAY_SECRET -u MANDATE_SQUID_CONF \

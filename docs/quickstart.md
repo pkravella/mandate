@@ -178,27 +178,35 @@ credential — the token stays with `mandate serve` on the host — works in a c
 of HEAD, and reaches only the mandate's destinations and the hosts you open for
 it. macOS with Docker Desktop for now.
 
-Build the base image, then one with your agent in it:
+Build the base image, then one with your agent in it.
+[`sandbox/examples/claude-code`](../sandbox/examples/claude-code/Dockerfile) is
+the Claude Code image the live verification ran:
 
 ```bash
 docker build -t mandate-sandbox sandbox
+docker build -t mandate-agent-claude sandbox/examples/claude-code
 ```
 
-```dockerfile
-FROM mandate-sandbox
-# install your agent here
-```
-
-Then run with your image, the agent's model host, and its key passed by name:
+Then run with your image, the agent's model host, and its key passed by name.
+This is the shape of the live run:
 
 ```bash
-mandate run --mandate m.yaml --ceiling fixtures/ceilings/org-policy-v12.cedar \
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1
+mandate run --mandate m.yaml --ceiling fixtures/ceilings/sandbox-v1.cedar \
   --schema fixtures/ceilings/schema.cedarschema \
-  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
-  --as alice --repo acme/api \
-  --sandbox --image my-agent --agent-egress api.anthropic.com --pass-env ANTHROPIC_API_KEY \
-  -- claude --mcp-config {mcpConfig} -p "fix issue 42"
+  --ceiling-destinations fixtures/ceilings/sandbox-v1.destinations \
+  --as pkravella --repo pkravella/mandate-sandbox \
+  --sandbox --image mandate-agent-claude --agent-egress api.anthropic.com \
+  --pass-env ANTHROPIC_API_KEY --pass-env CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC \
+  --pass-env DISABLE_AUTOUPDATER \
+  -- claude -p "read src/retry.js and say what it does" --mcp-config {mcpConfig} \
+     --strict-mcp-config --allowedTools mcp__github
 ```
+
+Two Claude Code details matter here. In print mode it will not call an MCP tool
+it has not been allowed, so `--allowedTools mcp__github` is what lets it use the
+enforced server at all. And its telemetry hosts are not on the allowlist, so the
+non-essential-traffic switch keeps it from trying them.
 
 The working tree has to be clean, because uncommitted changes would not be in
 the clone. The sandbox's own checks run free with Docker:
