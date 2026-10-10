@@ -55,7 +55,13 @@ const checks = [
   ["direct.unlisted-ip", () => direct("1.1.1.1", 443)],
   ...(allowedIp === undefined
     ? []
-    : [["direct.allowed-host-ip", () => direct(allowedIp, 443)]]),
+    : [
+      ["direct.allowed-host-ip", () => direct(allowedIp, 443)],
+      // The same address through the proxy. squid matches an IP-literal
+      // request by its PTR record unless told not to, and a PTR says whatever
+      // the address's owner wants -- an allowed host's IP must still be refused.
+      ["proxy.allowed-host-ip", () => viaProxy(allowedIp, 443)],
+    ]),
   // No DNS of its own.
   ["direct.dns", () => direct("1.1.1.1", 53)],
   // The same rules over IPv6. iptables alone covers IPv4 only, and on a Docker
@@ -131,6 +137,19 @@ if (relayTarget !== undefined) {
     checks.push(["direct.relay-host-other-port", () => direct(ip, Number(otherPort))]);
   }
 }
+
+// What this process could regain. Found reviewing Phase 5: setpriv dropped the
+// uid but left no_new_privs off and the bounding set full, so a setuid binary
+// in the image would have come back with every capability the container has,
+// NET_ADMIN -- the one that rewrites the firewall -- included.
+const statusField = (name) => {
+  const line = readFileSync("/proc/self/status", "utf8").split("\n").find((l) => l.startsWith(`${name}:`));
+  return line === undefined ? "missing" : line.slice(name.length + 1).trim();
+};
+checks.push(
+  ["proc.no-new-privs", async () => statusField("NoNewPrivs")],
+  ["proc.cap-bounding", async () => statusField("CapBnd")],
+);
 
 // The proxy a well-behaved tool will use. Set by the entrypoint, not the image.
 checks.push(["env.https-proxy", async () => process.env["HTTPS_PROXY"] ?? "unset"]);

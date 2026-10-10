@@ -27,6 +27,12 @@ if (m === null || secret.length === 0) {
 const [, host, port] = m;
 
 rmSync(SOCKET, { force: true });
+// The socket is created by bind(), with this process's umask, before listen's
+// callback can chmod it -- and the entrypoint starts the agent as soon as the
+// socket exists. Found reviewing Phase 5: in that gap the agent could find it
+// unwritable. Created world-writable from the start; the directory is the
+// access boundary.
+process.umask(0);
 const server = net.createServer((agent) => {
   const upstream = net.connect(Number(port), host, () => {
     // Written before any agent byte is piped, so it is always the first line.

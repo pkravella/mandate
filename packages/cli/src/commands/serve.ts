@@ -60,6 +60,8 @@ export interface ServeDeps extends AuthorityDeps {
   readonly relaySecret?: string | undefined;
   /** The stream whose end stops a stdio session. Injected for tests. */
   readonly stdin?: NodeJS.EventEmitter;
+  /** Where SIGINT and SIGTERM arrive. Defaults to the process. */
+  readonly signals?: NodeJS.EventEmitter;
 }
 
 /**
@@ -108,7 +110,20 @@ export async function runServe(
     }
   }
 
+  // Listening for SIGINT and SIGTERM from here, before anything is minted.
+  // Found reviewing Phase 5: the listeners used to go on only once serve was
+  // serving, so a signal during the mint -- the launcher's start-up timeout,
+  // an operator's Ctrl-C -- killed it by the default action with a live token
+  // nobody would revoke.
+  const signalled = untilSignalled(deps.signals ?? process, new EventEmitter());
+  let stopRequested = false;
+  void signalled.then(() => { stopRequested = true; });
+
   const prepared = await prepareMandate(args, deps);
+  if (stopRequested) {
+    log("Stopped before anything was minted.");
+    return 0;
+  }
   if (!prepared.ok) {
     if (prepared.code === 1) {
       log(renderRejections(prepared.rejections, prepared.proposed));
@@ -154,7 +169,11 @@ export async function runServe(
       );
     }
 
-    if (listenAt !== undefined && deps.relaySecret !== undefined) {
+    if (stopRequested) {
+      // Signalled while the token was being minted: straight to the finally,
+      // which writes the trace and revokes.
+      log("Stopped while the session was opening.");
+    } else if (listenAt !== undefined && deps.relaySecret !== undefined) {
       const s = session;
       listener = await listenForAgent({
         ...listenAt, secret: deps.relaySecret,
@@ -172,14 +191,14 @@ export async function runServe(
       // Not stdin: a serve started by `mandate run` has no agent on it, and
       // waiting for it to end would shut the session down at once.
       const l = listener;
-      await (deps.until
-        ?? (() => Promise.race([l.ended, untilSignalled(process, new EventEmitter())])))();
+      await (deps.until ?? (() => Promise.race([l.ended, signalled])))();
     } else {
       const connect = deps.connect
         ?? (async (s: Session) => { await s.proxy.connect(new StdioServerTransport()); });
       await connect(session);
 
-      await (deps.until ?? (() => untilSignalled(process, deps.stdin ?? process.stdin)))();
+      await (deps.until
+        ?? (() => Promise.race([signalled, untilSignalled(new EventEmitter(), deps.stdin ?? process.stdin)])))();
     }
   } finally {
     if (listener !== undefined) await listener.close();

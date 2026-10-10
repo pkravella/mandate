@@ -92,6 +92,33 @@ describe("prepareWorkspace", () => {
     }
   });
 
+  // Found reviewing Phase 5, and probed: a local clone takes git's fast path
+  // and copies the whole object store, so a secret amended out of history or
+  // stashed was readable in the agent's copy with `git cat-file`. Only HEAD's
+  // tree may cross.
+  it("carries no object that HEAD does not reach", () => {
+    const src = sourceRepo();
+    writeFileSync(join(src, "README.md"), "ghp_PLANTED_AMENDED\n");
+    git(src, "commit", "-q", "-am", "oops");
+    const amended = git(src, "rev-parse", "HEAD:README.md").trim();
+    git(src, "reset", "-q", "--hard", "HEAD~1");
+    writeFileSync(join(src, "README.md"), "ghp_PLANTED_STASH\n");
+    git(src, "stash", "-q");
+    const stashed = git(src, "rev-parse", "stash@{0}:README.md").trim();
+    git(src, "checkout", "-q", "-b", "side");
+    writeFileSync(join(src, "side.txt"), "ghp_PLANTED_BRANCH\n");
+    git(src, "add", "side.txt");
+    git(src, "commit", "-q", "-m", "side");
+    const sideBlob = git(src, "rev-parse", "HEAD:side.txt").trim();
+    git(src, "checkout", "-q", "agent/42-fix");
+
+    const ws = prepareWorkspace(src, into());
+    for (const [name, oid] of [["amended", amended], ["stashed", stashed], ["other branch", sideBlob]]) {
+      expect(() => git(ws.path, "cat-file", "-e", oid ?? ""), name).toThrow();
+    }
+    expect(readFileSync(join(ws.path, "README.md"), "utf8")).toBe("committed\n");
+  });
+
   it("works from a subdirectory of the repository", () => {
     const src = sourceRepo();
     mkdirSync(join(src, "pkg"));

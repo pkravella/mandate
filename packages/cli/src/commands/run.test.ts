@@ -485,6 +485,36 @@ describe("mandate serve --listen", () => {
     }
   });
 
+  // Found reviewing Phase 5: serve listened for signals only once it was
+  // serving, so a SIGTERM during the mint -- the launcher timing out, an
+  // operator's Ctrl-C -- killed it with a live token unrevoked. It listens from
+  // the start now, and a signal mid-mint closes the session at once.
+  it("revokes the token when a signal arrives while it is being minted", async () => {
+    const signals = new EventEmitter();
+    const gh = fakeGithub();
+    const asApp = gh.deps.asApp;
+    const readyFile = join(mkdtempSync(join(tmpdir(), "mandate-listen-")), "ready.json");
+    const code = await runServe(serveArgs({ listen: "127.0.0.1:0", readyFile }), () => undefined, {
+      github: { ...gh.deps, asApp: async (route, params) => { signals.emit("SIGTERM"); return asApp(route, params); } },
+      upstream: fakeUpstream, relaySecret, signals,
+    });
+    expect(code).toBe(0);
+    expect(gh.mints()).toBe(1);
+    expect(gh.revokes()).toBe(1);
+    expect(existsSync(readyFile)).toBe(false);
+  });
+
+  it("mints nothing when a signal arrives before the mint", async () => {
+    const signals = new EventEmitter();
+    const gh = fakeGithub();
+    const done = runServe(serveArgs({ listen: "127.0.0.1:0" }), () => undefined, {
+      github: gh.deps, upstream: fakeUpstream, relaySecret, signals,
+    });
+    signals.emit("SIGINT");
+    expect(await done).toBe(0);
+    expect(gh.mints()).toBe(0);
+  });
+
   // A serve started by `mandate run` has no agent on its stdin. If listen mode
   // waited on stdin ending, as stdio mode does, it would shut down at once.
   it("does not end the session because its stdin closed", async () => {
