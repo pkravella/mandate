@@ -48,8 +48,27 @@ tail -F -n +1 /var/log/squid/access.log &
 #   - everything else from the agent uid is rejected, DNS included. With
 #     HTTPS_PROXY set the proxy resolves names, so the agent never needs to,
 #     and a direct resolver would be a channel of its own.
+#
+# The `proxy` ACCEPT is redundant while the OUTPUT policy is ACCEPT: the only
+# REJECT names the agent uid. Verified by removing it, in both families, and
+# watching squid still tunnel. It stays because it states the rule at the point
+# it applies and becomes load-bearing the moment the policy is DROP.
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A OUTPUT -m owner --uid-owner proxy -j ACCEPT
 iptables -A OUTPUT -m owner --uid-owner agent -j REJECT
+
+# The same three rules over IPv6, because iptables covers IPv4 only. On a Docker
+# network with IPv6 enabled the agent connected straight out over v6 while every
+# IPv4 check reported blocked -- measured, not assumed.
+#
+# Guarded on the kernel having IPv6 at all: with no /proc/net/if_inet6 there is
+# nothing to leak over, and refusing to start would only break hosts booted
+# without it. Where IPv6 exists the rules must load, and `set -e` exits if they
+# do not.
+if [ -e /proc/net/if_inet6 ]; then
+  ip6tables -A OUTPUT -o lo -j ACCEPT
+  ip6tables -A OUTPUT -m owner --uid-owner proxy -j ACCEPT
+  ip6tables -A OUTPUT -m owner --uid-owner agent -j REJECT
+fi
 
 exec setpriv --reuid=agent --regid=agent --clear-groups "$@"

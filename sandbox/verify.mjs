@@ -37,6 +37,11 @@ const direct = (host, port) => new Promise((resolve) => {
 
 const allowedIp = process.env["MANDATE_VERIFY_ALLOWED_IP"];
 
+// `addr port` of a listener reachable over IPv6. Passed in because there is no
+// public IPv6 target every network can reach; the gated test stands one up on
+// an IPv6-enabled Docker network, which is where the leak was measured.
+const [v6Addr, v6Port] = (process.env["MANDATE_VERIFY_V6_TARGET"] ?? "").split(" ");
+
 const checks = [
   // The proxy enforces the mandate's allowlist.
   ["proxy.allowed", () => viaProxy("github.com", 443)],
@@ -51,6 +56,11 @@ const checks = [
     : [["direct.allowed-host-ip", () => direct(allowedIp, 443)]]),
   // No DNS of its own.
   ["direct.dns", () => direct("1.1.1.1", 53)],
+  // The same rules over IPv6. iptables alone covers IPv4 only, and on a Docker
+  // network with IPv6 enabled the agent got straight out without it.
+  ...(v6Addr === undefined || v6Addr === "" || v6Port === undefined
+    ? []
+    : [["direct.ipv6", () => direct(v6Addr, Number(v6Port))]]),
 ];
 
 for (const [name, run] of checks) {

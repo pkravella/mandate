@@ -4,7 +4,7 @@ import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
 import { compileEgress } from "./egress.js";
 
@@ -48,6 +48,8 @@ function runSandbox(opts: {
   capNetAdmin?: boolean;
   allowedIp?: string;
   entrypoint?: string;
+  network?: string;
+  v6Target?: string;
 }): Run {
   const args = ["run", "--rm"];
   if (opts.capNetAdmin !== false) args.push("--cap-add=NET_ADMIN");
@@ -58,6 +60,8 @@ function runSandbox(opts: {
   if (opts.entrypoint !== undefined) {
     args.push("-v", `${opts.entrypoint}:/usr/local/bin/entrypoint.sh:ro`);
   }
+  if (opts.network !== undefined) args.push("--network", opts.network);
+  if (opts.v6Target !== undefined) args.push("-e", `MANDATE_VERIFY_V6_TARGET=${opts.v6Target}`);
   args.push(IMAGE, "node", "/usr/local/lib/mandate-verify.mjs");
 
   let status = 0;
@@ -72,10 +76,45 @@ function runSandbox(opts: {
 
   const checks: Record<string, string> = {};
   for (const line of output.split("\n")) {
-    const m = /^((?:proxy|direct)\.[a-z-]+)=(.+)$/.exec(line.trim());
+    const m = /^((?:proxy|direct)\.[a-z0-9-]+)=(.+)$/.exec(line.trim());
     if (m?.[1] !== undefined && m[2] !== undefined) checks[m[1]] = m[2];
   }
   return { status, output, checks };
+}
+
+/**
+ * An IPv6-enabled Docker network with a listener on it.
+ *
+ * `iptables` covers IPv4 only. On the default bridge eth0 has IPv6 disabled, so
+ * the gap is invisible there -- but a Docker network with IPv6 enabled (kind
+ * creates one) let the agent connect straight out over v6 while every IPv4
+ * check said blocked. Measured, not reasoned about: v4 ECONNREFUSED, v6 LEAKED.
+ * The listener is the sandbox image itself, so no second image is pulled.
+ */
+const V6_NETWORK = "mandate-sandbox-v6-test";
+const V6_LISTENER = "mandate-sandbox-v6-listener";
+const V6_PORT = 47813;
+
+function startV6Listener(): string {
+  stopV6Listener();
+  execFileSync("docker", ["network", "create", "--ipv6", V6_NETWORK], { stdio: "pipe" });
+  execFileSync("docker", [
+    "run", "-d", "--rm", "--name", V6_LISTENER, "--network", V6_NETWORK,
+    "--entrypoint", "node", IMAGE, "-e",
+    `require("net").createServer((c) => c.end("hi")).listen(${V6_PORT}, "::")`,
+  ], { stdio: "pipe" });
+  const addr = execFileSync("docker", [
+    "inspect", V6_LISTENER, "--format",
+    "{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}",
+  ], { encoding: "utf8" }).trim();
+  if (addr === "") throw new Error(`${V6_LISTENER} has no IPv6 address on ${V6_NETWORK}`);
+  return `${addr} ${V6_PORT}`;
+}
+
+function stopV6Listener(): void {
+  for (const args of [["rm", "-f", V6_LISTENER], ["network", "rm", V6_NETWORK]]) {
+    try { execFileSync("docker", args, { stdio: "pipe" }); } catch { /* absent */ }
+  }
 }
 
 describe.skipIf(!enabled)("the agent sandbox, against a real container", () => {
@@ -120,6 +159,20 @@ describe.skipIf(!enabled)("the agent sandbox, against a real container", () => {
     expect(runSandbox({ squidConf: conf }).checks["direct.dns"]).toMatch(/^blocked:/);
   });
 
+  describe("over IPv6", () => {
+    let v6Target = "";
+    beforeAll(() => { v6Target = startV6Listener(); }, 120_000);
+    afterAll(stopV6Listener);
+
+    it("blocks direct egress over IPv6 as it does over IPv4", () => {
+      const { checks } = runSandbox({ squidConf: conf, network: V6_NETWORK, v6Target });
+      // Asserted present, so a verify.mjs that silently skipped the check
+      // cannot pass this.
+      expect(checks["direct.ipv6"]).toMatch(/^blocked:/);
+      expect(checks["direct.unlisted-ip"]).toMatch(/^blocked:/);
+    });
+  });
+
   // Without NET_ADMIN the rules cannot load. Starting the agent anyway would
   // run it with egress wide open while the docs claim this layer holds.
   it("refuses to start the agent when it cannot install the firewall rules", () => {
@@ -157,6 +210,32 @@ describe.skipIf(!enabled)("the sandbox checks discriminate", () => {
     const { checks } = runSandbox({ squidConf: wide });
     expect(checks["proxy.allowed"]).toBe("200");
     expect(checks["proxy.subdomain-of-allowed"]).toBe("200");
+  });
+
+  describe("over IPv6", () => {
+    let v6Target = "";
+    beforeAll(() => { v6Target = startV6Listener(); }, 120_000);
+    afterAll(stopV6Listener);
+
+    // The listener answers when nothing is in the way, so "blocked" above is
+    // the rules and not an unreachable address.
+    it("leaks over IPv6 once the ip6tables rules are removed", () => {
+      const src = readFileSync(join(SANDBOX_DIR, "entrypoint.sh"), "utf8");
+      expect(src).toMatch(/^\s*ip6tables -A/m);
+      // Replaced with `true` rather than deleted, so the block around them
+      // still parses and the only difference is the IPv6 rules.
+      const stripped = src.replace(/^(\s*)ip6tables .*$/gm, "$1true");
+      expect(stripped).not.toContain("ip6tables -A");
+      const path = join(tmpdir(), "mandate-noip6tables-entrypoint.sh");
+      writeFileSync(path, stripped, "utf8");
+      chmodSync(path, 0o755);
+      const { checks } = runSandbox({
+        squidConf: conf, entrypoint: path, network: V6_NETWORK, v6Target,
+      });
+      expect(checks["direct.ipv6"]).toBe("LEAKED");
+      // IPv4 still closed, so this run differs from the real one only in v6.
+      expect(checks["direct.unlisted-ip"]).toMatch(/^blocked:/);
+    });
   });
 
   it("leaks direct egress once the firewall rules are removed", () => {
