@@ -169,36 +169,55 @@ export async function runServe(
       );
     }
 
-    if (stopRequested) {
-      // Signalled while the token was being minted: straight to the finally,
-      // which writes the trace and revokes.
-      log("Stopped while the session was opening.");
-    } else if (listenAt !== undefined && deps.relaySecret !== undefined) {
-      const s = session;
-      listener = await listenForAgent({
-        ...listenAt, secret: deps.relaySecret,
-        connect: async (t) => { await s.proxy.connect(t); },
-      });
-      if (args.readyFile !== undefined) {
-        // Renamed into place, so the launcher never reads a half-written file.
-        writeFileSync(
-          `${args.readyFile}.tmp`,
-          `${JSON.stringify({ host: listener.host, port: listener.port })}\n`, "utf8",
-        );
-        renameSync(`${args.readyFile}.tmp`, args.readyFile);
-      }
-      log(`Listening on ${listener.host}:${listener.port} for the sandbox relay.`);
-      // Not stdin: a serve started by `mandate run` has no agent on it, and
-      // waiting for it to end would shut the session down at once.
-      const l = listener;
-      await (deps.until ?? (() => Promise.race([l.ended, signalled])))();
-    } else {
-      const connect = deps.connect
-        ?? (async (s: Session) => { await s.proxy.connect(new StdioServerTransport()); });
-      await connect(session);
+    // The session ends at its expiry -- the mandate's, or a margin before the
+    // token's -- not only when the agent leaves. Found reviewing Phase 5: the
+    // proxy refused every call past expiry, but the session, the listener and
+    // a still-valid token stayed up until disconnect. Unref'd so it never
+    // holds the process open by itself.
+    let expiryTimer: NodeJS.Timeout | undefined;
+    const expired = new Promise<void>((resolve) => {
+      const at = Date.parse(session.rules.expiresAt);
+      expiryTimer = setTimeout(() => {
+        log(`The session reached its expiry at ${session.rules.expiresAt}.`);
+        resolve();
+      }, Number.isNaN(at) ? 0 : Math.max(0, at - Date.now()));
+      expiryTimer.unref();
+    });
+    const stopping = Promise.race([signalled, expired]);
+    try {
+      if (stopRequested) {
+        // Signalled while the token was being minted: straight to the finally,
+        // which writes the trace and revokes.
+        log("Stopped while the session was opening.");
+      } else if (listenAt !== undefined && deps.relaySecret !== undefined) {
+        const s = session;
+        listener = await listenForAgent({
+          ...listenAt, secret: deps.relaySecret,
+          connect: async (t) => { await s.proxy.connect(t); },
+        });
+        if (args.readyFile !== undefined) {
+          // Renamed into place, so the launcher never reads a half-written file.
+          writeFileSync(
+            `${args.readyFile}.tmp`,
+            `${JSON.stringify({ host: listener.host, port: listener.port })}\n`, "utf8",
+          );
+          renameSync(`${args.readyFile}.tmp`, args.readyFile);
+        }
+        log(`Listening on ${listener.host}:${listener.port} for the sandbox relay.`);
+        // Not stdin: a serve started by `mandate run` has no agent on it, and
+        // waiting for it to end would shut the session down at once.
+        const l = listener;
+        await (deps.until ?? (() => Promise.race([l.ended, stopping])))();
+      } else {
+        const connect = deps.connect
+          ?? (async (s: Session) => { await s.proxy.connect(new StdioServerTransport()); });
+        await connect(session);
 
-      await (deps.until
-        ?? (() => Promise.race([signalled, untilSignalled(new EventEmitter(), deps.stdin ?? process.stdin)])))();
+        await (deps.until
+          ?? (() => Promise.race([stopping, untilSignalled(new EventEmitter(), deps.stdin ?? process.stdin)])))();
+      }
+    } finally {
+      if (expiryTimer !== undefined) clearTimeout(expiryTimer);
     }
   } finally {
     if (listener !== undefined) await listener.close();

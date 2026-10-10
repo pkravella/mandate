@@ -57,7 +57,7 @@ destinations:
   allow: ["github.com/acme/api"]
 `);
 
-const fakeGithub = (): { deps: MintDeps; revokes: () => number; mints: () => number } => {
+const fakeGithub = (tokenLifeMs = 3_600_000): { deps: MintDeps; revokes: () => number; mints: () => number } => {
   let revokes = 0;
   let mints = 0;
   return {
@@ -68,7 +68,7 @@ const fakeGithub = (): { deps: MintDeps; revokes: () => number; mints: () => num
       asApp: async () => (mints += 1, {
         status: 201,
         data: {
-          token: "ghs_fake", expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          token: "ghs_fake", expires_at: new Date(Date.now() + tokenLifeMs).toISOString(),
           permissions: { contents: "write", metadata: "read" },
           repositories: [{ name: "api" }],
         },
@@ -502,6 +502,21 @@ describe("mandate serve --listen", () => {
     expect(gh.mints()).toBe(1);
     expect(gh.revokes()).toBe(1);
     expect(existsSync(readyFile)).toBe(false);
+  });
+
+  // Found reviewing Phase 5: past its expiry the proxy refused every call, but
+  // the session, the listener and the token stayed up until the agent went
+  // away. The session now ends at its expiry, which revokes the token.
+  it("ends the session, and revokes, at its expiry", async () => {
+    // 61 s of token life: the session is capped to end 60 s before it.
+    const gh = fakeGithub(61_000);
+    const started = Date.now();
+    const code = await runServe(serveArgs({ listen: "127.0.0.1:0" }), () => undefined, {
+      github: gh.deps, upstream: fakeUpstream, relaySecret, signals: new EventEmitter(),
+    });
+    expect(code).toBe(0);
+    expect(gh.revokes()).toBe(1);
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 
   it("mints nothing when a signal arrives before the mint", async () => {
