@@ -6,9 +6,9 @@ import type { GitHubResponse, MintDeps } from "./token.js";
  * App-level authentication, without `@octokit/auth-app`.
  *
  * The plan called for that package. It is not needed here and carries a cost:
- * its value is JWT signing plus installation-token caching, and the caching is
- * `TokenRefresher`'s job — with revocation and a staleness rule the generic
- * cache does not have. What is left is twenty lines of RS256 over a two-field
+ * its value is JWT signing plus installation-token caching, and nothing here
+ * caches: a session mints one token and ends before it expires (see
+ * `capToCredential`). What is left is twenty lines of RS256 over a two-field
  * payload.
  *
  * It also sidesteps a key-format question. GitHub hands out a PKCS#1 key

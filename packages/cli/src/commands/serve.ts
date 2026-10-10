@@ -140,7 +140,11 @@ export async function runServe(
     log(
       `Serving ${session.rules.allowedTools.length} tool(s) under mandate `
       + `${session.rules.mandateId} (${session.rules.mandateHash.slice(0, 12)}), `
-      + `token ${session.minted.fingerprint}, expires ${session.minted.expiresAt}.`,
+      + `token ${session.minted.fingerprint}, expires ${session.minted.expiresAt}. `
+      + (session.rules.cappedBy === undefined
+        ? `The mandate runs until ${session.rules.expiresAt}.`
+        : `The session ends at ${session.rules.expiresAt}, a margin before the token does; `
+          + `the mandate itself would have run until ${session.rules.cappedBy.mandateExpiresAt}.`),
     );
     if (!prepared.verified) {
       log(

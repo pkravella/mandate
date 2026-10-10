@@ -167,7 +167,12 @@ export function createProxyServer(deps: ProxyDeps): Server {
     };
 
     if (expired()) {
-      return refuse("mandate.expiry", `the mandate expired at ${deps.rules.expiresAt}`);
+      const cap = deps.rules.cappedBy;
+      return refuse("mandate.expiry", cap === undefined
+        ? `the mandate expired at ${deps.rules.expiresAt}`
+        : `the session ended at ${deps.rules.expiresAt}, ahead of its GitHub credential, which `
+          + `expires at ${cap.credentialExpiresAt}; the mandate itself ran until `
+          + `${cap.mandateExpiresAt}. A new session mints a new credential.`);
     }
 
     if (!allowed.has(tool)) {
