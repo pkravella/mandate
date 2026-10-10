@@ -200,6 +200,17 @@ describe("scoreMandate replays the recorded facets exactly", () => {
     expect(s.underGrants[0]?.clause).toBe("destinations.allow");
   });
 
+  it("refuses a destination value the node recorded as unreadable, as the proxy would", () => {
+    const s = scoreMandate(
+      mandate([READ]),
+      trace([node("get_file_contents", {
+        unreadableDestinations: [{ field: "url", value: "//evil.example.com/x" }],
+      })]),
+    );
+    expect(s.underGrants).toHaveLength(1);
+    expect(s.underGrants[0]?.clause).toBe("destinations.allow");
+  });
+
   it("allows a destination the mandate permits", () => {
     const s = scoreMandate(
       mandate([READ]),

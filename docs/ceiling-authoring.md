@@ -253,6 +253,6 @@ node packages/cli/dist/index.js validate mandate.yaml \
 Then point the seeded over-grant suite at it. `fixtures/overgrants/` holds 22
 mandates that must each be refused — a wildcard repository, a write to the
 default branch, an unbounded PR count, a gist exfiltration, a weakened deny
-list — and `fixtures/adversarial/` holds 34 more written as attacks. A ceiling
+list — and `fixtures/adversarial/` holds 42 more written as attacks. A ceiling
 that accepts any of them is too loose, and the counterexample in the output
 tells you which clause to narrow.

@@ -1,6 +1,7 @@
 export { createProxyServer, denial, type Decision, type ProxyDeps } from "./proxy.js";
 export {
   extractArgs, makeArgumentEnforcer, makeFacetEnforcer, type ArgExtract,
+  type UnreadableDestination,
 } from "./enforce.js";
 export {
   pauseRecord, widenRefusal, type PauseRecord, type WidenRequest,

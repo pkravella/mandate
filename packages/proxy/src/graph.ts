@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { extractArgs } from "./enforce.js";
+import { extractArgs, type UnreadableDestination } from "./enforce.js";
 import type { Decision } from "./proxy.js";
 
 /**
@@ -47,6 +47,12 @@ export interface ActionNode {
    * destination and is deliberately not recorded here.
    */
   readonly destinations: readonly string[];
+  /**
+   * Values in destination-bearing fields that could not be read as a
+   * destination, which the proxy refuses. Recorded so that replaying a
+   * ground-truth trace refuses them too. Absent when there are none.
+   */
+  readonly unreadableDestinations?: readonly UnreadableDestination[];
   readonly decision: "allow" | "deny";
   /** The clause that refused the call. Always present on a denial. */
   readonly clause?: string;
@@ -254,6 +260,7 @@ function startOf(input: CallInput | DenialInput): {
     base: (seq: number) => Pick<
       ActionNode,
       "seq" | "at" | "tool" | "action" | "resource" | "branch" | "paths" | "base" | "destinations"
+      | "unreadableDestinations"
     >;
     elapsed: () => number;
   } {
@@ -273,6 +280,8 @@ function startOf(input: CallInput | DenialInput): {
       paths: e.paths,
       ...(e.base !== undefined ? { base: e.base } : {}),
       destinations: e.destinations,
+      ...(e.unreadableDestinations !== undefined
+        ? { unreadableDestinations: e.unreadableDestinations } : {}),
     }),
     elapsed: () => Math.round(performance.now() - started),
   };
@@ -309,6 +318,8 @@ const NodeLineSchema = z.object({
   paths: z.array(z.string()),
   base: z.string().min(1).optional(),
   destinations: z.array(z.string()),
+  unreadableDestinations: z.array(z.object({ field: z.string(), value: z.string() }).strict())
+    .min(1).optional(),
   decision: z.enum(["allow", "deny"]),
   clause: z.string().min(1).optional(),
   reason: z.string().optional(),
@@ -349,6 +360,8 @@ function toNode(l: NodeLine): ActionNode {
     paths: l.paths,
     ...(l.base !== undefined ? { base: l.base } : {}),
     destinations: l.destinations,
+    ...(l.unreadableDestinations !== undefined
+      ? { unreadableDestinations: l.unreadableDestinations } : {}),
     decision: l.decision,
     ...(l.clause !== undefined ? { clause: l.clause } : {}),
     ...(l.reason !== undefined ? { reason: l.reason } : {}),

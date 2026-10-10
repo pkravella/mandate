@@ -1,0 +1,15 @@
+{
+  "note": "https://github.com/acme/api/../../evil/collect against github.com/acme/api: inside the allowed prefix as a string, outside it once a client resolves the dot segments.",
+  "rule": {
+    "tool": "fork_repository",
+    "action": "repo.fork",
+    "resources": [
+      "acme/api"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "url": "https://github.com/acme/api/../../evil/collect"
+  }
+}

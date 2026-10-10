@@ -152,6 +152,33 @@ describe("Recorder, destinations", () => {
     }).completed(ok(""));
     expect(r.graph().nodes[0]!.destinations).toEqual([]);
   });
+
+  // Ground truth is recorded with no enforcement and replayed later from the
+  // node alone. A value the proxy would refuse as unreadable has to survive
+  // into the node, or replay allows what the proxy denies -- the direction that
+  // hides under-granting.
+  it("records a destination-field value it cannot read, and round-trips it", () => {
+    const r = new Recorder({ mode: "unconstrained" });
+    r.recordCall({
+      tool: "fork_repository",
+      args: { owner: "acme", repo: "api", url: "//evil.example.com/x" },
+    }).completed(ok(""));
+    const [n] = r.graph().nodes;
+    expect(n!.destinations).toEqual([]);
+    expect(n!.unreadableDestinations).toEqual([{ field: "url", value: "//evil.example.com/x" }]);
+    expect(parseJsonl(r.toJsonl())).toEqual(r.graph());
+  });
+
+  it("omits unreadableDestinations when there are none", () => {
+    const r = enforced();
+    r.recordCall({
+      tool: "fork_repository", action: "repo.fork",
+      args: { owner: "acme", repo: "api", organization: "acme" },
+    }).completed(ok(""));
+    const [n] = r.graph().nodes;
+    expect(n!.destinations).toEqual(["github.com/acme"]);
+    expect(n).not.toHaveProperty("unreadableDestinations");
+  });
 });
 
 describe("Recorder, output accounting", () => {
