@@ -4,6 +4,8 @@ import {
   CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { rulesForTool, type ProxyRules, type ToolRule } from "@mandate-dev/compiler";
+import { attributeCall } from "./attribution.js";
+import { extractArgs } from "./enforce.js";
 import type { Recorder } from "./graph.js";
 
 export type Decision =
@@ -195,9 +197,15 @@ export function createProxyServer(deps: ProxyDeps): Server {
     // The deciding rule is carried alongside its verdict, because the recorded
     // node names the operation that rule belongs to — and the rule that
     // decided is not necessarily the first candidate.
+    // Narrowed first to the grants this call can be: an issue_write create may
+    // only be decided by issue.create, or an exhausted max is bypassed by the
+    // next grant on the tool. See attribution.ts.
+    const attributed = attributeCall(tool, extractArgs(tool, args).method, candidates);
+    if (!attributed.ok) return refuse("mandate.grants", attributed.reason);
+
     let lastDenial: { decision: Decision & { kind: "deny" }; rule: ToolRule } | undefined;
     let permitted: { decision: Decision; rule: ToolRule } | undefined;
-    for (const rule of candidates) {
+    for (const rule of attributed.rules) {
       const d = deps.enforceArguments?.(rule, args) ?? { kind: "allow" as const, tool };
       if (d.kind === "allow") { permitted = { decision: d, rule }; break; }
       lastDenial = { decision: d, rule };

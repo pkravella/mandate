@@ -169,6 +169,27 @@ describe("Recorder, destinations", () => {
     expect(parseJsonl(r.toJsonl())).toEqual(r.graph());
   });
 
+  // Replay decides from the node, so the node has to carry what attributed the
+  // call to a grant, or replay goes back to letting a create pass as an update.
+  it("records issue_write's method, and round-trips it", () => {
+    const r = enforced();
+    r.recordCall({
+      tool: "issue_write", action: "issue.create",
+      args: { owner: "acme", repo: "api", method: "create", title: "t" },
+    }).completed(ok(""));
+    expect(r.graph().nodes[0]!.method).toBe("create");
+    expect(parseJsonl(r.toJsonl())).toEqual(r.graph());
+  });
+
+  it("records no method for a tool that has none to attribute", () => {
+    const r = enforced();
+    r.recordCall({
+      tool: "get_file_contents", action: "contents.read",
+      args: { owner: "acme", repo: "api", path: "a", method: "create" },
+    }).completed(ok(""));
+    expect(r.graph().nodes[0]).not.toHaveProperty("method");
+  });
+
   it("omits unreadableDestinations when there are none", () => {
     const r = enforced();
     r.recordCall({

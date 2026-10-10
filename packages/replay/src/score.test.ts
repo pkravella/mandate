@@ -211,6 +211,32 @@ describe("scoreMandate replays the recorded facets exactly", () => {
     expect(s.underGrants[0]?.clause).toBe("destinations.allow");
   });
 
+  // Replay takes the decision the proxy would: an issue_write create is decided
+  // only by issue.create, so its max holds even with issue.update granted.
+  it("holds a create's max against creates, whatever else is granted on issue_write", () => {
+    const m = mandate([
+      { action: "issue.create", enforcedBy: "proxy", resources: ["acme/api"], max: 1 },
+      { action: "issue.update", enforcedBy: "proxy", resources: ["acme/api"], max: 5 },
+    ]);
+    const s = scoreMandate(m, trace([
+      node("issue_write", { method: "create" }),
+      node("issue_write", { method: "create" }),
+    ]));
+    expect(s.underGrants).toHaveLength(1);
+    expect(s.underGrants[0]?.clause).toBe("issue.create.max");
+  });
+
+  // A trace recorded before the method was, says nothing about it. Replay
+  // cannot know what such a call was, so it keeps the old union.
+  it("keeps the old reading for an issue_write node recorded without a method", () => {
+    const m = mandate([
+      { action: "issue.create", enforcedBy: "proxy", resources: ["acme/api"], max: 1 },
+      { action: "issue.update", enforcedBy: "proxy", resources: ["acme/api"], max: 5 },
+    ]);
+    const s = scoreMandate(m, trace([node("issue_write"), node("issue_write")]));
+    expect(s.underGrants).toEqual([]);
+  });
+
   it("allows a destination the mandate permits", () => {
     const s = scoreMandate(
       mandate([READ]),

@@ -25,6 +25,12 @@ const m: Mandate = MandateSchema.parse({
 describe("renderPermissionDiff", () => {
   const out = renderPermissionDiff(m, { color: false });
 
+  // Task 5.5. `max: 1` on a pull request reads like "this task may open one".
+  // It is one per session, and the diff is where a reviewer reads it.
+  it("says a max is per session", () => {
+    expect(out).toMatch(/at most\s+1 per session/);
+  });
+
   it("leads with the task and the expiry", () => {
     expect(out).toContain("Fix issue #42 and open a PR");
     expect(out).toContain("30 minutes");

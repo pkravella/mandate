@@ -110,7 +110,9 @@ const constraintLines = (g: Grant): string[] => {
   if (g.paths !== undefined) out.push(`      paths      ${g.paths.join(", ")}`);
   if (g.denyPaths !== undefined) out.push(`      never      ${g.denyPaths.join(", ")}`);
   if (g.base !== undefined) out.push(`      base       ${g.base}`);
-  if (g.max !== undefined) out.push(`      at most    ${g.max}`);
+  // Per session, and the diff is where a reviewer reads it: `max: 1` on a
+  // pull request is one per session, not one for the task.
+  if (g.max !== undefined) out.push(`      at most    ${g.max} per session`);
   return out;
 };
 

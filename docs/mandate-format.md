@@ -80,8 +80,25 @@ operation does not support is a parse error — `operation repo.read cannot be
 constrained by branches`. `contents.write` is constrainable by resources, paths
 and branches; `repo.read` only by resources.
 
-**`max`** counts calls, per proxy process. Restarting the proxy resets it, and a
-call the enforcer allowed but that failed upstream still spends one.
+**`max`** is a limit on one session, not a budget for the task: at most that many
+calls in this session, counted when the proxy allows one -- so a call that then
+fails upstream still spends it, which errs the safe way -- and reset by a new
+session. Who can start a new session is the part that matters:
+
+- With `mandate run --sandbox`, serve accepts one connection and ends with it,
+  so only the operator can start another, by running again.
+- Without it, the agent spawns `mandate serve` from its own MCP config, so the
+  agent can reset the count by restarting its MCP server.
+
+Where operations share an MCP tool, `max` is decided by what the call is, as far
+as the call says. An `issue_write` create is counted only against
+`issue.create`, so `issue.create` with `max: 1` holds even with `issue.update`
+granted. The rest cannot be told apart from their arguments -- one `issue_write`
+update can label, assign and close at once; one `update_pull_request` can
+retitle and close; a pull request comment is an issue comment -- so within
+those groups the grants' limits combine: `issue.label` with `max: 5` beside
+`issue.assign` with `max: 2` allows seven issue updates of either kind, and the
+trace records the first grant that allowed each call.
 
 ### The glob language
 

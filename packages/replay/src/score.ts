@@ -2,7 +2,7 @@ import { operationsForMcpTool } from "@mandate-dev/catalog";
 import { unwrap, type ValidatedMandate } from "@mandate-dev/schema";
 import { compileRules, rulesForTool, type ProxyRules } from "@mandate-dev/compiler";
 import {
-  makeFacetEnforcer, type ActionGraph, type ActionNode, type ArgExtract,
+  attributeCall, makeFacetEnforcer, type ActionGraph, type ActionNode, type ArgExtract,
 } from "@mandate-dev/proxy";
 
 /**
@@ -105,7 +105,20 @@ export function scoreMandate(m: ValidatedMandate, trace: ActionGraph): Score {
     // Every rule for the tool, because a call is allowed if it satisfies at
     // least one. Taking the first would reimplement the bug the proxy fixed and
     // report under-grants the proxy would never have produced.
-    const candidates = rulesForTool(rules, node.tool);
+    //
+    // Narrowed as the proxy narrows them, so an issue_write create is decided
+    // only by issue.create. A node recorded before the method was carries
+    // none, and replay cannot know what such a call was, so it keeps the old
+    // union rather than refusing every legacy issue_write.
+    const attributed = node.method === undefined
+      ? { ok: true as const, rules: rulesForTool(rules, node.tool) }
+      : attributeCall(node.tool, node.method, rulesForTool(rules, node.tool));
+    if (!attributed.ok) {
+      underGrants.push({ seq: node.seq, tool: node.tool, clause: "mandate.grants", reason: attributed.reason });
+      for (const op of operationsForMcpTool(node.tool)) missing.add(op.id);
+      continue;
+    }
+    const candidates = attributed.rules;
     const extract = extractOf(node);
     let allowedBy: string | undefined;
     let lastDenial: UnderGrant | undefined;
