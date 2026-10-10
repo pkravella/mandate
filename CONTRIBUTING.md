@@ -98,6 +98,7 @@ MANDATE_LIVE=1 pnpm --filter @mandate-dev/writer test      # ~$0.03
 MANDATE_LIVE=1 pnpm --filter @mandate-dev/compiler test     # free, mints tokens
 MANDATE_LIVE=1 pnpm --filter @mandate-dev/cli test          # ~$0.30, writes a PR
 MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test   # free, needs Docker
+MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/cli test        # free, Docker, macOS: relay + run --sandbox
 ```
 
 The benchmark's gates are separate from each other on purpose, and each one is
