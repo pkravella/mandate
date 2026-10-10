@@ -754,7 +754,9 @@ describe("createProxyServer: a call is decided by the grant it actually is", () 
   // Anything but the two values the real tool accepts cannot be matched to a
   // grant, and is refused rather than guessed at.
   it("refuses an issue_write whose method is neither create nor update", async () => {
-    for (const method of ["CREATE", "delete", undefined, 1]) {
+    // ["create"] stringifies to "create"; found reviewing Phase 5, it was
+    // attributed to issue.create and forwarded.
+    for (const method of ["CREATE", "delete", undefined, 1, ["create"], { method: "create" }]) {
       const { agent, seen } = await proxyFor(issueRules());
       expect((await write(agent, method)).isError, String(method)).toBe(true);
       expect(seen, String(method)).toEqual([]);

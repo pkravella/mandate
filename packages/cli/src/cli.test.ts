@@ -30,7 +30,13 @@ const STACK_FRAME = /^\s+at /m;
 
 describe("the mandate binary's exit codes", () => {
   it("prints help and exits 0", () => {
-    for (const args of [["--help"], ["validate", "--help"], ["serve", "--help"], ["run", "--help"]]) {
+    // `mandate help` and `mandate help <command>` too: found reviewing Phase
+    // 5, commander raises those as commander.help with exitCode 0, and only
+    // helpDisplayed was mapped to 0.
+    for (const args of [
+      ["--help"], ["validate", "--help"], ["serve", "--help"], ["run", "--help"],
+      ["help"], ["help", "validate"],
+    ]) {
       const r = mandate(...args);
       expect(r.status, args.join(" ")).toBe(0);
       expect(r.stdout, args.join(" ")).toMatch(/^Usage: mandate/);

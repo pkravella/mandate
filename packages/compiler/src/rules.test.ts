@@ -214,6 +214,29 @@ describe("enforcementReport", () => {
     expect(shadowed?.gaps.join(" ")).toMatch(/paths/);
   });
 
+  // Found reviewing Phase 5: since issue_write's method attributes a call, a
+  // create is decided only by issue.create, so issue.update with no max cannot
+  // make issue.create's max useless -- and the report still said it could.
+  it("does not report a gap attribution has closed", () => {
+    const rows2 = enforcementReport(validated([
+      // No max on issue.update: markValidated skips the lints, so this is the
+      // shape that used to be reported as making issue.create's max useless.
+      { action: "issue.create", enforcedBy: "proxy", resources: ["acme/api"], max: 1 },
+      { action: "issue.update", enforcedBy: "proxy", resources: ["acme/api"] },
+    ]));
+    const create = rows2.find((r) => r.action === "issue.create");
+    expect(create?.gaps.join(" ") ?? "").not.toMatch(/issue_write/);
+  });
+
+  it("still reports the gap where calls cannot be told apart", () => {
+    const rows2 = enforcementReport(validated([
+      { action: "issue.update", enforcedBy: "proxy", resources: ["acme/api"], max: 5 },
+      { action: "issue.close", enforcedBy: "proxy", resources: ["acme/api"] },
+    ]));
+    const update = rows2.find((r) => r.action === "issue.update");
+    expect(update?.gaps.join(" ")).toMatch(/issue_write/);
+  });
+
   it("does not cry shadow when the other grant constrains the same facet", () => {
     const rows2 = enforcementReport(validated([
       { action: "contents.read", enforcedBy: "proxy", resources: ["acme/api"], paths: ["src/**"] },

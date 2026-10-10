@@ -266,7 +266,8 @@
     "invariant": "A destination outside destinations.allow is denied, and the denial names destinations.allow.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -288,7 +289,8 @@
     "invariant": "A bare host entry covers that host and its subdomains and nothing else. `github.com.evil.example.com` merely starts with the entry, so the boundary is the leading dot, not the prefix.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -310,7 +312,8 @@
     "invariant": "A destination carrying a path covers only what is beneath it. The same rule holds in the squid ACL the compiler emits, verified behaviourally in Phase 3.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -321,7 +324,8 @@
     "invariant": "A scheme is case-insensitive, so the destination is read whatever its case and refused like any other. Before Task 5.4 it extracted to nothing and the call was allowed.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -332,7 +336,8 @@
     "invariant": "The host is read as an HTTP client reads it, after any userinfo. The regex took github.com as the host, so the call was allowed and the trace recorded a destination the request never went to.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -343,7 +348,8 @@
     "invariant": "Dot segments are resolved before the prefix is compared, including the percent-encoded spelling, as WHATWG URL and every HTTP client resolve them. This is not the percent-decoding the path check deliberately does not do: these are segments a client collapses before sending.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -354,7 +360,8 @@
     "invariant": "Any scheme:// value is read by its host and path. The sandbox refuses non-443 egress regardless; this makes the proxy name the reason and the trace record the destination.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -365,7 +372,8 @@
     "invariant": "git's [user@]host:path form is read as host/path and checked against the same predicate.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -376,7 +384,8 @@
     "invariant": "An owner-valued field is read as github.com/<owner>. Before Task 5.4 it was read as a URL, extracted to nothing, and a fork into any organization passed R9a unrecorded.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "is not in the mandate's allowed destinations"
     }
   },
   {
@@ -387,7 +396,8 @@
     "invariant": "A destination-bearing field whose value cannot be read as a destination is refused, naming the field and value. It used to be dropped and the call allowed. Free-text fields are still not scanned, so this cannot pause a commit message or an issue body.",
     "expect": {
       "outcome": "deny",
-      "clause": "destinations.allow"
+      "clause": "destinations.allow",
+      "reasonContains": "cannot be read as a destination"
     }
   },
   {

@@ -1,6 +1,6 @@
 import { operationsForMcpTool } from "@mandate-dev/catalog";
 import { unwrap, type ValidatedMandate } from "@mandate-dev/schema";
-import { compileRules, rulesForTool, type ProxyRules } from "@mandate-dev/compiler";
+import { callClass, compileRules, rulesForTool, type ProxyRules } from "@mandate-dev/compiler";
 import {
   attributeCall, makeFacetEnforcer, type ActionGraph, type ActionNode, type ArgExtract,
 } from "@mandate-dev/proxy";
@@ -115,7 +115,14 @@ export function scoreMandate(m: ValidatedMandate, trace: ActionGraph): Score {
       : attributeCall(node.tool, node.method, rulesForTool(rules, node.tool));
     if (!attributed.ok) {
       underGrants.push({ seq: node.seq, tool: node.tool, clause: "mandate.grants", reason: attributed.reason });
-      for (const op of operationsForMcpTool(node.tool)) missing.add(op.id);
+      // Only what this call could have been. Every operation the tool serves
+      // used to be added, so a mandate granting issue.update was told it
+      // lacked issue.update -- found reviewing Phase 5.
+      for (const op of operationsForMcpTool(node.tool)) {
+        if (grantedActions.has(op.id)) continue;
+        if (callClass(node.tool, op.id) !== (node.method === "create" ? "create" : "update")) continue;
+        missing.add(op.id);
+      }
       continue;
     }
     const candidates = attributed.rules;
