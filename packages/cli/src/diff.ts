@@ -121,7 +121,9 @@ export function renderPermissionDiff(m: Mandate, opts: DiffOptions = {}): string
   const dim = (s: string): string => (plain ? s : `\u001b[2m${s}\u001b[0m`);
 
   const lines: string[] = [];
-  lines.push(`Mandate ${m.mandate}  (ceiling ${m.ceiling})`);
+  // The mandate's own name for its ceiling is a claim; the line naming the
+  // ceiling actually checked, with its hash, is printed beside the diff.
+  lines.push(`Mandate ${m.mandate}  (claims ceiling ${m.ceiling})`);
   lines.push(`Task: ${m.task}`);
   lines.push(`Requested by ${m.requestedBy}, expires in ${m.expiresInMinutes} minutes`);
   lines.push("");

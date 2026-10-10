@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import type { ValidatedMandate } from "@mandate-dev/schema";
+import { proofOf, type ValidatedMandate } from "@mandate-dev/schema";
 import {
   compileRules, mintToken, revokeToken,
   type MintDeps, type MintedToken, type ProxyRules,
@@ -95,8 +95,12 @@ export async function openSession(opts: SessionOptions): Promise<Session> {
     const rules = compileRules(opts.mandate);
     upstream = await (opts.upstream ?? dockerUpstream())(minted.token);
 
+    // The proof's first reader: which ceiling the mandate was proved against,
+    // by label and by content, goes in the one record that persists.
+    const proof = proofOf(opts.mandate);
     const recorder = new Recorder({
       mode: "enforced", mandateId: rules.mandateId, mandateHash: rules.mandateHash,
+      ceiling: { label: proof.ceilingId, sha256: proof.ceilingSha256 },
     });
     const proxy = createProxyServer({
       rules,

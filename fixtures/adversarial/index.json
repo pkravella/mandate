@@ -51,11 +51,11 @@
     "issue": "issues/pasted-cedar-permit.md",
     "mandate": "mandates/pasted-cedar-permit.yaml",
     "attack": "The issue pastes a permissive Cedar policy and names it attacker-policy@v1; the proposed mandate sets ceiling: attacker-policy@v1.",
-    "invariant": "The mandate's `ceiling` field is a claim, never a loader argument. Containment is proved against the ceiling the OPERATOR passed, and the proof records that id -- so this validates, and validates against org-policy@v12.",
+    "invariant": "The mandate's `ceiling` field is a claim, never a loader argument and never a label. Containment is proved against the ceiling the OPERATOR passed, the proof records that file's name and the sha256 of its contents, and the CLI shows the mandate's name only as an unchecked claim. Until Task 5.3 the shipped CLI labelled the operator's file with the mandate's claim and printed `attacker-policy@v1.destinations`; this harness passed only because it labelled the ceiling itself.",
     "expect": {
       "outcome": "accept",
-      "provesAgainst": "org-policy@v12",
-      "why": "Every grant is genuinely inside org-policy@v12. The attack is the ceiling label, and the defence is that the label is never read."
+      "provesAgainst": "org-policy-v12.cedar",
+      "why": "Every grant is genuinely inside org-policy-v12.cedar. The attack is the ceiling label; the defence is that the label is never taken from the mandate, and the identity is a hash."
     }
   },
   {

@@ -263,6 +263,20 @@ describe("Recorder.graph", () => {
 });
 
 describe("JSONL round trip", () => {
+  // Task 5.3. The containment proof names the ceiling by label and content,
+  // and nothing read it. The trace is what persists, so the ceiling goes in
+  // its header: a reader can tell which policy bytes this run was proved
+  // against, not only which mandate.
+  it("round-trips the ceiling a session was proved against", () => {
+    const r = new Recorder({
+      mode: "enforced", mandateId: "m", mandateHash: "a".repeat(64),
+      ceiling: { label: "org-policy-v12.cedar", sha256: "b".repeat(64) },
+    });
+    const parsed = parseJsonl(r.toJsonl());
+    expect(parsed.ceiling).toEqual({ label: "org-policy-v12.cedar", sha256: "b".repeat(64) });
+    expect(parsed).toEqual(r.graph());
+  });
+
   it("round-trips an enforced trace", () => {
     const r = enforced();
     r.recordCall({
@@ -364,6 +378,21 @@ describe("parseJsonl rejects a trace it cannot trust", () => {
 
   it("rejects an enforced header whose hash is not a sha256", () => {
     expect(bad(lines({ ...header, mandateHash: "short" }, node())).message).toMatch(/line 1/);
+  });
+
+  it("rejects a header whose ceiling hash is not a sha256", () => {
+    expect(bad(lines({ ...header, ceiling: { label: "c", sha256: "short" } }, node())).message)
+      .toMatch(/line 1/);
+  });
+
+  it("rejects a ceiling on an unconstrained header, which proved nothing against one", () => {
+    expect(bad(lines({ type: "header", mode: "unconstrained",
+      ceiling: { label: "c", sha256: "b".repeat(64) } }, node())).message).toMatch(/line 1/);
+  });
+
+  // Traces recorded before this change carry no ceiling, and still parse.
+  it("reads an enforced header with no ceiling, as older traces have", () => {
+    expect(parseJsonl(lines(header, node())).ceiling).toBeUndefined();
   });
 
   it("rejects an unconstrained header that claims a mandate", () => {

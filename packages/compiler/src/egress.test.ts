@@ -7,7 +7,7 @@ const m = (allow: string[]): ValidatedMandate => markValidated(MandateSchema.par
   grants: [{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }],
   destinations: { allow },
 }), {
-  ceilingId: "c@v1", userLevel: "push",
+  ceilingId: "c@v1", ceilingSha256: "0".repeat(64), userLevel: "push",
   checkedAt: "2026-10-03T00:00:00.000Z", grantProofs: [],
 });
 

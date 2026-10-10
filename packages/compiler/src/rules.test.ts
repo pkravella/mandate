@@ -11,7 +11,7 @@ const validated = (grants: unknown[], over: Record<string, unknown> = {}): Valid
     destinations: { allow: ["github.com/acme/api"] },
     ...over,
   }), {
-    ceilingId: "org-policy@v12", userLevel: "push",
+    ceilingId: "org-policy@v12", ceilingSha256: "0".repeat(64), userLevel: "push",
     checkedAt: "2026-10-03T00:00:00.000Z", grantProofs: [],
   });
 

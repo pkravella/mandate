@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getOperation } from "@mandate-dev/catalog";
 import {
   DestinationListError, parseDestinationList,
@@ -30,6 +31,39 @@ export interface Ceiling extends CeilingDigest {
   /** Policy source keyed by rule id, the form Cedar needs to report our ids. */
   readonly policiesById: Readonly<Record<string, string>>;
   readonly cedarSchema: string;
+  /**
+   * The ceiling's identity: `ceilingSha256` over the three inputs it was
+   * loaded from. `id` is only a label; two files can share one, and a mandate
+   * can claim any. This cannot be claimed falsely.
+   */
+  readonly sha256: string;
+}
+
+/**
+ * sha256 over the text of the policy, the schema and the destination list --
+ * exactly as read, each UTF-8 encoded and prefixed with its byte length.
+ *
+ * Unnormalised, because normalising first means a second parser that can
+ * disagree with Cedar about what the text says; an edited comment makes a new
+ * identity, which errs the safe way. It is the decoded text, not the file's
+ * raw bytes: a file with an invalid UTF-8 sequence and one with a literal
+ * U+FFFD in its place hash alike, which is right, since Cedar is handed the
+ * same text from both. Length-prefixed, because a plain concatenation would let
+ * text slide across the boundary between inputs and keep the hash. (A UTF-16
+ * code-unit prefix would be just as unambiguous -- UTF-8 is self-synchronising,
+ * so no string's encoding is a prefix of another with as many characters; a
+ * mutant using one survives, verified, and bytes are kept for being the plain
+ * statement.) The schema is included because it shapes what the Cedar
+ * cross-check accepts.
+ */
+export function ceilingSha256(cedarSource: string, cedarSchema: string, destinationsSource: string): string {
+  const h = createHash("sha256");
+  for (const part of [cedarSource, cedarSchema, destinationsSource]) {
+    const bytes = Buffer.from(part, "utf8");
+    h.update(`${bytes.length}:`);
+    h.update(bytes);
+  }
+  return h.digest("hex");
 }
 
 /**
@@ -282,7 +316,10 @@ export function loadCeiling(
     );
   }
 
-  return { id, rules, destinations, policiesById, cedarSchema };
+  return {
+    id, rules, destinations, policiesById, cedarSchema,
+    sha256: ceilingSha256(cedarSource, cedarSchema, destinationsSource),
+  };
 }
 
 export function rulesFor(c: Ceiling, action: string): readonly CeilingRule[] {

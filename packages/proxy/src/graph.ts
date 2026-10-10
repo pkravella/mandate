@@ -88,11 +88,23 @@ export interface ActionNode {
  */
 export type TraceMode = "enforced" | "unconstrained";
 
+/**
+ * The ceiling the mandate was proved against: the operator's label for it and
+ * the sha256 of what it contained. The label alone identifies nothing -- two
+ * files can share one -- so a reader compares hashes.
+ */
+export interface TraceCeiling {
+  readonly label: string;
+  readonly sha256: string;
+}
+
 export interface ActionGraph {
   readonly mode: TraceMode;
   /** Present when and only when `mode` is `"enforced"`. */
   readonly mandateId?: string;
   readonly mandateHash?: string;
+  /** Enforced traces only, and absent from those recorded before Task 5.3. */
+  readonly ceiling?: TraceCeiling;
   readonly nodes: readonly ActionNode[];
 }
 
@@ -103,6 +115,7 @@ export type RecorderMeta =
     readonly mandateId: string;
     /** `mandateHash(mandate)` — the full sha256, as `ProxyRules` carries it. */
     readonly mandateHash: string;
+    readonly ceiling?: TraceCeiling;
   }
   | { readonly mode: "unconstrained" };
 
@@ -228,6 +241,7 @@ export class Recorder {
           mode: "enforced" as const,
           mandateId: this.#meta.mandateId,
           mandateHash: this.#meta.mandateHash,
+          ...(this.#meta.ceiling === undefined ? {} : { ceiling: this.#meta.ceiling }),
         }
         : { mode: "unconstrained" as const }),
       nodes: [...this.#nodes],
@@ -242,6 +256,7 @@ export class Recorder {
       mode: g.mode,
       ...(g.mandateId !== undefined ? { mandateId: g.mandateId } : {}),
       ...(g.mandateHash !== undefined ? { mandateHash: g.mandateHash } : {}),
+      ...(g.ceiling !== undefined ? { ceiling: g.ceiling } : {}),
     };
     return [
       JSON.stringify(header),
@@ -300,6 +315,10 @@ const HeaderLineSchema = z.discriminatedUnion("mode", [
     mode: z.literal("enforced"),
     mandateId: z.string().min(1),
     mandateHash: z.string().regex(/^[0-9a-f]{64}$/),
+    ceiling: z.object({
+      label: z.string().min(1),
+      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+    }).strict().optional(),
   }).strict(),
   z.object({
     type: z.literal("header"),
@@ -434,7 +453,10 @@ export function parseJsonl(src: string): ActionGraph {
 
   return {
     ...(header.mode === "enforced"
-      ? { mode: "enforced" as const, mandateId: header.mandateId, mandateHash: header.mandateHash }
+      ? {
+        mode: "enforced" as const, mandateId: header.mandateId, mandateHash: header.mandateHash,
+        ...(header.ceiling === undefined ? {} : { ceiling: header.ceiling }),
+      }
       : { mode: "unconstrained" as const }),
     nodes,
   };

@@ -6,6 +6,7 @@ import {
 } from "@mandate-dev/schema";
 import { loadCeiling, validate, type UserAuthority } from "@mandate-dev/validator";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
+import { ceilingLabel } from "../prepare.js";
 
 /**
  * R10's widen flow.
@@ -172,7 +173,8 @@ export function runWiden(args: WidenArgs, log: (s: string) => void): number {
   let ceiling;
   try {
     ceiling = loadCeiling(
-      widened.ceiling,
+      // The operator's file, never the mandate's claim. See prepare.ts.
+      ceilingLabel(args.ceiling),
       readFileSync(args.ceiling, "utf8"),
       readFileSync(args.schema, "utf8"),
       readFileSync(args.destinations, "utf8"),

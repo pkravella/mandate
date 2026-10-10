@@ -140,7 +140,7 @@ describe("adversarial: what the proxy allows, egress can reach", () => {
       grants: [{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }],
       destinations: { allow: [...destinations] },
     }),
-    { ceilingId: "c@v1", userLevel: "push", checkedAt: "2026-10-09T00:00:00.000Z", grantProofs: [] },
+    { ceilingId: "c@v1", ceilingSha256: "0".repeat(64), userLevel: "push", checkedAt: "2026-10-09T00:00:00.000Z", grantProofs: [] },
   ));
 
   const allowedWithDestinations = argCases.flatMap((c) => {
