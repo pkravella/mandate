@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
 import { prepareMandate, type PrepareArgs } from "../prepare.js";
 import type { AuthorityDeps } from "../authority.js";
+import {
+  checkSandboxInputs, CONTAINER_MCP_CONFIG, defaultStartServe, runSandboxed,
+  type SandboxArgs, type StartServe,
+} from "../sandbox.js";
 
 /**
  * `mandate run` — validate a mandate, then launch an agent that can only reach
@@ -34,9 +38,14 @@ import type { AuthorityDeps } from "../authority.js";
  * set in its environment, so an agent that takes a flag and one that reads an
  * env var are both reachable without Mandate knowing which is which.
  */
-export interface RunArgs extends PrepareArgs {
+export interface RunArgs extends PrepareArgs, SandboxArgs {
   /** The agent command and its arguments, after `--`. */
   readonly agent: readonly string[];
+  /**
+   * Run the agent in the sandbox container instead of on the host. Off by
+   * default while it is new; see sandbox.ts for what it changes.
+   */
+  readonly sandbox?: boolean | undefined;
   /** Where to write the action graph. R8. */
   readonly trace?: string | undefined;
   /** Print the permission diff before launching. */
@@ -54,6 +63,16 @@ export interface RunDeps extends AuthorityDeps {
   ) => Promise<number>;
   /** Path to the `mandate` entry point the config should point at. */
   readonly selfPath?: string;
+  /** Starts `mandate serve --listen` on the host, for --sandbox. Injected so tests mint nothing. */
+  readonly startServe?: StartServe;
+  /** The repository the sandbox clones HEAD from. Defaults to the process's. */
+  readonly cwd?: string;
+  /** Defaults to `process.platform`; --sandbox refuses off macOS. */
+  readonly platform?: string;
+  /** The operator's environment. Defaults to `process.env`. */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  /** Whether to give the container a TTY. Defaults to whether stdin is one. */
+  readonly tty?: boolean;
 }
 
 /** The placeholder substituted with the config path in the agent's argv. */
@@ -86,6 +105,16 @@ export async function runRun(
       + '-p "fix issue 42"',
     );
     return 2;
+  }
+
+  // Checked before validation: none of these needs the mandate, and a run
+  // that is going to be refused should not get as far as reading it.
+  if (args.sandbox === true) {
+    const refusal = checkSandboxInputs(args, deps.platform ?? process.platform);
+    if (refusal !== undefined) {
+      log(refusal);
+      return 2;
+    }
   }
 
   // Validated BEFORE anything is launched and before a token could be minted.
@@ -126,6 +155,30 @@ export async function runRun(
     );
     return 2;
   }
+  const serveArgs = serveArgvFor(args, self);
+
+  if (args.sandbox === true) {
+    if (!args.agent.slice(1).some((a) => a.includes(MCP_CONFIG_PLACEHOLDER))) {
+      log(
+        `The agent command does not mention ${MCP_CONFIG_PLACEHOLDER}, so it will only find `
+        + "the enforced server if it reads MANDATE_MCP_CONFIG from the environment.",
+      );
+    }
+    return runSandboxed({
+      mandate: prepared.mandate,
+      serveArgv: serveArgs,
+      args,
+      agent: [command, ...args.agent.slice(1).map(
+        (a) => a.split(MCP_CONFIG_PLACEHOLDER).join(CONTAINER_MCP_CONFIG),
+      )],
+      cwd: deps.cwd ?? process.cwd(),
+      env: deps.env ?? process.env,
+      tty: deps.tty ?? process.stdin.isTTY === true,
+      startServe: deps.startServe ?? defaultStartServe,
+      launch: deps.launch ?? defaultLaunch,
+    }, log);
+  }
+
   const dir = mkdtempSync(join(tmpdir(), "mandate-run-"));
   const configPath = join(dir, "mcp.json");
 
@@ -137,27 +190,6 @@ export async function runRun(
    * secret. Writing a token here would put a live repository-scoped credential
    * on disk, readable by the very process whose authority it is meant to bound.
    */
-  /**
-   * Every path is resolved here, because the agent spawns `mandate serve`
-   * itself from whatever working directory it happens to have. A relative path
-   * would resolve against the agent's cwd rather than the operator's: at best
-   * the ceiling is not found, at worst a different file with the same relative
-   * name is loaded and enforced in place of the one that was approved.
-   *
-   * Found by running the real binary rather than the test stub, which had been
-   * passing absolute fixture paths and so could not see it.
-   */
-  const serveArgs = [
-    self, "serve",
-    "--mandate", resolve(args.file),
-    "--ceiling", resolve(args.ceiling),
-    "--schema", resolve(args.schema),
-    "--ceiling-destinations", resolve(args.destinations),
-    "--as", args.as,
-    ...(args.repo !== undefined ? ["--repo", args.repo] : []),
-    ...(args.level !== undefined ? ["--level", args.level] : []),
-    ...(args.trace !== undefined ? ["--trace", resolve(args.trace)] : []),
-  ];
   const config = {
     mcpServers: {
       github: { command: process.execPath, args: serveArgs },
@@ -189,4 +221,29 @@ export async function runRun(
     // secret, but leaving a directory per run in the temp dir is litter.
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * `<entry> serve` on the same inputs `mandate run` validated, every path
+ * absolute.
+ *
+ * Without the sandbox the agent spawns this from its own working directory, so
+ * a relative path would resolve against the agent's cwd rather than the
+ * operator's: at best the ceiling is not found, at worst a different file with
+ * the same relative name is enforced in place of the one that was approved.
+ * Found by running the real binary rather than the test stub. With the sandbox,
+ * `mandate run` starts it itself, from the same argv.
+ */
+function serveArgvFor(args: RunArgs, self: string): string[] {
+  return [
+    self, "serve",
+    "--mandate", resolve(args.file),
+    "--ceiling", resolve(args.ceiling),
+    "--schema", resolve(args.schema),
+    "--ceiling-destinations", resolve(args.destinations),
+    "--as", args.as,
+    ...(args.repo !== undefined ? ["--repo", args.repo] : []),
+    ...(args.level !== undefined ? ["--level", args.level] : []),
+    ...(args.trace !== undefined ? ["--trace", resolve(args.trace)] : []),
+  ];
 }

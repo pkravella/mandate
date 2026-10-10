@@ -173,18 +173,43 @@ Everything above bounds the authority Mandate mints. An agent that has another
 credential — a PAT in its environment, something in `.git/config`, a logged-in
 `gh` — does not transit the proxy at all.
 
-`sandbox/` is a container whose only credential is the minted token and whose
-only egress is an allowlist compiled from `destinations.allow`. It verifies
-itself over raw sockets, with negative controls that widen the ACL and strip the
-firewall rules to confirm the checks can fail.
+`mandate run --sandbox` runs the agent in a container that holds no GitHub
+credential — the token stays with `mandate serve` on the host — works in a clone
+of HEAD, and reaches only the mandate's destinations and the hosts you open for
+it. macOS with Docker Desktop for now.
+
+Build the base image, then one with your agent in it:
 
 ```bash
-MANDATE_SANDBOX=1 pnpm vitest run packages/compiler/src/sandbox.docker.test.ts
+docker build -t mandate-sandbox sandbox
 ```
 
-Free, needs Docker. Until the agent runs in there, destination enforcement at
-the proxy is **advisory** — see [threat-model.md](threat-model.md) §3.1 and
-[enforced-where.md](enforced-where.md).
+```dockerfile
+FROM mandate-sandbox
+# install your agent here
+```
+
+Then run with your image, the agent's model host, and its key passed by name:
+
+```bash
+mandate run --mandate m.yaml --ceiling fixtures/ceilings/org-policy-v12.cedar \
+  --schema fixtures/ceilings/schema.cedarschema \
+  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
+  --as alice --repo acme/api \
+  --sandbox --image my-agent --agent-egress api.anthropic.com --pass-env ANTHROPIC_API_KEY \
+  -- claude --mcp-config {mcpConfig} -p "fix issue 42"
+```
+
+The working tree has to be clean, because uncommitted changes would not be in
+the clone. The sandbox's own checks run free with Docker:
+
+```bash
+MANDATE_SANDBOX=1 pnpm vitest run packages/compiler/src/sandbox.docker.test.ts \
+  packages/cli/src/relay.docker.test.ts packages/cli/src/sandbox.docker.test.ts
+```
+
+Without `--sandbox`, destination enforcement at the proxy is **advisory** — see
+[threat-model.md](threat-model.md) §3.1 and [enforced-where.md](enforced-where.md).
 
 ---
 

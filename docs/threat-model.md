@@ -88,21 +88,37 @@ has a personal access token in its environment, a credential in
 `.git/config`, a logged-in `gh` CLI, or an SSH key does not need the proxy and
 never transits it.
 
-The mitigation is R9b: run the agent in a sandbox whose only credential is the
-minted token and whose only egress is the allowlist compiled from
-`destinations.allow`. `sandbox/` ships that recipe and verifies itself over raw
-sockets, with negative controls that widen the ACL and strip the firewall rules
-to confirm the checks can actually fail — because a security control that is
-never exercised is worse than none, since the docs assert it holds.
+The mitigation is R9b, and `mandate run --sandbox` is how to get it. The agent
+runs in a container that holds **no GitHub credential at all** — the minted
+token stays with `mandate serve` on the host, reached through a relay — and
+whose only egress is the allowlist compiled from `destinations.allow` plus the
+hosts the operator opens for the agent itself. Its working copy is a clone of
+HEAD, so nothing ignored or untracked in the checkout (a `.env`), nothing in its
+`.git/config` (a remote with a token in it) and no hook comes along; and its
+environment is built from what the operator names, refusing known credential
+names outright. Each of those is checked against a real container with the
+credential planted on the host side, and each check has a negative control that
+shows it can fail — because a security control that is never exercised is worse
+than none, since the docs assert it holds.
 
-**Mandate's own launch path is one such credential today.** `mandate run`
-starts the agent with the operator's environment, and the agent then spawns
-`mandate serve` from its MCP config — so the agent's environment names
-`MANDATE_APP_KEY_PATH`, and the agent runs as the user who can read that key.
-An agent that reads it can mint a token for the App's whole installation. The
-sandboxed launch (in progress) removes this: serve is started on the host by
-`mandate run`, never by the agent, and the container's environment is built
-from an allowlist.
+It runs on macOS with Docker Desktop. On Linux the relay's path is unprobed, and
+`--sandbox` refuses there rather than claim it.
+
+**Without `--sandbox`, Mandate's own launch path is one such credential.**
+`mandate run` starts the agent with the operator's environment, and the agent
+then spawns `mandate serve` from its MCP config — so the agent's environment
+names `MANDATE_APP_KEY_PATH`, and the agent runs as the user who can read that
+key. An agent that reads it can mint a token for the App's whole installation.
+With `--sandbox`, serve is started on the host by `mandate run`, never by the
+agent, and neither the key nor its path enters the container.
+
+**What the sandbox opens on purpose.** The agent needs its model, so
+`--agent-egress` opens the model's API host and `--pass-env` passes the model's
+key. That host is an exfiltration channel: repository data reaches the model
+provider, which is the point, and an injected agent holding a key someone else
+controls could upload through the same host. The key is a credential the agent
+holds, though not a GitHub one. Both are the operator's choice, named in the
+run's output, and never something a mandate can ask for.
 
 **Without the sandbox, destination enforcement at the proxy is advisory.**
 Decision D3 says so and [enforced-where.md](enforced-where.md) repeats it. The
@@ -197,8 +213,9 @@ the tool schemas actually sent to the model and fails if one appears.
 
 ## 5. What an operator should actually do
 
-1. **Run the agent in the sandbox.** Everything in §3.1 depends on it, and it is
-   the difference between "enforced" and "advisory" for destinations.
+1. **Run the agent with `mandate run --sandbox`.** Everything in §3.1 depends on
+   it, and it is the difference between "enforced" and "advisory" for
+   destinations.
 2. **Set `permissions: {}`** on the job, and `persist-credentials: false` on
    checkout. The action refuses to run with a `GITHUB_TOKEN` present.
 3. **Use `--repo`, not `--level`.** `--level` is an assertion, labelled as one
