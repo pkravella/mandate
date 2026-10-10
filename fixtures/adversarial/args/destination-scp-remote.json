@@ -1,0 +1,15 @@
+{
+  "note": "An scp-style git remote, git@evil.example.com:acme/api.git, which has no scheme at all.",
+  "rule": {
+    "tool": "fork_repository",
+    "action": "repo.fork",
+    "resources": [
+      "acme/api"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "remote": "git@evil.example.com:acme/api.git"
+  }
+}

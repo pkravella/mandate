@@ -1,0 +1,15 @@
+{
+  "note": "A protocol-relative //evil.example.com/collect: a destination field holding something that is neither a URL, an scp remote nor an owner.",
+  "rule": {
+    "tool": "fork_repository",
+    "action": "repo.fork",
+    "resources": [
+      "acme/api"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "url": "//evil.example.com/collect"
+  }
+}

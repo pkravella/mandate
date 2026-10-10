@@ -148,7 +148,7 @@ describe("adversarial corpus — the index itself", () => {
   // Pins the corpus size per family. Task 19 asks for four families of at least
   // six cases; if a family is emptied or a file is deleted, this fails before
   // any invariant gets the chance to pass vacuously.
-  it("has four families of at least six cases each, 34 in total", () => {
+  it("has four families of at least six cases each, 42 in total", () => {
     const counts = new Map<string, number>();
     for (const c of INDEX) counts.set(c.family, (counts.get(c.family) ?? 0) + 1);
 
@@ -156,7 +156,7 @@ describe("adversarial corpus — the index itself", () => {
     for (const [family, n] of counts) {
       expect(n, `family ${family}`).toBeGreaterThanOrEqual(6);
     }
-    expect(INDEX.length).toBe(34);
+    expect(INDEX.length).toBe(42);
   });
 
   it("names a real file for every case, and every case states its invariant", () => {

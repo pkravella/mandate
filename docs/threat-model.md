@@ -39,7 +39,7 @@ it anyway. The question is never "did the model notice?"
 | It cannot reach a repository, branch, path or base outside the grant | Enforced per call at the proxy, with the clause named on refusal. |
 | It cannot write a default branch | No mandate may grant it, and the lints reject one that tries. |
 | It cannot widen its own mandate | A widen re-validates the whole mandate from scratch, may only union patterns onto a grant already held, and **may not introduce an operation**. The refusal list is a shared definition, so the surface that offers and the command that applies read the same rule. |
-| It cannot send repository data to an undeclared destination | Checked on destination-bearing argument fields, and the same predicate compiles the sandbox's egress allowlist. |
+| It cannot send repository data to an undeclared destination | Checked on destination-bearing argument fields: URLs of any scheme, read the way an HTTP client reads them; git's scp-style remotes; and the organization a fork goes to. A value in such a field that cannot be read as a destination is refused, not skipped. The validator and the proxy share one predicate; the sandbox's egress compiler applies the same rule and tests hold the two in step. |
 | It cannot exhaust the validator or the proxy | A work budget across the whole `validate()` call and a per-call path cap. Both are rejections, because "reject on any doubt" includes doubt about termination. |
 
 ---
@@ -142,17 +142,7 @@ mitigation.
 the enforcer allowed but that failed upstream still spends its quota, which is
 the safe direction but not the intuitive one.
 
-### 3.6 Non-HTTP destinations are invisible to the reason, not to the control
-
-`toPrefix` only recognises anchored `https?://`. Probed:
-`ssh://git@evil.example.com/x.git`, `git@evil.example.com:acme/api.git`, and a
-field merely *containing* a URL all extract to nothing. So they are invisible to
-the proxy's destination check and to the trace. The sandbox blocks non-HTTP
-egress at the network layer, which makes this "Mandate's reason is missing"
-rather than an open channel — but the reason being missing is itself a problem
-for an audit log.
-
-### 3.7 Mandate ids can collide
+### 3.6 Mandate ids can collide
 
 `slug()` truncates at 48 characters on a word boundary, so two tasks opening
 with the same words share an id. `mandateHash` exists for this and the trace

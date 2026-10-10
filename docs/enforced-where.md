@@ -104,6 +104,24 @@ the sandbox's (R9b) and taint tracking's (R14, P1), and until the sandbox is in
 place destination enforcement at the proxy is advisory — which Decision D3 says
 in as many words.
 
+**A destination field is read, or the call is refused.** A value with any
+`scheme://` is parsed as a WHATWG URL, so the host is the one an HTTP client
+would connect to (after any userinfo, so `https://github.com@evil.example.com/`
+is `evil.example.com`), dot segments are resolved before the prefix is compared,
+and the scheme's case does not matter. git's scp-style `git@host:owner/repo` is
+read as `host/owner/repo`. An owner-valued field — `organization`, which is the
+one destination field github-mcp-server's tools actually have, on
+`fork_repository` — is read as `github.com/<owner>`. A trailing `.git` is
+dropped, because it names the same repository. Anything else in a destination
+field is refused with `destinations.allow`, naming the field and the value, and
+is recorded in the trace so replay refuses it too. That refusal is confined to
+destination fields: free text is still not scanned, for the reasons above.
+
+The proxy and the sandbox disagree in one place, on purpose. An scp or `ssh://`
+remote naming an allowed repository is the same destination, so the proxy
+allows it; the sandbox still refuses the connection, because it tunnels to 443
+only.
+
 Destination entries are matched as `host/path` prefixes on a segment boundary,
 so a mandate allowing `github.com/acme/api` does not permit
 `github.com/evil/api` or `github.com/acme/api-private`. A bare host entry also
@@ -244,10 +262,14 @@ about it or the disagreement is either a false pause or an open channel:
 | MCP proxy | refuse a tool call whose destination-bearing field is outside it | R9a |
 | Egress compiler | build the sandbox's allowlist | R9b |
 
-So there is exactly one predicate, `destinationWithin` in
-`@mandate-dev/schema`, and all three call it. It lives in `schema` for the same
-reason `SENSITIVE_PATHS` does: packages on both sides of the trust boundary need
-it, and a second copy is a chance to drift.
+So there is one predicate, `destinationWithin` in `@mandate-dev/schema`, and the
+validator and the proxy both call it. It lives in `schema` for the same reason
+`SENSITIVE_PATHS` does: packages on both sides of the trust boundary need it,
+and a second copy is a chance to drift. The egress compiler is the exception:
+it emits squid ACL entries rather than answering membership questions, so it
+applies the same bare-host rule in its own code, and tests in both packages
+assert the agreement — including that every destination the proxy allows in the
+adversarial corpus is reachable through the compiled ACL.
 
 **Containment reduces to membership.** A destination denotes itself plus
 everything beneath it, so proving a mandate's entry sits inside the ceiling is

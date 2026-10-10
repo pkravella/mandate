@@ -82,7 +82,169 @@ describe("extractArgs", () => {
 
   it("keeps the path of a destination URL, not just its host", () => {
     const e = extractArgs("repo_fork", { owner: "acme", repo: "api", clone_url: "https://github.com/evil/api.git" });
-    expect(e.destinations).toEqual(["github.com/evil/api.git"]);
+    expect(e.destinations).toEqual(["github.com/evil/api"]);
+  });
+});
+
+// Task 5.4. Each shape below extracted to nothing, or to the wrong place,
+// before WHATWG parsing replaced the anchored regex -- probed against the
+// shipped dist, not reasoned about. "Wrong place" is the worse of the two: the
+// call was allowed AND the trace recorded a destination the request never went
+// to.
+describe("extractArgs: destination shapes", () => {
+  const dest = (value: unknown, field = "url"): ReturnType<typeof extractArgs> =>
+    extractArgs("t", { owner: "acme", repo: "api", [field]: value });
+
+  it("reads a scheme case-insensitively", () => {
+    expect(dest("HTTPS://evil.example.com/x").destinations).toEqual(["evil.example.com/x"]);
+  });
+
+  // The regex took `github.com` as the host. Every HTTP client sends this
+  // request to evil.example.com; userinfo is everything before the `@`.
+  it("reads the host after userinfo, not the userinfo", () => {
+    expect(dest("https://github.com@evil.example.com/x").destinations)
+      .toEqual(["evil.example.com/x"]);
+  });
+
+  // A prefix check on the raw path let `github.com/acme/api/../../evil/x` pass
+  // an allow entry of `github.com/acme/api`. Clients resolve dot segments, and
+  // so does WHATWG, including the percent-encoded spelling.
+  it("resolves dot segments before the prefix is compared", () => {
+    expect(dest("https://github.com/acme/api/../../evil/x").destinations)
+      .toEqual(["github.com/evil/x"]);
+    expect(dest("https://github.com/acme/api/%2e%2e/%2E%2e/evil/x").destinations)
+      .toEqual(["github.com/evil/x"]);
+  });
+
+  it("drops a default port and keeps any other, so a non-default port fails closed", () => {
+    expect(dest("https://github.com:443/acme/api").destinations).toEqual(["github.com/acme/api"]);
+    expect(dest("https://github.com:8443/acme/api").destinations)
+      .toEqual(["github.com:8443/acme/api"]);
+  });
+
+  it("reads ssh:// and git:// URLs", () => {
+    expect(dest("ssh://git@evil.example.com/x.git").destinations).toEqual(["evil.example.com/x"]);
+    expect(dest("git://evil.example.com/x.git").destinations).toEqual(["evil.example.com/x"]);
+  });
+
+  it("reads an scp-style remote, with or without a user", () => {
+    expect(dest("git@evil.example.com:acme/api.git", "remote").destinations)
+      .toEqual(["evil.example.com/acme/api"]);
+    expect(dest("evil.example.com:/acme/api.git", "remote").destinations)
+      .toEqual(["evil.example.com/acme/api"]);
+  });
+
+  // github-mcp-server v1.14.0's fork_repository takes `organization`, an org
+  // name: the only field on the list that any real tool has. It extracted to
+  // nothing, so a fork into any organization passed R9a unrecorded.
+  it("reads an owner-valued field as that owner on github.com", () => {
+    expect(dest("Evil-Org", "organization").destinations).toEqual(["github.com/evil-org"]);
+    expect(dest("evil-org", "fork_owner").destinations).toEqual(["github.com/evil-org"]);
+  });
+
+  it("does not record an unreadable value as a destination, and records it as unreadable", () => {
+    for (const [field, value] of [
+      ["url", "//evil.example.com/x"],
+      ["url", "evil.example.com/x"],
+      ["url", "see https://evil.example.com/x"],
+      ["url", "mailto:a@evil.example.com"],
+      ["url", "file:///etc/passwd"],
+      ["remote", "git@evil.example.com:acme/../../x.git"],
+      ["organization", "evil/org"],
+      ["organization", "https://evil.example.com"],
+      ["url", 42],
+    ] as const) {
+      const e = dest(value, field);
+      expect(e.destinations, `${field}=${String(value)}`).toEqual([]);
+      expect(e.unreadableDestinations, `${field}=${String(value)}`)
+        .toEqual([{ field, value: String(value) }]);
+    }
+  });
+
+  // WHATWG leaves a non-special scheme's host opaque: not lowercased, not
+  // percent-decoded. Probed. So the host is lowercased here and anything that
+  // is not plain labels is refused rather than compared.
+  it("lowercases an opaque host, and refuses one that is not plain labels", () => {
+    expect(dest("ssh://git@EVIL.Example.com/x").destinations).toEqual(["evil.example.com/x"]);
+    expect(dest("ssh://evil%2Eexample.com/x").unreadableDestinations)
+      .toEqual([{ field: "url", value: "ssh://evil%2Eexample.com/x" }]);
+    expect(dest("ssh://[::1]/x").unreadableDestinations)
+      .toEqual([{ field: "url", value: "ssh://[::1]/x" }]);
+  });
+
+  // Clients send null or "" for an optional field they are not using. Reading
+  // either as an unreadable destination would refuse every such call.
+  it("treats a null or empty destination field as absent, not unreadable", () => {
+    for (const value of [null, ""]) {
+      const e = dest(value);
+      expect(e.destinations).toEqual([]);
+      expect(e.unreadableDestinations).toBeUndefined();
+    }
+  });
+
+  it("records nothing as unreadable when every destination field is readable", () => {
+    expect(dest("https://github.com/acme/api").unreadableDestinations).toBeUndefined();
+  });
+
+  // The field list still decides what is scanned. Failing closed applies inside
+  // destination fields only; prose stays prose.
+  it("does not scan a free-text field for unreadable values either", () => {
+    const e = extractArgs("t", { owner: "acme", repo: "api", body: "//evil.example.com" });
+    expect(e.destinations).toEqual([]);
+    expect(e.unreadableDestinations).toBeUndefined();
+  });
+});
+
+describe("makeArgumentEnforcer: destination shapes", () => {
+  const forkRule: ToolRule = { tool: "fork_repository", action: "repo.fork", resources: ["acme/api"] };
+  const enforceWith = (destinations: readonly string[]) =>
+    makeArgumentEnforcer({ ...rules, allowedTools: [forkRule.tool], rules: [forkRule], destinations });
+
+  it("denies a value it cannot read, naming the field and the value", () => {
+    const d = enforceWith(["github.com/acme/api"])(forkRule, {
+      owner: "acme", repo: "api", url: "//evil.example.com/x",
+    });
+    expect(d.kind).toBe("deny");
+    if (d.kind !== "deny") return;
+    expect(d.clause).toBe("destinations.allow");
+    expect(d.reason).toContain("url");
+    expect(d.reason).toContain("//evil.example.com/x");
+  });
+
+  it("denies a fork into an organization the mandate does not name", () => {
+    const d = enforceWith(["github.com/acme/api"])(forkRule, {
+      owner: "acme", repo: "api", organization: "evil-org",
+    });
+    expect(d).toMatchObject({ kind: "deny", clause: "destinations.allow" });
+  });
+
+  it("allows a fork into an organization the mandate names", () => {
+    expect(enforceWith(["github.com/acme-forks"])(forkRule, {
+      owner: "acme", repo: "api", organization: "acme-forks",
+    })).toMatchObject({ kind: "allow" });
+  });
+
+  it("allows the https clone URL of the allowed repository", () => {
+    expect(enforceWith(["github.com/acme/api"])(forkRule, {
+      owner: "acme", repo: "api", clone_url: "https://github.com/acme/api.git",
+    })).toMatchObject({ kind: "allow" });
+  });
+
+  // `.git` is dropped only as the whole final suffix; a name that merely
+  // starts like the allowed one is still a different repository.
+  it("does not let the .git strip reach a sibling repository", () => {
+    const d = enforceWith(["github.com/acme/api"])(forkRule, {
+      owner: "acme", repo: "api", clone_url: "https://github.com/acme/api-private.git",
+    });
+    expect(d).toMatchObject({ kind: "deny", clause: "destinations.allow" });
+  });
+
+  // The false-pause direction: an scp remote naming the allowed repository is
+  // the same place, and must not be refused for its spelling.
+  it("allows an scp remote inside the allowed prefix", () => {
+    expect(enforceWith(["github.com/acme/api"])(forkRule, {
+      owner: "acme", repo: "api", remote: "git@github.com:acme/api.git",
+    })).toMatchObject({ kind: "allow" });
   });
 });
 

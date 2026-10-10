@@ -10,6 +10,19 @@ export interface ArgExtract {
   readonly base?: string;
   /** `host/path` prefixes, from destination-bearing fields only. */
   readonly destinations: readonly string[];
+  /**
+   * Values in destination-bearing fields that could not be read as a
+   * destination. Absent when there are none. Any entry denies the call: a field
+   * that names where data goes, holding something Mandate cannot place, is
+   * doubt, and an unparseable value used to be dropped and the call allowed.
+   */
+  readonly unreadableDestinations?: readonly UnreadableDestination[];
+}
+
+export interface UnreadableDestination {
+  /** The nearest key the value sat under. */
+  readonly field: string;
+  readonly value: string;
 }
 
 /**
@@ -35,7 +48,36 @@ const DESTINATION_FIELDS: ReadonlySet<string> = new Set([
   "hook_url", "payload_url", "fork_owner", "organization",
 ]);
 
-const URL_RE = /^https?:\/\/([A-Za-z0-9.-]+(?::\d+)?)(\/[^\s?#]*)?/;
+/**
+ * Fields whose value is a GitHub account rather than a URL.
+ *
+ * `organization` is the one name on the list that github-mcp-server v1.14.0
+ * actually uses (read from its source): `fork_repository` takes it as the
+ * organization to fork into. Read as a URL it was nothing, so a fork anywhere
+ * passed R9a and left no destination in the trace.
+ */
+const OWNER_FIELDS: ReadonlySet<string> = new Set(["organization", "fork_owner"]);
+
+/** A GitHub login: alphanumerics and inner hyphens, at most 39 characters. */
+const OWNER_RE = /^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$/i;
+
+/** `scheme://`, any scheme. Case-insensitive, as schemes are. */
+const SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+/**
+ * git's scp-like syntax, `[user@]host:path`: no `://`, and a colon before any
+ * slash. The host must contain a dot, which is what keeps `mailto:x@y` and a
+ * Windows drive letter from reading as a host.
+ */
+const SCP_RE = /^(?:[^@/:\s]+@)?([a-z0-9-]+(?:\.[a-z0-9-]+)+):([^\s]*)$/i;
+
+/**
+ * What a host may look like once extracted: labels, and an optional port.
+ * WHATWG leaves a non-special scheme's host opaque -- `ssh://EVIL.Example.com`
+ * is not lowercased and `evil%2Eexample.com` is not decoded, both probed -- so
+ * anything else is refused rather than compared.
+ */
+const HOST_RE = /^[a-z0-9-]+(?:\.[a-z0-9-]+)*(?::\d+)?$/;
 
 const str = (v: unknown): string | undefined =>
   (typeof v === "string" && v.length > 0 ? v : undefined);
@@ -43,30 +85,91 @@ const str = (v: unknown): string | undefined =>
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** `host/path`, lowercased host, for prefix comparison against the allow list. */
-const toPrefix = (value: string): string | undefined => {
-  const m = URL_RE.exec(value.trim());
-  const host = m?.[1];
-  if (host === undefined) return undefined;
-  return `${host.toLowerCase()}${(m?.[2] ?? "").replace(/\/+$/, "")}`;
+/**
+ * A trailing `.git` is dropped: `acme/api.git` is how git names the repository
+ * `acme/api`, and keeping it put every clone URL of an allowed repository
+ * outside `github.com/acme/api` on the segment boundary -- a false pause on
+ * the commonest spelling of the one destination the mandate names.
+ */
+const prefixOf = (host: string, path: string): string | undefined => {
+  const h = host.toLowerCase();
+  if (!HOST_RE.test(h)) return undefined;
+  return `${h}${path.replace(/\/+$/, "").replace(/\.git$/i, "")}`;
 };
 
-function collectDestinations(value: unknown, into: Set<string>, keyed: boolean): void {
-  if (typeof value === "string") {
-    if (!keyed) return;
-    const prefix = toPrefix(value);
-    if (prefix !== undefined) into.add(prefix);
-    return;
+/**
+ * `host/path`, lowercased host, for prefix comparison against the allow list.
+ * `undefined` means the value could not be placed, which the caller treats as
+ * a refusal, never as an absence.
+ *
+ * A `scheme://` value goes through WHATWG `URL` rather than a regex, because
+ * the regex disagreed with every HTTP client in ways that allowed calls: it
+ * read `https://github.com@evil.example.com/` as github.com, left
+ * `/acme/api/../../evil` unresolved against a prefix check, and did not match
+ * `HTTPS://` at all. `.host` keeps a non-default port, so a port still fails
+ * closed against an allow entry that names none.
+ */
+const toPrefix = (value: string, field: string): string | undefined => {
+  const v = value.trim();
+
+  if (OWNER_FIELDS.has(field)) {
+    return OWNER_RE.test(v) ? `github.com/${v.toLowerCase()}` : undefined;
   }
+
+  if (SCHEME_RE.test(v)) {
+    let url: URL;
+    try {
+      url = new URL(v);
+    } catch {
+      return undefined;
+    }
+    if (url.host.length === 0) return undefined;
+    return prefixOf(url.host, url.pathname);
+  }
+
+  const scp = SCP_RE.exec(v);
+  if (scp !== null) {
+    const path = (scp[2] ?? "").replace(/^\/+/, "");
+    // A remote path is a filesystem path on the far side and nothing resolves
+    // its dot segments for us, so one is doubt rather than something to fold.
+    if (path.split("/").some((s) => s === "." || s === "..")) return undefined;
+    return prefixOf(scp[1] ?? "", path.length > 0 ? `/${path}` : "");
+  }
+
+  return undefined;
+};
+
+interface Collected {
+  readonly destinations: Set<string>;
+  readonly unreadable: UnreadableDestination[];
+}
+
+/**
+ * Walks the arguments for destination-bearing fields. `field` is the nearest
+ * key above the value, and `keyed` whether any key above it was on the list --
+ * so a URL nested inside a `remote` object is still read, and read by its own
+ * key's rules.
+ */
+function collectDestinations(
+  value: unknown, into: Collected, keyed: boolean, field: string,
+): void {
   if (Array.isArray(value)) {
-    for (const v of value) collectDestinations(v, into, keyed);
+    for (const v of value) collectDestinations(v, into, keyed, field);
     return;
   }
   if (isRecord(value)) {
     for (const [k, v] of Object.entries(value)) {
-      collectDestinations(v, into, keyed || DESTINATION_FIELDS.has(k));
+      collectDestinations(v, into, keyed || DESTINATION_FIELDS.has(k), k);
     }
+    return;
   }
+  if (!keyed) return;
+  // Absent, not unreadable: clients send null or "" for an optional field.
+  if (value === null || value === undefined || value === "") return;
+
+  const prefix = typeof value === "string" ? toPrefix(value, field) : undefined;
+  if (prefix !== undefined) into.destinations.add(prefix);
+  else into.unreadable.push({ field, value: String(value) });
 }
 
 /**
@@ -106,8 +209,8 @@ export function extractArgs(_tool: string, args: Record<string, unknown>): ArgEx
     }
   }
 
-  const destinations = new Set<string>();
-  collectDestinations(args, destinations, false);
+  const collected: Collected = { destinations: new Set(), unreadable: [] };
+  collectDestinations(args, collected, false, "");
 
   const base = str(args["base"]);
   return {
@@ -115,7 +218,8 @@ export function extractArgs(_tool: string, args: Record<string, unknown>): ArgEx
     ...(branch !== undefined ? { branch } : {}),
     paths,
     ...(base !== undefined ? { base } : {}),
-    destinations: [...destinations],
+    destinations: [...collected.destinations],
+    ...(collected.unreadable.length > 0 ? { unreadableDestinations: collected.unreadable } : {}),
   };
 }
 
@@ -334,6 +438,14 @@ export function makeFacetEnforcer(
     }
 
     // --- destinations (R9a) ----------------------------------------------
+    for (const u of e.unreadableDestinations ?? []) {
+      return deny(
+        "destinations.allow",
+        `${u.field} holds ${JSON.stringify(u.value)}, which cannot be read as a destination, `
+        + `so it cannot be shown to be inside the mandate's allowed destinations `
+        + `(${rules.destinations.join(", ")})`,
+      );
+    }
     for (const prefix of e.destinations) {
       if (!destinationWithin(prefix, rules.destinations)) {
         return deny(
