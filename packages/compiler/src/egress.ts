@@ -36,12 +36,14 @@ export interface EgressPolicy {
 
 export interface EgressOptions {
   /**
-   * Whether to allow the hosts the GitHub API and git transport use. On by
-   * default. A sandboxed agent turns it off: `mandate serve` and the GitHub
-   * MCP server run on the host, so the agent needs no GitHub egress of its
-   * own, and squid sees only the CONNECT host -- a credential that reached the
-   * container would get every repository it can touch through an
-   * always-allowed api.github.com.
+   * Whether the agent may reach GitHub directly. On by default. A sandboxed
+   * agent turns it off: `mandate serve` and the GitHub MCP server run on the
+   * host, so the agent needs no GitHub egress of its own. Off leaves out the
+   * infrastructure hosts AND any destination on github.com or
+   * githubusercontent.com -- found reviewing Phase 5, the first version left a
+   * mandate's `github.com/acme/api` open, and squid sees only the CONNECT
+   * host, so a credential that reached the container could push anywhere on
+   * github.com past every branch and path limit.
    */
   readonly githubInfrastructure?: boolean;
   /**
@@ -65,6 +67,15 @@ const INFRASTRUCTURE_HOSTS: readonly string[] = [
   "codeload.github.com",
   "objects.githubusercontent.com",
 ];
+
+/** GitHub's own domains, which a sandboxed agent reaches only through serve. */
+const GITHUB_DOMAINS: readonly string[] = ["github.com", "githubusercontent.com"];
+
+/**
+ * Hosts that are addresses, not names: dotted or bare decimal, hex, and
+ * anything with a colon (IPv6, bracketed or not). A hostname has none of these.
+ */
+const IP_LITERAL_PATTERNS: readonly string[] = ["^[0-9.]+$", "^0[xX]", ":", "^\\["];
 
 /** The only port the generated config permits a tunnel to. */
 const TUNNEL_PORT = 443;
@@ -159,6 +170,11 @@ export function compileEgress(m: ValidatedMandate, opts: EgressOptions = {}): Eg
 
   for (const raw of mandate.destinations.allow) {
     const { host, bare } = parseDestination(raw);
+    // In the sandbox the agent reaches GitHub only through serve. A GitHub host
+    // left open here is where a credential that leaked into the container
+    // would push -- squid sees only the CONNECT host, so an open github.com
+    // admits every repository -- past every branch and path limit.
+    if (opts.githubInfrastructure === false && GITHUB_DOMAINS.some((d) => isUnder(host, d))) continue;
     if (bare) subdomain.add(host);
     else exact.add(host);
   }
@@ -180,12 +196,6 @@ export function compileEgress(m: ValidatedMandate, opts: EgressOptions = {}): Eg
   // squid's warning rather than its FATAL.
   const aclEntries = [...subdomainHosts.map((h) => `.${h}`), ...allowedHosts];
 
-  if (aclEntries.length === 0) {
-    throw new EgressCompileError(
-      `mandate ${mandate.mandate} compiled to an empty egress allowlist`,
-    );
-  }
-
   const agentNote = agentHosts.length === 0
     ? ""
     : `# Includes agent egress, set by the operator: ${agentHosts.join(" ")}\n`;
@@ -194,17 +204,26 @@ ${agentNote}#
 # Bound to loopback: the agent reaches it, nothing outside the sandbox does.
 http_port 127.0.0.1:3128
 
-acl mandate_allowed dstdomain ${aclEntries.join(" ")}
+${aclEntries.length === 0
+    ? `# Nothing is allowed: the agent has no egress at all.
+http_access deny all`
+    : `# -n: never a reverse lookup. Without it squid matches an IP-literal request
+# by the address's PTR record, which whoever owns the address controls --
+# probed: with .github.com allowed, CONNECT 140.82.114.4:443 was answered 200.
+acl mandate_allowed dstdomain -n ${aclEntries.join(" ")}
+# A destination given as an address names no host, so no host was allowed.
+acl ip_literal dstdom_regex -n ${IP_LITERAL_PATTERNS.join(" ")}
 acl CONNECT method CONNECT
 acl SSL_ports port ${TUNNEL_PORT}
 
 # A tunnel to an allowed host on ${TUNNEL_PORT}, and nothing else. Allowing the
 # ACL alone would permit any method on any port to that host, which makes the
 # CONNECT restriction decorative.
+http_access deny ip_literal
 http_access deny !mandate_allowed
 http_access deny CONNECT !SSL_ports
 http_access allow CONNECT mandate_allowed SSL_ports
-http_access deny all
+http_access deny all`}
 
 # No caching: repository data must not persist in the sandbox.
 cache deny all

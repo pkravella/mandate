@@ -252,7 +252,7 @@ node packages/cli/dist/index.js validate mandate.yaml \
   --ceiling-destinations my-ceiling.destinations --as alice --level push
 ```
 
-Then point the seeded over-grant suite at it. `fixtures/overgrants/` holds 22
+Then point the seeded over-grant suite at it. `fixtures/overgrants/` holds 21
 mandates that must each be refused — a wildcard repository, a write to the
 default branch, an unbounded PR count, a gist exfiltration, a weakened deny
 list — and `fixtures/adversarial/` holds 42 more written as attacks. A ceiling

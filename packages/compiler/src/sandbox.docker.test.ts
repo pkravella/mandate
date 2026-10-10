@@ -76,7 +76,7 @@ function runSandbox(opts: {
 
   const checks: Record<string, string> = {};
   for (const line of output.split("\n")) {
-    const m = /^((?:proxy|direct|env)\.[a-z0-9-]+)=(.+)$/.exec(line.trim());
+    const m = /^((?:proxy|direct|env|proc)\.[a-z0-9-]+)=(.+)$/.exec(line.trim());
     if (m?.[1] !== undefined && m[2] !== undefined) checks[m[1]] = m[2];
   }
   return { status, output, checks };
@@ -171,6 +171,23 @@ describe.skipIf(!enabled)("the agent sandbox, against a real container", () => {
     expect(checks["env.https-proxy"]).toBe("http://127.0.0.1:3128");
   });
 
+  // Found reviewing Phase 5, and probed: with a bare github.com allowed, squid
+  // answered CONNECT 140.82.114.4:443 with 200 because that address's PTR
+  // ends in .github.com. Whoever owns an address writes its PTR.
+  it("refuses an IP-literal destination even when its reverse DNS is allowed", () => {
+    const bare = compileEgress(mandate(["github.com"])).squidConf;
+    const { checks, output } = runSandbox({ squidConf: bare, allowedIp });
+    expect(checks["proxy.allowed-host-ip"], output).toBe("403");
+    // And the name itself still tunnels, so the refusal is about the address.
+    expect(checks["proxy.allowed"], output).toBe("200");
+  });
+
+  it("starts the agent unable to gain privileges, with an empty bounding set", () => {
+    const { checks, output } = runSandbox({ squidConf: conf });
+    expect(checks["proc.no-new-privs"], output).toBe("1");
+    expect(checks["proc.cap-bounding"], output).toBe("0000000000000000");
+  });
+
   it("gives the agent no resolver of its own", () => {
     expect(runSandbox({ squidConf: conf }).checks["direct.dns"]).toMatch(/^blocked:/);
   });
@@ -252,6 +269,28 @@ describe.skipIf(!enabled)("the sandbox checks discriminate", () => {
       // IPv4 still closed, so this run differs from the real one only in v6.
       expect(checks["direct.unlisted-ip"]).toMatch(/^blocked:/);
     });
+  });
+
+  it("tunnels to an IP literal by its reverse DNS once -n and the IP deny are removed", async () => {
+    const ip = (await resolve4("github.com"))[0] ?? "";
+    const loose = compileEgress(mandate(["github.com"])).squidConf
+      .replace("dstdomain -n ", "dstdomain ")
+      .replace(/^http_access deny ip_literal$/m, "");
+    expect(loose).not.toContain("dstdomain -n");
+    const { checks, output } = runSandbox({ squidConf: loose, allowedIp: ip });
+    expect(checks["proxy.allowed-host-ip"], output).toBe("200");
+  });
+
+  it("leaves the agent able to regain privileges once setpriv's hardening is removed", () => {
+    const src = readFileSync(join(SANDBOX_DIR, "entrypoint.sh"), "utf8");
+    const loose = src.replace(/ --no-new-privs --bounding-set=-all --inh-caps=-all/g, "");
+    expect(loose).not.toBe(src);
+    const path = join(tmpdir(), "mandate-loose-setpriv-entrypoint.sh");
+    writeFileSync(path, loose, "utf8");
+    chmodSync(path, 0o755);
+    const { checks, output } = runSandbox({ squidConf: conf, entrypoint: path });
+    expect(checks["proc.no-new-privs"], output).toBe("0");
+    expect(checks["proc.cap-bounding"], output).not.toBe("0000000000000000");
   });
 
   it("leaks direct egress once the firewall rules are removed", () => {
