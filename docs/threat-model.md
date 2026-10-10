@@ -95,6 +95,15 @@ sockets, with negative controls that widen the ACL and strip the firewall rules
 to confirm the checks can actually fail — because a security control that is
 never exercised is worse than none, since the docs assert it holds.
 
+**Mandate's own launch path is one such credential today.** `mandate run`
+starts the agent with the operator's environment, and the agent then spawns
+`mandate serve` from its MCP config — so the agent's environment names
+`MANDATE_APP_KEY_PATH`, and the agent runs as the user who can read that key.
+An agent that reads it can mint a token for the App's whole installation. The
+sandboxed launch (in progress) removes this: serve is started on the host by
+`mandate run`, never by the agent, and the container's environment is built
+from an allowlist.
+
 **Without the sandbox, destination enforcement at the proxy is advisory.**
 Decision D3 says so and [enforced-where.md](enforced-where.md) repeats it. The
 example workflow sets `permissions: {}` and `persist-credentials: false`, and
