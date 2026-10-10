@@ -3,14 +3,13 @@ export {
   type GitHubResponse, type MintDeps, type MintedToken, type MintErrorCode,
   type PermissionSet, type TokenTarget,
 } from "./token.js";
-export { TokenRefresher, type RefreshOptions } from "./refresh.js";
 export {
   appJwt, githubAppDeps, requestShape,
   type AppCredentials, type RequestShape,
 } from "./githubApp.js";
 export {
-  compileRules, enforcementReport, rulesForTool,
-  type EnforcementRow, type ProxyRules, type ToolRule,
+  capToCredential, compileRules, CREDENTIAL_MARGIN_MS, enforcementReport, rulesForTool,
+  type EnforcementRow, type ExpiryCap, type ProxyRules, type ToolRule,
 } from "./rules.js";
 export {
   compileEgress, EgressCompileError, type EgressOptions, type EgressPolicy,

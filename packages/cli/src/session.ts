@@ -3,7 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { proofOf, type ValidatedMandate } from "@mandate-dev/schema";
 import {
-  compileRules, mintToken, revokeToken,
+  capToCredential, compileRules, mintToken, revokeToken,
   type MintDeps, type MintedToken, type ProxyRules,
 } from "@mandate-dev/compiler";
 import {
@@ -92,7 +92,10 @@ export async function openSession(opts: SessionOptions): Promise<Session> {
   // token with nothing holding a reference to it.
   let upstream: Client | undefined;
   try {
-    const rules = compileRules(opts.mandate);
+    // The earlier of the two clocks: a mandate that would outlive its token
+    // ends a margin before the token does, rather than allowing calls the
+    // upstream can only answer with a 401. See capToCredential.
+    const rules = capToCredential(compileRules(opts.mandate), minted.expiresAt);
     upstream = await (opts.upstream ?? dockerUpstream())(minted.token);
 
     // The proof's first reader: which ceiling the mandate was proved against,

@@ -24,11 +24,61 @@ export interface ProxyRules {
    * tasks opening with the same words share an id.
    */
   readonly mandateHash: string;
-  /** The mandate's expiry, not the token's. Decision D5: two clocks. */
+  /**
+   * When the proxy stops honouring the mandate. The mandate's own expiry,
+   * unless its credential runs out first -- see `capToCredential`. Decision D5
+   * has two clocks; this is the earlier of them.
+   */
   readonly expiresAt: string;
   readonly allowedTools: readonly string[];
   readonly rules: readonly ToolRule[];
   readonly destinations: readonly string[];
+  /** Present when the credential, not the mandate, is what ends the session. */
+  readonly cappedBy?: ExpiryCap;
+}
+
+export interface ExpiryCap {
+  /** Where the mandate's own clock would have ended the session. */
+  readonly mandateExpiresAt: string;
+  /** The installation token's expiry, as GitHub returned it. */
+  readonly credentialExpiresAt: string;
+}
+
+/**
+ * How long before its credential expires the session ends. Long enough for a
+ * call that starts just before the end to finish on a token that still works.
+ */
+export const CREDENTIAL_MARGIN_MS = 60_000;
+
+/**
+ * Ends the session before its credential does.
+ *
+ * Both clocks start in `openSession` -- the token is minted, then the
+ * mandate's expiry is stamped -- and `expiresInMinutes` is capped at 60, the
+ * token's life, so one token always covers a mandate except at the very end:
+ * GitHub dates the token from its own clock, to the second, and the mandate is
+ * stamped a moment after the mint. Measured on the live run, a 60-minute
+ * mandate outlived its token by 0.9 s, and in that window the proxy would allow
+ * a call the upstream could only answer with a 401 -- "the mandate allowed it,
+ * but the upstream failed", which points at the wrong thing.
+ *
+ * This replaced `TokenRefresher`, which no shipped path called. Refreshing
+ * means restarting github-mcp-server with a new token mid-session; while a
+ * mandate cannot outlive one token, capping is the honest and simpler answer.
+ * An expiry nobody can read ends the session at once.
+ */
+export function capToCredential(
+  rules: ProxyRules, credentialExpiresAt: string, marginMs: number = CREDENTIAL_MARGIN_MS,
+): ProxyRules {
+  const credential = Date.parse(credentialExpiresAt);
+  const end = Number.isNaN(credential) ? 0 : credential - marginMs;
+  const mandateEnd = Date.parse(rules.expiresAt);
+  if (!Number.isNaN(mandateEnd) && mandateEnd <= end) return rules;
+  return {
+    ...rules,
+    expiresAt: new Date(end).toISOString(),
+    cappedBy: { mandateExpiresAt: rules.expiresAt, credentialExpiresAt },
+  };
 }
 
 /** The facets a rule can constrain, beyond the repository. */
@@ -45,6 +95,10 @@ type Facet = (typeof FACETS)[number];
  * adding a grant would narrow the mandate — but it has a consequence worth
  * stating out loud: the *loosest* rule for a tool is the one that decides.
  * `enforcementReport` reports where that makes a limit useless.
+ */
+/**
+ * The proxy's rules for one mandate. `expiresAt` here is the mandate's own
+ * clock; `openSession` caps it at the credential's with `capToCredential`.
  */
 export function compileRules(m: ValidatedMandate, now: Date = new Date()): ProxyRules {
   const mandate = unwrap(m);

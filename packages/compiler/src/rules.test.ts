@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MandateSchema, mandateHash, markValidated, unwrap, type ValidatedMandate,
 } from "@mandate-dev/schema";
-import { compileRules, enforcementReport, rulesForTool } from "./rules.js";
+import { capToCredential, compileRules, CREDENTIAL_MARGIN_MS, enforcementReport, rulesForTool } from "./rules.js";
 
 const validated = (grants: unknown[], over: Record<string, unknown> = {}): ValidatedMandate =>
   markValidated(MandateSchema.parse({
@@ -88,6 +88,55 @@ describe("compileRules", () => {
 // Nine MCP tools in the catalog are reached by more than one operation, and the
 // plan never said how their rules combine. Task 13 enforces against this data,
 // so the semantics are pinned here rather than invented there.
+// Task 5.6. Both clocks start in openSession -- the token is minted, then the
+// mandate's expiry is stamped -- and expiresInMinutes is capped at 60, the
+// token's life. So the mandate can outlive its credential only by the moments
+// between the two and by GitHub dating the token to the second from its own
+// clock: 0.9 s, measured on the live run. In that window the proxy allowed a
+// call the upstream could only answer with a 401. The session now ends a
+// margin before the credential does, and says which clock ended it.
+describe("capToCredential", () => {
+  const NOW = new Date("2026-10-10T03:22:26.900Z");
+  const sixty = compileRules(validated([{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }]), NOW);
+  const thirty = compileRules(validated(
+    [{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }], { expiresInMinutes: 30 },
+  ), NOW);
+  // What GitHub returned on the live run: one hour from its own clock, to the second.
+  const TOKEN = "2026-10-10T04:22:26Z";
+
+  it("ends the session a margin before a credential that would expire first", () => {
+    const capped = capToCredential(sixty, TOKEN);
+    expect(capped.expiresAt).toBe(new Date(Date.parse(TOKEN) - CREDENTIAL_MARGIN_MS).toISOString());
+    expect(capped.cappedBy).toEqual({ mandateExpiresAt: sixty.expiresAt, credentialExpiresAt: TOKEN });
+  });
+
+  it("leaves a mandate that ends well before its credential alone", () => {
+    const capped = capToCredential(thirty, TOKEN);
+    expect(capped.expiresAt).toBe(thirty.expiresAt);
+    expect(capped.cappedBy).toBeUndefined();
+  });
+
+  // The margin is for a call that starts just before the end: it has to finish
+  // on a token that still works.
+  it("caps a mandate that ends inside the margin, not only one that ends after the token", () => {
+    const justInside = { ...sixty, expiresAt: new Date(Date.parse(TOKEN) - 30_000).toISOString() };
+    expect(capToCredential(justInside, TOKEN).cappedBy).toBeDefined();
+  });
+
+  it("changes nothing else about the rules", () => {
+    const { expiresAt: _a, cappedBy: _b, ...rest } = capToCredential(sixty, TOKEN);
+    const { expiresAt: _c, ...before } = sixty;
+    expect(rest).toEqual(before);
+  });
+
+  // An expiry nobody can read is expired, as everywhere else in the proxy.
+  it("ends the session at once on a credential expiry it cannot read", () => {
+    const capped = capToCredential(sixty, "not a date");
+    expect(Date.parse(capped.expiresAt)).toBeLessThanOrEqual(Date.now());
+    expect(capped.cappedBy?.credentialExpiresAt).toBe("not a date");
+  });
+});
+
 describe("rulesForTool", () => {
   const twoReaders = validated([
     { action: "repo.read", enforcedBy: "token", resources: ["acme/api"] },

@@ -52,7 +52,7 @@ interface FakeGithub {
   readonly revoked: () => boolean;
 }
 
-const fakeGithub = (opts: { mintFails?: boolean } = {}): FakeGithub => {
+const fakeGithub = (opts: { mintFails?: boolean; tokenLifeMs?: number } = {}): FakeGithub => {
   const calls: string[] = [];
   let revoked = false;
   return {
@@ -69,7 +69,7 @@ const fakeGithub = (opts: { mintFails?: boolean } = {}): FakeGithub => {
           status: 201,
           data: {
             token: "ghs_faketoken",
-            expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+            expires_at: new Date(Date.now() + (opts.tokenLifeMs ?? 3_600_000)).toISOString(),
             permissions: { contents: "write", metadata: "read" },
             // Bare names, which is what the endpoint really returns: measured
             // in Phase 2 and enforced by TokenResponseSchema.
@@ -246,6 +246,23 @@ describe("openSession — giving the token back", () => {
     const gh = fakeGithub();
     const session = await openSession({ mandate: mandate(), github: gh.deps, upstream: fakeUpstream().connect });
     expect(session.recorder.graph().ceiling).toEqual({ label: "org-policy@v12", sha256: "0".repeat(64) });
+    await session.close();
+  });
+
+  // Task 5.6. The session ends before its credential does, so the proxy never
+  // allows a call the upstream can only answer with a 401.
+  it("ends the session before a credential that would expire first", async () => {
+    const gh = fakeGithub({ tokenLifeMs: 20 * 60_000 });
+    const session = await openSession({ mandate: mandate(), github: gh.deps, upstream: fakeUpstream().connect });
+    expect(session.rules.cappedBy?.credentialExpiresAt).toBe(session.minted.expiresAt);
+    expect(Date.parse(session.rules.expiresAt)).toBeLessThan(Date.parse(session.minted.expiresAt));
+    await session.close();
+  });
+
+  it("keeps the mandate's own clock when the credential outlasts it", async () => {
+    const gh = fakeGithub();
+    const session = await openSession({ mandate: mandate(), github: gh.deps, upstream: fakeUpstream().connect });
+    expect(session.rules.cappedBy).toBeUndefined();
     await session.close();
   });
 

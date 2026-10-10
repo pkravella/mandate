@@ -152,6 +152,24 @@ describe("proxy tools/call passthrough", () => {
     expect(seen).toEqual([]);
   });
 
+  // The clause stays mandate.expiry -- the session is over either way -- but the
+  // reason names the clock that ended it, so an operator is not left looking
+  // for a mandate setting when it was the credential.
+  it("says it was the credential that ended the session, when it was", async () => {
+    const { client } = await fakeUpstream();
+    const agent = await connectAgent(createProxyServer({
+      rules: expiredRules({
+        cappedBy: { mandateExpiresAt: "2026-10-10T04:22:26.900Z", credentialExpiresAt: "2026-10-10T04:22:26Z" },
+      }),
+      upstream: client,
+    }));
+    const res = await agent.callTool({ name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "a" } });
+    const text = JSON.stringify(res.content);
+    expect(text).toContain("mandate.expiry");
+    expect(text).toContain("credential");
+    expect(text).toContain("2026-10-10T04:22:26Z");
+  });
+
   it("refuses every call after expiry", async () => {
     const { client, seen } = await fakeUpstream();
     const agent = await connectAgent(createProxyServer({ rules: expiredRules(), upstream: client }));

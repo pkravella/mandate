@@ -3,7 +3,6 @@ import { z } from "zod";
 import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
 import { githubAppDeps } from "./githubApp.js";
 import { MintError, mintToken, requiredPermissions, revokeToken } from "./token.js";
-import { TokenRefresher } from "./refresh.js";
 
 // Against the real GitHub App. No model spend, but it mints real credentials
 // for a real repository, so it is gated on an explicit opt-in as well as on
@@ -114,16 +113,6 @@ describe.skipIf(!live)("minting against the real GitHub App", () => {
     }
     expect(status).toBe(401);
     console.log(`revocation took effect after ~${((Date.now() - started) / 1000).toFixed(0)}s`);
-  }, 60_000);
-
-  it("revokes through the refresher's stop(), for lifecycle step 8", async () => {
-    const d = deps();
-    const m = validated([writeGrant()]);
-    const refresher = new TokenRefresher(() => mintToken(d, m), { deps: d });
-    const held = await refresher.current();
-    expect((await d.asInstallation("GET /installation/repositories", held.token)).status).toBe(200);
-    await refresher.stop();
-    await expect(refresher.current()).rejects.toThrow(/stopped/);
   }, 60_000);
 });
 
