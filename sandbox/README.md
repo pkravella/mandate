@@ -28,9 +28,13 @@ mounted so that nothing has to be written to a shared filesystem.
 
 - `squid` on `127.0.0.1:3128`, tunnelling only to a host the mandate allows, on
   port 443, by `CONNECT` only.
-- `iptables` rules that reject every other outbound packet from the `agent`
-  uid, DNS included — with `HTTPS_PROXY` set the proxy resolves names, so the
-  agent never needs a resolver, and a direct one would be a channel of its own.
+- `iptables` and `ip6tables` rules that reject every other outbound packet from
+  the `agent` uid, DNS included — with `HTTPS_PROXY` set the proxy resolves
+  names, so the agent never needs a resolver, and a direct one would be a
+  channel of its own. The IPv6 rules were missing until Phase 5: on a Docker
+  network with IPv6 enabled the agent connected straight out over v6 while every
+  IPv4 check said blocked. They are skipped only when the kernel has no IPv6 at
+  all, and otherwise must load or the container exits.
 - The agent runs unprivileged, so it cannot rewrite the proxy config or the
   rules.
 - The squid access log is tailed to the container's stdout. Every allowed and
@@ -58,12 +62,18 @@ direct.allowed-host-ip=blocked:ECONNREFUSED
 direct.dns=blocked:ECONNREFUSED
 ```
 
+With `MANDATE_VERIFY_V6_TARGET="<addr> <port>"` naming a listener reachable over
+IPv6, it also prints `direct.ipv6=blocked:…`. There is no public IPv6 target
+every network can reach, so the gated test stands one up on an IPv6-enabled
+Docker network of its own.
+
 `direct.allowed-host-ip` is the one worth reading twice: even a host the mandate
 allows is unreachable directly, because the allowlist lives at the proxy and the
 proxy is the only route.
 
 The same checks run as a gated test, with negative controls that widen the ACL
-and strip the firewall rules to confirm they can actually fail:
+and strip the firewall rules — IPv4 and IPv6 separately — to confirm they can
+actually fail:
 
 ```bash
 MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test sandbox
