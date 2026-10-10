@@ -308,9 +308,12 @@ traffic and nothing else, so an agent with a shell, a `git push` to a remote it
 configures itself, or a `curl` never transits it. [`sandbox/`](sandbox/README.md)
 is a container whose only route out is a `CONNECT` proxy allowlist compiled from
 the mandate's destinations, with `iptables` rejecting everything else from the
-agent's uid. It verifies itself — including negative controls that widen the
-allowlist and strip the firewall rules to confirm the checks can fail — and it
-exits rather than starting the agent if it cannot install the rules.
+agent's uid, over IPv4 and IPv6. `mandate run --sandbox` runs the agent in it,
+with no GitHub credential inside — the token stays with `mandate serve` on the
+host — and a clone of HEAD for a working copy. It verifies itself, including
+negative controls that widen the allowlist and strip the firewall rules to
+confirm the checks can fail, and it exits rather than starting the agent if it
+cannot install the rules. macOS with Docker Desktop for now.
 
 **Running the proxy needs the right upstream toolsets.** `github-mcp-server`
 exposes 46 tools by default and 91 with `GITHUB_TOOLSETS=all`. Six catalog

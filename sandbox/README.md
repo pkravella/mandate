@@ -10,6 +10,11 @@ container exists, destination enforcement is advisory —
 
 ## Running it
 
+The way to run an agent in it is `mandate run --sandbox`, which builds the
+container's environment, workspace and egress from the mandate and starts
+`mandate serve` on the host (see the [quickstart](../docs/quickstart.md#5-run-it-in-the-sandbox)).
+By hand, for the checks below:
+
 ```bash
 docker build -t mandate-sandbox sandbox
 docker run --rm --cap-add=NET_ADMIN \

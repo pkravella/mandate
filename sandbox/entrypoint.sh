@@ -123,6 +123,19 @@ if [ -n "$relay_ip" ]; then
   fi
 fi
 
+# The workspace: `mandate run --sandbox` mounts a throwaway clone of HEAD here,
+# read-only, and it is copied to a directory the agent owns. Never the
+# operator's checkout, and never writable from the host side: a writable .git
+# mounted in would let the agent plant a hook that the operator's own git runs
+# on the host. On Docker Desktop a bind mount shows as root-owned, so the copy
+# is also what lets the agent write at all.
+if [ -d /mnt/mandate-workspace ]; then
+  install -d -o agent -g agent -m 0755 /home/agent/workspace
+  cp -a /mnt/mandate-workspace/. /home/agent/workspace/
+  chown -R agent:agent /home/agent/workspace
+  cd /home/agent/workspace
+fi
+
 # The secret is the relay's, and the squid config is root's business. Neither
 # goes to the agent. `env -u` names variables, so no value reaches any argv.
 exec env -u MANDATE_RELAY_SECRET -u MANDATE_SQUID_CONF \

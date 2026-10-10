@@ -319,12 +319,15 @@ page claims the layer holds would be worse than having no sandbox.
 **What it does not close.** Data sent to an *allowed* destination is not
 tracked: a public pull request body is a valid exfiltration channel, and the
 bytes travel to GitHub either way. That is R14's taint tracking, which is P1 and
-absent. The sandbox also does nothing at all if the agent is run outside it.
+absent. The sandbox also does nothing at all if the agent is run outside it,
+which `mandate run` without `--sandbox` is.
 
 The container is verified against a real Docker daemon rather than reviewed as a
-recipe — `MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test sandbox` —
-including negative controls that widen the ACL and strip the firewall rules to
-confirm the checks can actually fail.
+recipe, with negative controls that widen the ACL and strip the firewall rules to
+confirm the checks can actually fail. Three gated suites: the egress itself
+(`compiler/src/sandbox.docker.test.ts`), the relay to `mandate serve`
+(`cli/src/relay.docker.test.ts`), and `mandate run --sandbox` end to end with
+credentials planted on the host side (`cli/src/sandbox.docker.test.ts`).
 
 ## What the action graph proves, and what it does not
 

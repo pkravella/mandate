@@ -228,9 +228,25 @@ export function main(argv: readonly string[]): void {
   )
     .option("--trace <path>", "write the action graph here when the session ends (R8)")
     .option("--diff", "print the permission diff before launching")
+    .option(
+      "--sandbox",
+      "run the agent in the sandbox container, with serve on the host (macOS, Docker Desktop)",
+    )
+    .option("--image <name>", "with --sandbox: an image built FROM mandate-sandbox with your agent installed")
+    .option(
+      "--agent-egress <host>",
+      "with --sandbox: a host the agent itself needs, such as its model's API; repeatable",
+      (v: string, prev: string[] = []) => [...prev, v],
+    )
+    .option(
+      "--pass-env <name>",
+      "with --sandbox: an environment variable to pass into the container, by name; repeatable",
+      (v: string, prev: string[] = []) => [...prev, v],
+    )
     .action(async (agent: string[], opts: {
       mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
       as: string; level?: string; repo?: string; trace?: string; diff?: boolean;
+      sandbox?: boolean; image?: string; agentEgress?: string[]; passEnv?: string[];
     }) => {
       const resolve = githubResolver();
       process.exitCode = await runRun({
@@ -240,6 +256,10 @@ export function main(argv: readonly string[]): void {
         ...(opts.repo === undefined ? {} : { repo: opts.repo }),
         ...(opts.trace === undefined ? {} : { trace: opts.trace }),
         ...(opts.diff === undefined ? {} : { diff: opts.diff }),
+        ...(opts.sandbox === undefined ? {} : { sandbox: opts.sandbox }),
+        ...(opts.image === undefined ? {} : { image: opts.image }),
+        ...(opts.agentEgress === undefined ? {} : { agentEgress: opts.agentEgress }),
+        ...(opts.passEnv === undefined ? {} : { passEnv: opts.passEnv }),
       }, (m) => { console.log(m); }, resolve === undefined ? {} : { resolve });
     });
 

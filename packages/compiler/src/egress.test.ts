@@ -178,3 +178,70 @@ describe("the generated squid config", () => {
     expect(conf).toContain("m");
   });
 });
+
+// Task 5.1 (b). In a sandboxed run, `mandate serve` and the GitHub MCP server
+// both stay on the host, so the agent never needs the GitHub API itself -- and
+// squid sees only the CONNECT host, so any credential that did reach the
+// container would get every repository it can touch through an always-allowed
+// api.github.com. The agent does need its model's API, which the mandate has
+// no business deciding: that list is the operator's.
+describe("compileEgress for a sandboxed agent", () => {
+  it("still allows the GitHub infrastructure hosts by default", () => {
+    expect(compileEgress(m(["github.com/acme/api"])).aclEntries).toContain("api.github.com");
+  });
+
+  it("leaves the GitHub infrastructure hosts out when asked", () => {
+    const p = compileEgress(m(["github.com/acme/api"]), { githubInfrastructure: false });
+    expect(p.aclEntries).toEqual(["github.com"]);
+  });
+
+  it("keeps a host the mandate itself names, even when it is an infrastructure host", () => {
+    const p = compileEgress(m(["api.github.com/repos/acme"]), { githubInfrastructure: false });
+    expect(p.aclEntries).toEqual(["api.github.com"]);
+  });
+
+  it("adds the operator's agent hosts exactly, and reports them apart from the mandate's", () => {
+    const p = compileEgress(m(["github.com/acme/api"]), {
+      githubInfrastructure: false, agentHosts: ["api.anthropic.com"],
+    });
+    expect(p.aclEntries).toContain("api.anthropic.com");
+    expect(p.aclEntries).not.toContain(".api.anthropic.com");
+    expect(p.agentHosts).toEqual(["api.anthropic.com"]);
+    expect(p.squidConf).toMatch(/agent egress, set by the operator: api\.anthropic\.com/);
+  });
+
+  it("reports no agent hosts when none were given", () => {
+    expect(compileEgress(m(["github.com/acme/api"])).agentHosts).toEqual([]);
+  });
+
+  it("lowercases an agent host", () => {
+    const p = compileEgress(m(["github.com/acme/api"]), { agentHosts: ["API.Anthropic.com"] });
+    expect(p.agentHosts).toEqual(["api.anthropic.com"]);
+  });
+
+  // An agent host is an exfiltration channel the operator chose to open, so it
+  // is as strict as a destination: one concrete host, nothing that widens.
+  it("refuses an agent host that is not one concrete hostname", () => {
+    for (const bad of [
+      "*.anthropic.com", "https://api.anthropic.com", "api.anthropic.com/v1",
+      "api.anthropic.com:443", ".anthropic.com", "", "localhost",
+    ]) {
+      expect(() => compileEgress(m(["github.com/acme/api"]), { agentHosts: [bad] }), bad)
+        .toThrow(/agent egress/);
+    }
+  });
+
+  // squid refuses a dstdomain ACL holding a domain and a subdomain of it, so an
+  // agent host under a bare mandate host has to collapse like any other.
+  it("collapses an agent host already covered by a bare mandate host", () => {
+    const p = compileEgress(m(["example.com"]), {
+      githubInfrastructure: false, agentHosts: ["api.example.com"],
+    });
+    expect(p.aclEntries).toEqual([".example.com"]);
+  });
+
+  it("refuses an allowlist with nothing in it at all", () => {
+    expect(() => compileEgress(m([]), { githubInfrastructure: false }))
+      .toThrow(/empty egress allowlist/);
+  });
+});
