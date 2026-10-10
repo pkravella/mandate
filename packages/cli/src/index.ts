@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import { Command, CommanderError } from "commander";
 import { runValidate, type ValidateArgs } from "./commands/validate.js";
 import { githubResolver, resolveAuthority, USER_LEVELS } from "./authority.js";
 import { runServe } from "./commands/serve.js";
@@ -230,7 +230,21 @@ export function main(argv: readonly string[]): void {
       }, (m) => { console.log(m); }, resolve === undefined ? {} : { resolve });
     });
 
-  program.parse(argv, { from: "user" });
+  // exitOverride makes commander throw where it would have called
+  // process.exit, and nothing caught it: help, --version and every usage error
+  // printed a stack trace and exited 1. By the time it throws, commander has
+  // already written the help, the version or its error message, so only the
+  // exit code is left to decide -- 0 for what was asked for, and 2 for bad
+  // input, as every command documents. 1 means a refused mandate, and a
+  // mistyped flag must not read as one.
+  try {
+    program.parse(argv, { from: "user" });
+  } catch (e) {
+    if (!(e instanceof CommanderError)) throw e;
+    process.exitCode = e.code === "commander.helpDisplayed" || e.code === "commander.version"
+      ? 0
+      : 2;
+  }
 }
 
 /**
