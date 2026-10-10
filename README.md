@@ -180,10 +180,15 @@ node packages/cli/dist/index.js run --mandate mandate.yaml \
 ```
 
 `mandate run` starts `mandate serve` itself, on the host, and runs the agent in a
-container built from an allowlist: a clone of HEAD (no host `.git`, hook or
-ignored `.env`; a dirty tree is refused), egress to the mandate's destinations
-plus the hosts named with `--agent-egress`, and only the environment variables
-named with `--pass-env` — known credentials are refused outright. The agent
+container built from an allowlist: a depth-1 clone of HEAD (HEAD's tree and no
+other object — no history, stash or host hook, no ignored `.env`; a dirty tree
+is refused), egress to the mandate's destinations except GitHub's own hosts —
+the agent reaches GitHub only through serve — plus the hosts named with
+`--agent-egress`, and only the environment variables named with `--pass-env`,
+refusing anything GitHub-named outright. squid never matches a destination by
+reverse DNS and refuses IP addresses, and the agent runs with no way to regain
+privileges. Ctrl-C or a `kill` stops docker, then serve (which revokes), then
+removes the workspace. The agent
 reaches serve through a relay with a secret handshake. Verified live with
 Claude Code: the allowed read succeeded, a read of another repository was
 refused at `repo.read.resources`, and the only egress was two tunnels to the
