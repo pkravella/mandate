@@ -60,6 +60,7 @@ export interface RunDeps extends AuthorityDeps {
    */
   readonly launch?: (
     command: string, argv: readonly string[], env: Readonly<Record<string, string>>,
+    abort?: AbortSignal,
   ) => Promise<number>;
   /** Path to the `mandate` entry point the config should point at. */
   readonly selfPath?: string;
@@ -73,6 +74,8 @@ export interface RunDeps extends AuthorityDeps {
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Whether to give the container a TTY. Defaults to whether stdin is one. */
   readonly tty?: boolean;
+  /** Where interrupts arrive, for --sandbox. Defaults to the process. */
+  readonly signals?: NodeJS.EventEmitter;
 }
 
 /** The placeholder substituted with the config path in the agent's argv. */
@@ -80,6 +83,7 @@ export const MCP_CONFIG_PLACEHOLDER = "{mcpConfig}";
 
 const defaultLaunch = (
   command: string, argv: readonly string[], env: Readonly<Record<string, string>>,
+  abort?: AbortSignal,
 ): Promise<number> =>
   new Promise<number>((resolve) => {
     const child = spawn(command, [...argv], {
@@ -90,6 +94,8 @@ const defaultLaunch = (
       env: { ...process.env, ...env },
     });
     child.on("error", () => resolve(127));
+    // `docker run` forwards a SIGTERM to the container, so the agent stops too.
+    abort?.addEventListener("abort", () => child.kill("SIGTERM"));
     child.on("close", (code, signal) => resolve(signal !== null ? 128 : code ?? 0));
   });
 
@@ -176,6 +182,7 @@ export async function runRun(
       tty: deps.tty ?? process.stdin.isTTY === true,
       startServe: deps.startServe ?? defaultStartServe,
       launch: deps.launch ?? defaultLaunch,
+      signals: deps.signals ?? process,
     }, log);
   }
 

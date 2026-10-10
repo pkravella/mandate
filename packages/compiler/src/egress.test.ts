@@ -191,13 +191,15 @@ describe("compileEgress for a sandboxed agent", () => {
   });
 
   it("leaves the GitHub infrastructure hosts out when asked", () => {
-    const p = compileEgress(m(["github.com/acme/api"]), { githubInfrastructure: false });
-    expect(p.aclEntries).toEqual(["github.com"]);
+    const p = compileEgress(m(["example.com/x"]), { githubInfrastructure: false });
+    expect(p.aclEntries).toEqual(["example.com"]);
   });
 
-  it("keeps a host the mandate itself names, even when it is an infrastructure host", () => {
+  // This used to keep a GitHub host the mandate named. Reviewing Phase 5 found
+  // that an open GitHub host is exactly where a leaked credential would push.
+  it("leaves out a GitHub host even when the mandate names it", () => {
     const p = compileEgress(m(["api.github.com/repos/acme"]), { githubInfrastructure: false });
-    expect(p.aclEntries).toEqual(["api.github.com"]);
+    expect(p.aclEntries).toEqual([]);
   });
 
   it("adds the operator's agent hosts exactly, and reports them apart from the mandate's", () => {
@@ -240,8 +242,50 @@ describe("compileEgress for a sandboxed agent", () => {
     expect(p.aclEntries).toEqual([".example.com"]);
   });
 
-  it("refuses an allowlist with nothing in it at all", () => {
-    expect(() => compileEgress(m([]), { githubInfrastructure: false }))
-      .toThrow(/empty egress allowlist/);
+  // In the sandbox GitHub is reached through serve, never directly, and squid
+  // sees only the CONNECT host -- so an open github.com is where a credential
+  // that leaked into the container would push, past every branch and path limit.
+  it("leaves out destinations on GitHub's own hosts", () => {
+    const p = compileEgress(m(["github.com/acme/api", "gist.github.com", "raw.githubusercontent.com"]), {
+      githubInfrastructure: false, agentHosts: ["api.anthropic.com"],
+    });
+    expect(p.aclEntries).toEqual(["api.anthropic.com"]);
+  });
+
+  it("keeps a destination that only looks like GitHub", () => {
+    const p = compileEgress(m(["notgithub.com/x"]), { githubInfrastructure: false });
+    expect(p.aclEntries).toEqual(["notgithub.com"]);
+  });
+
+  // An agent with nowhere to go is a legitimate sandbox, not an error. squid
+  // has no empty ACL, so the config denies everything without one.
+  it("compiles an allowlist with nothing in it to a config that denies everything", () => {
+    const p = compileEgress(m(["github.com/acme/api"]), { githubInfrastructure: false });
+    expect(p.aclEntries).toEqual([]);
+    expect(p.squidConf).not.toMatch(/^acl mandate_allowed/m);
+    expect(p.squidConf).toMatch(/^http_access deny all$/m);
+    expect(p.squidConf).not.toMatch(/^http_access allow/m);
+  });
+});
+
+// Found reviewing Phase 5. squid's dstdomain falls back to a REVERSE lookup
+// when the request names an IP address and no name matched -- so whoever
+// controls an address's PTR record could point it at any allowed name and
+// tunnel there. Probed in the real sandbox: with `.github.com` allowed,
+// `CONNECT 140.82.114.4:443` was answered 200, on the strength of its PTR.
+describe("compileEgress against names that are not names", () => {
+  const p = compileEgress(m(["github.com/acme/api"]));
+
+  it("never lets squid look a destination up in reverse", () => {
+    expect(p.squidConf).toMatch(/^acl mandate_allowed dstdomain -n /m);
+  });
+
+  it("refuses an IP-literal destination before anything can allow it", () => {
+    const lines = p.squidConf.split("\n");
+    const denyIp = lines.findIndex((l) => l === "http_access deny ip_literal");
+    const allow = lines.findIndex((l) => l.startsWith("http_access allow"));
+    expect(denyIp).toBeGreaterThan(-1);
+    expect(denyIp).toBeLessThan(allow);
+    expect(p.squidConf).toMatch(/^acl ip_literal dstdom_regex -n /m);
   });
 });
