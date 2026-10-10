@@ -69,6 +69,8 @@ const extractOf = (node: ActionNode): ArgExtract => ({
   paths: node.paths,
   ...(node.base !== undefined ? { base: node.base } : {}),
   destinations: node.destinations,
+  ...(node.unreadableDestinations !== undefined
+    ? { unreadableDestinations: node.unreadableDestinations } : {}),
 });
 
 export function scoreMandate(m: ValidatedMandate, trace: ActionGraph): Score {

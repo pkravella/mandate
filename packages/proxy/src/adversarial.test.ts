@@ -6,8 +6,10 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { ProxyRules, ToolRule } from "@mandate-dev/compiler";
+import { compileEgress } from "@mandate-dev/compiler";
+import { MandateSchema, markValidated } from "@mandate-dev/schema";
 import { createProxyServer } from "./proxy.js";
-import { makeArgumentEnforcer } from "./enforce.js";
+import { extractArgs, makeArgumentEnforcer } from "./enforce.js";
 
 /**
  * The adversarial suite, proxy half (Task 19 families B and D).
@@ -82,8 +84,8 @@ function argsOf(fixture: ArgsFixture): Record<string, unknown> {
 const argCases = INDEX.filter((c) => c.family === "args");
 
 describe("adversarial: argument-level escapes", () => {
-  it("covers thirteen argument attacks", () => {
-    expect(argCases.length).toBe(13);
+  it("covers twenty-one argument attacks", () => {
+    expect(argCases.length).toBe(21);
   });
 
   for (const c of argCases) {
@@ -113,6 +115,70 @@ describe("adversarial: argument-level escapes", () => {
       expect(decision.kind, `${c.id} should be allowed: ${c.expect?.why ?? ""}`).toBe("allow");
     });
   }
+});
+
+/**
+ * The proxy and the egress layer read one destination list and must not
+ * disagree in the direction that matters: anything the proxy lets through has
+ * to be reachable through the squid ACL compiled from the same list, or the
+ * proxy is allowing calls the sandbox will drop with no reason anywhere.
+ *
+ * Only extraction is the proxy's own; the validator and the compiler never see
+ * tool arguments, so this is the agreement that extraction can break. The
+ * reverse direction is deliberately not asserted -- squid cannot see paths, so
+ * egress is coarser than the proxy by design.
+ */
+describe("adversarial: what the proxy allows, egress can reach", () => {
+  const hostCovered = (host: string, acl: readonly string[]): boolean =>
+    acl.some((e) => (e.startsWith(".")
+      ? host === e.slice(1) || host.endsWith(e)
+      : host === e));
+
+  const egressFor = (destinations: readonly string[]) => compileEgress(markValidated(
+    MandateSchema.parse({
+      mandate: "adv", task: "t", requestedBy: "user:a", expiresInMinutes: 60, ceiling: "c@v1",
+      grants: [{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }],
+      destinations: { allow: [...destinations] },
+    }),
+    { ceilingId: "c@v1", userLevel: "push", checkedAt: "2026-10-09T00:00:00.000Z", grantProofs: [] },
+  ));
+
+  const allowedWithDestinations = argCases.flatMap((c) => {
+    const fixture = json(c.file ?? "") as unknown as ArgsFixture;
+    const args = argsOf(fixture);
+    const destinations = fixture.destinations ?? DESTINATIONS;
+    const decision = makeArgumentEnforcer(rulesFor(fixture.rule, destinations))(fixture.rule, args);
+    const extracted = extractArgs(fixture.rule.tool, args).destinations;
+    return decision.kind === "allow" && extracted.length > 0
+      ? [{ id: c.id, destinations, extracted, args }] : [];
+  });
+
+  // Guards against this passing because nothing reached it.
+  it("has allowed cases that carry a destination to check", () => {
+    expect(allowedWithDestinations.map((c) => c.id).sort())
+      .toEqual(["destination-scp-inside-allow", "destination-subdomain-under-bare-host"]);
+  });
+
+  for (const c of allowedWithDestinations) {
+    it(`${c.id}: every destination the proxy allowed is in the egress ACL`, () => {
+      const { aclEntries } = egressFor(c.destinations);
+      for (const d of c.extracted) {
+        const host = d.split("/")[0] ?? "";
+        expect(hostCovered(host, aclEntries), `${host} against ${aclEntries.join(" ")}`).toBe(true);
+      }
+    });
+  }
+
+  // The one place the layers differ on purpose. The proxy allows an scp remote
+  // to the allowed repository because it is the same destination; the network
+  // still refuses ssh, because the compiled config tunnels to 443 and nothing
+  // else. sandbox/verify.mjs proves that behaviourally against real squid
+  // (proxy.allowed-host-other-port); this pins that the config still says so.
+  it("relies on the 443-only tunnel for a non-HTTP remote the proxy allows", () => {
+    const { squidConf } = egressFor(DESTINATIONS);
+    expect(squidConf).toMatch(/^acl SSL_ports port 443$/m);
+    expect(squidConf).toMatch(/^http_access deny CONNECT !SSL_ports$/m);
+  });
 });
 
 // ---------------------------------------------------------------------------

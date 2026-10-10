@@ -237,8 +237,8 @@ Writing a mandate costs about **$0.03** and takes **12 seconds** at the median,
 which misses the PRD's under-ten-second target. Two sequential model calls at
 effort `high` is why, and effort is the lever.
 
-Phase 4 added the attack corpus and the commands. The adversarial suite is 34
-cases across four families — injected issue text, hostile MCP tool
+Phase 4 added the attack corpus and the commands. The adversarial suite was 34
+cases (42 since Phase 5 added eight destination cases) across four families — injected issue text, hostile MCP tool
 declarations, over-asking agent plans, argument-level escapes — each paired with
 the invariant it must not break. Every case assumes a **fully compromised
 writer** that proposed exactly what the attack asked for, because Mandate does

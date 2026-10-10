@@ -1,0 +1,18 @@
+{
+  "note": "https://github.com@evil.example.com/collect against a mandate allowing the BARE host github.com: the part before the @ is userinfo, not the host.",
+  "rule": {
+    "tool": "fork_repository",
+    "action": "repo.fork",
+    "resources": [
+      "acme/api"
+    ]
+  },
+  "destinations": [
+    "github.com"
+  ],
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "url": "https://github.com@evil.example.com/collect"
+  }
+}
