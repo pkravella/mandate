@@ -47,7 +47,7 @@ export interface ServeHandle {
 
 /** Starts `mandate serve --listen` on the host. Injected so tests mint nothing. */
 export type StartServe = (
-  argv: readonly string[], env: Readonly<Record<string, string>>,
+  argv: readonly string[], env: Readonly<Record<string, string>>, abort?: AbortSignal,
 ) => Promise<ServeHandle>;
 
 export interface SandboxArgs {
@@ -72,7 +72,10 @@ export function refusedPassEnv(name: string): string | undefined {
     return `--pass-env ${JSON.stringify(name)} is not a variable name; pass the name and set `
       + "the value in your environment, so it never appears in a command line";
   }
-  if (CREDENTIAL_NAMES.has(name)) {
+  // Exact names were not enough -- HOMEBREW_GITHUB_API_TOKEN is a GitHub token
+  // so any name mentioning GitHub, or in the GH_ family, is refused too. The
+  // operator is trusted; this is the refusal saying what it claims to cover.
+  if (CREDENTIAL_NAMES.has(name) || /GITHUB/i.test(name) || /(^|_)GH_/i.test(name)) {
     return `--pass-env ${name} would hand the agent a credential the sandbox exists to keep from it`;
   }
   if (name.startsWith("MANDATE_")) {
@@ -100,7 +103,7 @@ export function checkSandboxInputs(args: SandboxArgs, platform: string): string 
 }
 
 /** Polls for serve's ready file, or its exit. Minting takes a GitHub round trip. */
-export const defaultStartServe: StartServe = (argv, env) => new Promise((resolve, reject) => {
+export const defaultStartServe: StartServe = (argv, env, abort) => new Promise((resolve, reject) => {
   const readyAt = argv.indexOf("--ready-file");
   const readyFile = readyAt === -1 ? undefined : argv[readyAt + 1];
   if (readyFile === undefined) {
@@ -114,6 +117,11 @@ export const defaultStartServe: StartServe = (argv, env) => new Promise((resolve
     child.on("close", (code, signal) => { exitCode = signal !== null ? 128 : code ?? 0; r(exitCode); });
   });
   child.on("error", (e) => reject(e));
+  abort?.addEventListener("abort", () => {
+    // serve listens for SIGTERM from before it mints, so this revokes.
+    if (exitCode === undefined) child.kill("SIGTERM");
+    reject(new Error("interrupted while mandate serve was starting"));
+  });
 
   const deadline = Date.now() + 60_000;
   const poll = (): void => {
@@ -156,11 +164,28 @@ export interface SandboxRun {
   readonly startServe: StartServe;
   readonly launch: (
     command: string, argv: readonly string[], env: Readonly<Record<string, string>>,
+    abort?: AbortSignal,
   ) => Promise<number>;
+  /** Where SIGINT, SIGTERM and SIGHUP arrive. The process, outside tests. */
+  readonly signals: NodeJS.EventEmitter;
 }
+
+/** Signals that end a sandboxed run cleanly rather than by the default action. */
+const INTERRUPTS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+/** The conventional exit status for a run ended by SIGINT. */
+const INTERRUPTED = 130;
 
 /** Returns the agent's exit code, or 2 if the sandbox could not be set up. */
 export async function runSandboxed(r: SandboxRun, log: (s: string) => void): Promise<number> {
+  // Found reviewing Phase 5: with no handlers, Ctrl-C or a `kill` ended this
+  // process by the default action, so no `finally` below ran -- the workspace
+  // copy stayed in $TMPDIR and a serve that was not also signalled kept a live
+  // token. Handled here, the signal aborts whatever is in progress and the
+  // finallys do the rest: docker stopped, serve stopped (which revokes), files
+  // removed.
+  const interrupted = new AbortController();
+  const onInterrupt = (): void => interrupted.abort();
+  for (const s of INTERRUPTS) r.signals.on(s, onInterrupt);
   const dir = mkdtempSync(join(tmpdir(), "mandate-sandbox-"));
   try {
     let workspace;
@@ -206,15 +231,20 @@ export async function runSandboxed(r: SandboxRun, log: (s: string) => void): Pro
         return await r.startServe(
           [...r.serveArgv, "--listen", "127.0.0.1:0", "--ready-file", join(dir, "serve-ready.json")],
           { ...hostEnv, MANDATE_RELAY_SECRET: secret },
+          interrupted.signal,
         );
       } catch (e) {
         log(`mandate serve did not start: ${e instanceof Error ? e.message : String(e)}`);
         return undefined;
       }
     })();
-    if (serve === undefined) return 2;
+    if (serve === undefined) return interrupted.signal.aborted ? INTERRUPTED : 2;
 
     try {
+      if (interrupted.signal.aborted) {
+        log("Interrupted before the agent started.");
+        return INTERRUPTED;
+      }
       const containerEnv: Record<string, string> = {
         MANDATE_SQUID_CONF: egress.squidConf,
         MANDATE_RELAY_TARGET: `${RELAY_HOST}:${serve.port}`,
@@ -223,19 +253,23 @@ export async function runSandboxed(r: SandboxRun, log: (s: string) => void): Pro
         ...passed,
       };
       const argv = [
-        "run", "--rm", "-i", ...(r.tty ? ["-t"] : []), "--cap-add=NET_ADMIN",
+        // --init: an init process as PID 1, so the agent is not -- PID 1
+        // ignores signals it has no handler for, and `docker stop` then waits
+        // ten seconds and kills it.
+        "run", "--rm", "-i", "--init", ...(r.tty ? ["-t"] : []), "--cap-add=NET_ADMIN",
         ...Object.keys(containerEnv).flatMap((name) => ["-e", name]),
         "-v", `${workspace.path}:${CONTAINER_WORKSPACE_MOUNT}:ro`,
         "-v", `${configDir}:${CONTAINER_CONFIG_DIR}:ro`,
         r.args.image ?? "",
         ...r.agent,
       ];
-      return await r.launch("docker", argv, containerEnv);
+      return await r.launch("docker", argv, containerEnv, interrupted.signal);
     } finally {
       const code = await serve.stop();
       log(`mandate serve exited ${code}.`);
     }
   } finally {
+    for (const s of INTERRUPTS) r.signals.off(s, onInterrupt);
     rmSync(dir, { recursive: true, force: true });
   }
 }

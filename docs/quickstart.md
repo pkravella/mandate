@@ -175,8 +175,9 @@ credential — a PAT in its environment, something in `.git/config`, a logged-in
 
 `mandate run --sandbox` runs the agent in a container that holds no GitHub
 credential — the token stays with `mandate serve` on the host — works in a clone
-of HEAD, and reaches only the mandate's destinations and the hosts you open for
-it. macOS with Docker Desktop for now.
+of HEAD, and reaches only the mandate's non-GitHub destinations and the hosts you
+open for it — GitHub itself it reaches only through serve. macOS with Docker
+Desktop for now.
 
 Build the base image, then one with your agent in it.
 [`sandbox/examples/claude-code`](../sandbox/examples/claude-code/Dockerfile) is

@@ -93,8 +93,11 @@ never transits it.
 The mitigation is R9b, and `mandate run --sandbox` is how to get it. The agent
 runs in a container that holds **no GitHub credential at all** — the minted
 token stays with `mandate serve` on the host, reached through a relay — and
-whose only egress is the allowlist compiled from `destinations.allow` plus the
-hosts the operator opens for the agent itself. Its working copy is a clone of
+whose only egress is the allowlist compiled from `destinations.allow` — less
+GitHub's own hosts, which the agent reaches only through serve — plus the hosts
+the operator opens for the agent itself. squid refuses a destination given as an
+IP address and never matches one by its reverse DNS, which whoever owns the
+address controls. Its working copy is a clone of
 HEAD, so nothing ignored or untracked in the checkout (a `.env`), nothing in its
 `.git/config` (a remote with a token in it) and no hook comes along; and its
 environment is built from what the operator names, refusing known credential

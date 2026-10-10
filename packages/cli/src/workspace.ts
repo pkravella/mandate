@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 /**
  * The sandboxed agent's working copy: a throwaway clone of HEAD.
@@ -9,7 +10,8 @@ import { join } from "node:path";
  * the agent plant a hook or a `core.fsmonitor` command that the operator's own
  * git runs, on the host, at their next command -- out of the sandbox entirely.
  * And the working tree carries what is ignored and untracked, which is where a
- * `.env` lives. A local clone of HEAD has committed content only, a config of
+ * `.env` lives. A depth-1 clone of HEAD over file:// carries HEAD's tree and no
+ * other object -- not history, not other branches, not stashes -- a config of
  * its own, and no hooks.
  *
  * Not a clone with the minted token either: the token is coarser than the
@@ -68,7 +70,17 @@ export function prepareWorkspace(source: string, into: string): Workspace {
   mkdirSync(noTemplates, { recursive: true });
   // An empty template directory, because the operator's global config can set
   // `init.templateDir`, and a clone copies hooks from it.
-  git(into, ["clone", "--quiet", "--no-hardlinks", `--template=${noTemplates}`, root, path]);
+  //
+  // Through the file:// transport, one commit deep, one branch, no tags. A
+  // plain local clone takes git's fast path and copies the whole object store:
+  // found reviewing Phase 5, a secret amended out of history or stashed was
+  // readable in the agent's copy with `git cat-file`. Over the transport only
+  // what HEAD reaches crosses, and at depth 1 that is HEAD's tree and nothing
+  // older -- so the agent has no history, which is the cost.
+  git(into, [
+    "clone", "--quiet", "--no-local", "--depth", "1", "--single-branch", "--no-tags",
+    `--template=${noTemplates}`, pathToFileURL(root).href, path,
+  ]);
   // The clone's origin is the operator's checkout, by path. Nothing the agent
   // does should be able to fetch from or push to it.
   git(path, ["remote", "remove", "origin"]);
