@@ -33,7 +33,7 @@ const validated = (grants: unknown[]): ValidatedMandate =>
     expiresInMinutes: 30, ceiling: "sandbox@v1", grants,
     destinations: { allow: [`github.com/${repo()}`] },
   }), {
-    ceilingId: "sandbox@v1", userLevel: "push",
+    ceilingId: "sandbox@v1", ceilingSha256: "0".repeat(64), userLevel: "push",
     checkedAt: new Date().toISOString(), grantProofs: [],
   });
 

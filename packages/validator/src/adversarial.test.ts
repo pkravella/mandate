@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseMandateYaml, proofOf, type ProposedMandate } from "@mandate-dev/schema";
-import { loadCeiling } from "./ceiling.js";
+import { ceilingSha256, loadCeiling } from "./ceiling.js";
 import { validate, type RejectionCode } from "./validate.js";
 import { workBudget } from "./glob/budget.js";
 import type { UserAuthority } from "./userAuthority.js";
@@ -26,12 +26,16 @@ import type { UserAuthority } from "./userAuthority.js";
 const root = (p: string): string => fileURLToPath(new URL(`../../../${p}`, import.meta.url));
 const read = (p: string): string => readFileSync(root(p), "utf8");
 
-const ceiling = loadCeiling(
-  "org-policy@v12",
+// Labelled as the shipped CLI labels it: by the operator's file. This harness
+// used to pass "org-policy@v12" itself while prepare.ts passed the mandate's
+// claim, so the pasted-cedar case held here and failed in production. The
+// shipped path is now tested too, in cli/src/commands/validate.test.ts.
+const CEILING_FILES = [
   read("fixtures/ceilings/org-policy-v12.cedar"),
   read("fixtures/ceilings/schema.cedarschema"),
   read("fixtures/ceilings/org-policy-v12.destinations"),
-);
+] as const;
+const ceiling = loadCeiling("org-policy-v12.cedar", ...CEILING_FILES);
 
 /**
  * The index is checked, not trusted. A corpus that loses a file, or an `expect`
@@ -223,6 +227,12 @@ describe("adversarial: the ceiling holds whatever the task text says", () => {
         const proof = proofOf(result.mandate);
         expect(proof.ceilingId).toBe(expected.provesAgainst);
         expect(proof.ceilingId).not.toBe(proposed.ceiling);
+        // The label identifies nothing on its own. The hash is of the
+        // operator's files, and a ceiling one byte different proves under a
+        // different hash, so two files cannot produce the same proof.
+        expect(proof.ceilingSha256).toBe(ceilingSha256(...CEILING_FILES));
+        const [cedar, schema, dests] = CEILING_FILES;
+        expect(proof.ceilingSha256).not.toBe(ceilingSha256(`${cedar}\n`, schema, dests));
       }
     });
   }

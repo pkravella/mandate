@@ -8,7 +8,7 @@ const mandate = (grants: unknown[]): ValidatedMandate =>
     mandate: "m", task: "t", requestedBy: "user:a", expiresInMinutes: 60, ceiling: "c@v1",
     grants, destinations: { allow: ["github.com/acme/api"] },
   }), {
-    ceilingId: "c@v1", userLevel: "push",
+    ceilingId: "c@v1", ceilingSha256: "0".repeat(64), userLevel: "push",
     checkedAt: "2026-10-03T00:00:00.000Z", grantProofs: [],
   });
 

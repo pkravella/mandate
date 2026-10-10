@@ -62,7 +62,7 @@ describe("canonicalize", () => {
     // The approval cache keys on the hash, so branding must not change it.
     const m = MandateSchema.parse(base);
     const v = markValidated(m, {
-      ceilingId: "c@v1", userLevel: "push",
+      ceilingId: "c@v1", ceilingSha256: "0".repeat(64), userLevel: "push",
       checkedAt: "2026-10-04T00:00:00.000Z", grantProofs: [],
     });
     expect(mandateHash(v)).toBe(mandateHash(m));

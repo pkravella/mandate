@@ -164,7 +164,9 @@ constrain it in the mandate instead.
 loadCeiling(id, cedarSource, cedarSchema, destinationsSource)
 ```
 
-Four arguments, the fourth required. Cedar decides
+Four arguments, the fourth required. `id` is a label — the CLI passes the
+policy file's name — and the ceiling's identity is `sha256`, computed over the
+text of all three sources, schema included. Cedar decides
 (principal, action, resource) questions and has no destination in its model, so
 expressing "where may repository data go" as a policy would mean inventing an
 entity for it. It is a plain list beside the ceiling:

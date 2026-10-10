@@ -198,6 +198,7 @@ export function validate(
 
   const proof: ContainmentProof = {
     ceilingId: ctx.ceiling.id,
+    ceilingSha256: ctx.ceiling.sha256,
     userLevel: ctx.authority.level,
     checkedAt: new Date().toISOString(),
     grantProofs,

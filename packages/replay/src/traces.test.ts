@@ -25,7 +25,7 @@ const mandate = (grants: unknown[]): ValidatedMandate =>
     mandate: "m", task: "t", requestedBy: "user:a", expiresInMinutes: 60,
     ceiling: "sandbox@v1", grants, destinations: { allow: [`github.com/${REPO}`] },
   }), {
-    ceilingId: "sandbox@v1", userLevel: "admin",
+    ceilingId: "sandbox@v1", ceilingSha256: "0".repeat(64), userLevel: "admin",
     checkedAt: "2026-10-06T00:00:00.000Z", grantProofs: [],
   });
 

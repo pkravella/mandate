@@ -42,7 +42,7 @@ const squidConf = compileEgress(markValidated(MandateSchema.parse({
   grants: [{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }],
   destinations: { allow: ["github.com/acme/api"] },
 }), {
-  ceilingId: "c@v1", userLevel: "push", checkedAt: "2026-10-09T00:00:00.000Z", grantProofs: [],
+  ceilingId: "c@v1", ceilingSha256: "0".repeat(64), userLevel: "push", checkedAt: "2026-10-09T00:00:00.000Z", grantProofs: [],
 })).squidConf;
 
 /** serve's stand-in: the real listener, in front of a server with a known name. */

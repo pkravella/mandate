@@ -12,7 +12,13 @@ export interface GrantProof {
 }
 
 export interface ContainmentProof {
+  /**
+   * The label the ceiling was loaded under: the operator's policy file, never
+   * the id a mandate declares. Two files can share a label.
+   */
   readonly ceilingId: string;
+  /** What the ceiling contained: `ceilingSha256` of its three inputs. Its identity. */
+  readonly ceilingSha256: string;
   readonly userLevel: string;
   readonly checkedAt: string;
   readonly grantProofs: readonly GrantProof[];

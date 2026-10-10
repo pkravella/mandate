@@ -268,6 +268,16 @@ describe("validate — the requester is the identity whose authority was checked
   });
 });
 
+describe("validate — the proof names the ceiling by its content", () => {
+  it("records the hash of the ceiling it proved against, beside its label", () => {
+    const r = validate(propose([READ]), { ceiling, authority: alice });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(proofOf(r.mandate).ceilingSha256).toBe(ceiling.sha256);
+    expect(proofOf(r.mandate).ceilingId).toBe(ceiling.id);
+  });
+});
+
 describe("validate — layer agreement", () => {
   it("fails closed when the extracted rule and Cedar disagree", () => {
     // A rule whose extracted patterns claim more than the Cedar source does.

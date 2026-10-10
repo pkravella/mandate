@@ -1,9 +1,9 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { UserAuthority } from "@mandate-dev/validator";
+import { ceilingSha256, type UserAuthority } from "@mandate-dev/validator";
 import { runValidate, type ValidateArgs, type ResolveAuthority } from "./validate.js";
 
 const fixture = (name: string): string =>
@@ -237,5 +237,41 @@ describe("runValidate — where the user's level comes from", () => {
     const { code, out } = await runAsync({ level: "pushh" });
     expect(code).toBe(2);
     expect(out).toContain("--level must be one of");
+  });
+});
+
+// Task 5.3. The shipped CLI labelled the operator's ceiling with the id the
+// MANDATE declared, so the adversarial case whose issue text names its own
+// policy "attacker-policy@v1" had the CLI print `ceiling clause:
+// attacker-policy@v1.destinations` about a check run against
+// org-policy-v12.cedar. The adversarial suite said the label was never read,
+// because its harness labelled the ceiling itself; this goes through the
+// shipped path.
+describe("which ceiling the output names", () => {
+  const PASTED = fixture("adversarial/mandates/pasted-cedar-permit.yaml");
+  const sha = ceilingSha256(
+    readFileSync(CEILING, "utf8"), readFileSync(SCHEMA, "utf8"), readFileSync(DESTINATIONS, "utf8"),
+  );
+
+  it("names the operator's ceiling file and its hash", async () => {
+    const { code, out } = await runAsync({ file: PASTED });
+    expect(code).toBe(0);
+    expect(out).toContain(`Ceiling: org-policy-v12.cedar, sha256:${sha}`);
+  });
+
+  it("shows the mandate's ceiling name only as an unchecked claim", async () => {
+    const { out } = await runAsync({ file: PASTED });
+    expect(out).toMatch(/names its ceiling "attacker-policy@v1".*claim/);
+    expect(out).not.toMatch(/Ceiling: attacker-policy@v1/);
+    expect(out).not.toContain("(ceiling attacker-policy@v1)");
+  });
+
+  it("names the operator's ceiling in a rejection's clause, never the mandate's", async () => {
+    const evil = write("pasted-evil.yaml", readFileSync(PASTED, "utf8")
+      .replace(/allow: \[.*\]/, 'allow: ["evil.example.com"]'));
+    const { code, out } = await runAsync({ file: evil });
+    expect(code).toBe(1);
+    expect(out).toContain("org-policy-v12.cedar.destinations");
+    expect(out).not.toContain("attacker-policy@v1.destinations");
   });
 });

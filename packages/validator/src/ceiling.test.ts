@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { loadCeiling, rulesFor, cedarAllows, CeilingProfileError } from "./ceiling.js";
+import { loadCeiling, rulesFor, cedarAllows, ceilingSha256, CeilingProfileError } from "./ceiling.js";
 import { globMatches } from "./glob/contains.js";
 
 // Resolved from this file, not from process.cwd(): vitest runs workspace
@@ -17,6 +17,46 @@ const ceiling = loadCeiling("org-policy@v12", src, schema, destinations);
 
 const load = (policies: string, dests = destinations) =>
   loadCeiling("probe", policies, schema, dests);
+
+// Task 5.3. A ceiling's identity is what it contains, never what a mandate
+// calls it: the shipped CLI used to label the operator's file with the id the
+// mandate declared, so a writer steered by issue text could name the policy
+// that "was checked". The hash covers the text of all three inputs as read --
+// the schema included, since it shapes what the Cedar cross-check accepts --
+// and normalises nothing, because a normaliser is a second parser that can
+// disagree with Cedar.
+describe("ceiling identity", () => {
+  it("is a sha256 over the policy, the schema and the destinations", () => {
+    expect(ceiling.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(ceiling.sha256).toBe(ceilingSha256(src, schema, destinations));
+  });
+
+  it("does not depend on the label it is loaded under", () => {
+    expect(loadCeiling("anything-else", src, schema, destinations).sha256).toBe(ceiling.sha256);
+  });
+
+  it("changes when any one of the three inputs changes, comments included", () => {
+    const base = ceilingSha256(src, schema, destinations);
+    expect(ceilingSha256(`${src}\n// edited\n`, schema, destinations)).not.toBe(base);
+    expect(ceilingSha256(src, `${schema}\n`, destinations)).not.toBe(base);
+    expect(ceilingSha256(src, schema, `${destinations}evil.example.com\n`)).not.toBe(base);
+  });
+
+  // Concatenating the three without lengths would let bytes slide from one
+  // input into the next and keep the same hash.
+  it("cannot be matched by moving bytes across the boundary between inputs", () => {
+    expect(ceilingSha256("ab", "c", "d")).not.toBe(ceilingSha256("a", "bc", "d"));
+    expect(ceilingSha256("a", "b", "cd")).not.toBe(ceilingSha256("a", "bc", "d"));
+  });
+
+  // Holds whether the prefix counts bytes or UTF-16 code units -- a mutant
+  // using code units survives, and is equivalent: UTF-8 is self-synchronising,
+  // so the encoding stays prefix-free either way. Kept as a regression test for
+  // the boundary on non-ASCII text, not as evidence about the unit.
+  it("keeps the boundary between inputs for non-ASCII text", () => {
+    expect(ceilingSha256("é", "x", "")).not.toBe(ceilingSha256("", "éx", ""));
+  });
+});
 
 describe("loadCeiling", () => {
   it("extracts one rule per policy, keyed by @id", () => {

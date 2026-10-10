@@ -4,7 +4,7 @@ export {
 } from "./glob/budget.js";
 export { GlobParseError, parseGlob, type Token } from "./glob/parse.js";
 export {
-  loadCeiling, rulesFor, cedarAllows, CeilingProfileError,
+  loadCeiling, ceilingSha256, rulesFor, cedarAllows, CeilingProfileError,
   type Ceiling, type CeilingRule,
 } from "./ceiling.js";
 // The ceiling shape the writer is given. Produced here, consumed as data.

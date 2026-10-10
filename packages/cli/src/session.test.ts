@@ -40,7 +40,7 @@ destinations:
  * behaviour under test rather than the validator's.
  */
 const mandate = (): ValidatedMandate => markValidated(parseMandateYaml(MANDATE_YAML), {
-  ceilingId: "org-policy@v12",
+  ceilingId: "org-policy@v12", ceilingSha256: "0".repeat(64),
   userLevel: "push",
   checkedAt: new Date().toISOString(),
   grantProofs: [],
@@ -238,6 +238,15 @@ describe("openSession — giving the token back", () => {
       mandate: mandate(), github: deps, upstream: fakeUpstream().connect,
     });
     await expect(session.close()).resolves.toBeUndefined();
+  });
+
+  // The proof's first reader. It is built by the validator and branded onto
+  // the mandate; the trace header is where it reaches a record that persists.
+  it("records the ceiling the mandate was proved against in the trace header", async () => {
+    const gh = fakeGithub();
+    const session = await openSession({ mandate: mandate(), github: gh.deps, upstream: fakeUpstream().connect });
+    expect(session.recorder.graph().ceiling).toEqual({ label: "org-policy@v12", sha256: "0".repeat(64) });
+    await session.close();
   });
 
   it("never puts the token in the proxy rules", async () => {

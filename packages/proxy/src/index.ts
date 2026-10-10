@@ -8,6 +8,6 @@ export {
 } from "./pause.js";
 export {
   Recorder, TraceParseError, parseJsonl,
-  type ActionGraph, type ActionNode, type CallInput, type DenialInput,
+  type ActionGraph, type ActionNode, type CallInput, type DenialInput, type TraceCeiling,
   type RecordHandle, type RecorderMeta, type TraceMode,
 } from "./graph.js";

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { parseMandateYaml, type ProposedMandate, type ValidatedMandate } from "@mandate-dev/schema";
 import { loadCeiling, validate, type Ceiling, type Rejection } from "@mandate-dev/validator";
 import { resolveAuthority, type AuthorityDeps } from "./authority.js";
@@ -64,13 +65,13 @@ export async function prepareMandate(
   let ceiling: Ceiling;
   try {
     ceiling = loadCeiling(
-      // Labelled with the id the MANDATE declares, which is a known weakness
-      // rather than an oversight: `loadCeiling` cannot tell whether the file it
-      // was given is the policy that id names. Containment is still proved
-      // against the file the operator passed, so this mislabels rather than
-      // over-grants, and the adversarial suite pins that the proof records the
-      // operator's id and not the mandate's claim.
-      proposed.ceiling,
+      // Labelled with the operator's file, never the id the mandate declares.
+      // It used to be the mandate's id, so a writer steered by issue text
+      // chose the name the CLI then printed for the policy it had checked --
+      // `attacker-policy@v1.destinations` about org-policy-v12.cedar. The
+      // adversarial suite said the label was never read because its harness
+      // labelled the ceiling itself. The identity is the hash; this is a label.
+      ceilingLabel(args.ceiling),
       readFileSync(args.ceiling, "utf8"),
       readFileSync(args.schema, "utf8"),
       readFileSync(args.destinations, "utf8"),
@@ -79,13 +80,14 @@ export async function prepareMandate(
     return { ok: false, code: 2, message: `Could not load the ceiling: ${message(e)}` };
   }
 
+  const provenance = `${resolved.provenance}\n${describeCeiling(ceiling, proposed.ceiling)}`;
   const result = validate(proposed, { ceiling, authority: resolved.authority });
   if (!result.ok) {
     return {
       ok: false, code: 1,
       rejections: result.rejections,
       proposed,
-      provenance: resolved.provenance,
+      provenance,
     };
   }
 
@@ -94,6 +96,20 @@ export async function prepareMandate(
     mandate: result.mandate,
     proposed,
     verified: resolved.verified,
-    provenance: resolved.provenance,
+    provenance,
   };
+}
+
+/** The operator's name for a ceiling: its policy file. A label, not an identity. */
+export const ceilingLabel = (path: string): string => basename(path);
+
+/**
+ * One line naming the ceiling a decision was taken against, by label and by
+ * content, and the mandate's own name for it as what it is: a claim nothing
+ * checks. Kept as a warning rather than a refusal for now -- there is no
+ * operator-declared id to compare a mandate's claim with, only a file.
+ */
+export function describeCeiling(ceiling: Ceiling, claimed: string): string {
+  return `Ceiling: ${ceiling.id}, sha256:${ceiling.sha256}. The mandate names its ceiling `
+    + `${JSON.stringify(claimed)}; that is the mandate's claim, and nothing checks it.`;
 }

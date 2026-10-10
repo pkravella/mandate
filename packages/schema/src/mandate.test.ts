@@ -19,7 +19,7 @@ const valid = {
 };
 
 const proof = {
-  ceilingId: "org-policy@v12",
+  ceilingId: "org-policy@v12", ceilingSha256: "0".repeat(64),
   userLevel: "push",
   checkedAt: "2026-10-04T00:00:00.000Z",
   grantProofs: [],

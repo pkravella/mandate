@@ -49,11 +49,13 @@ it anyway. The question is never "did the model notice?"
 These are not oversights. Each is a decision with a reason.
 
 **A malicious operator.** Whoever runs `mandate validate` chooses the ceiling
-file. `loadCeiling` labels that file with the id the *mandate* declares, so an
-operator can point it at a permissive policy and the output will say
-`org-policy@v12`. Containment is still proved against the file actually given,
-so this mislabels rather than over-grants — but an operator who wants to grant
-more does not need to attack Mandate, they can edit the ceiling. Defending
+file, and an operator who wants to grant more does not need to attack Mandate:
+they can edit the ceiling. What Mandate does guarantee is that the record says
+which ceiling it was. The ceiling is named by the operator's file and by the
+sha256 of what it contained, in the output and in the trace header; the
+mandate's own `ceiling:` field is shown only as an unchecked claim. (Until Phase
+5 the CLI labelled the operator's file with the *mandate's* claim, so issue
+text could choose the name printed for the policy that was checked.) Defending
 against the person holding the ceiling is a different product (a hosted broker,
 which is the paid half of the business model).
 
