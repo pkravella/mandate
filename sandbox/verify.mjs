@@ -6,6 +6,8 @@
 //
 // Raw sockets on purpose: no HTTP client, no proxy-agent library, nothing that
 // could succeed or fail for a reason other than the rules under test.
+import { spawn } from "node:child_process";
+import { readdirSync, readFileSync } from "node:fs";
 import net from "node:net";
 
 const TIMEOUT_MS = 10_000;
@@ -62,6 +64,73 @@ const checks = [
     ? []
     : [["direct.ipv6", () => direct(v6Addr, Number(v6Port))]]),
 ];
+
+// The relay to `mandate serve`, when the sandbox was started with one. The
+// entrypoint rewrites MANDATE_RELAY_TARGET to the resolved `ip:port`, because
+// neither the agent nor the relay has a resolver.
+const relayTarget = process.env["MANDATE_RELAY_TARGET"];
+
+/** Whether an MCP initialize through the agent's shim gets an answer, and from whom. */
+const relayMcp = () => new Promise((resolve) => {
+  const child = spawn("node", ["/usr/local/lib/mandate-mcp.mjs"], { stdio: ["pipe", "pipe", "pipe"] });
+  let out = "";
+  let err = "";
+  const timer = setTimeout(() => { child.kill(); resolve("failed:timeout"); }, TIMEOUT_MS);
+  child.stdout.on("data", (d) => {
+    out += d.toString("utf8");
+    const nl = out.indexOf("\n");
+    if (nl === -1) return;
+    clearTimeout(timer);
+    child.kill();
+    try {
+      resolve(`ok:${JSON.parse(out.slice(0, nl)).result.serverInfo.name}`);
+    } catch {
+      resolve("failed:unparsed");
+    }
+  });
+  child.stderr.on("data", (d) => { err += d.toString("utf8"); });
+  child.on("close", () => { clearTimeout(timer); resolve(`failed:closed${err ? `:${err.trim().split("\n")[0]}` : ""}`); });
+  child.stdin.write(`${JSON.stringify({
+    jsonrpc: "2.0", id: 1, method: "initialize",
+    params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "verify", version: "0" } },
+  })}\n`);
+});
+
+/** Whether this uid can read the relay process's environment, where the secret is. */
+const relayEnviron = () => {
+  for (const pid of readdirSync("/proc").filter((p) => /^\d+$/.test(p))) {
+    let cmdline = "";
+    try { cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8"); } catch { continue; }
+    if (!cmdline.includes("mandate-relay.mjs")) continue;
+    try {
+      readFileSync(`/proc/${pid}/environ`);
+      return "READABLE";
+    } catch (e) {
+      return `unreadable:${e.code ?? e.message}`;
+    }
+  }
+  return "no-relay-process";
+};
+
+if (relayTarget !== undefined) {
+  const [ip, port] = relayTarget.split(":");
+  checks.push(
+    // The hole is the relay uid's. The agent itself must not reach the port.
+    // FIRST, while serve is still listening: it accepts one session and then
+    // closes, so after relay.mcp this would read "refused" whatever the rules
+    // said -- which is how the first version passed its negative control.
+    ["direct.relay-target", () => direct(ip, Number(port))],
+    ["relay.mcp", relayMcp],
+    ["env.relay-secret", async () => (process.env["MANDATE_RELAY_SECRET"] === undefined ? "absent" : "PRESENT")],
+    ["proc.relay-environ", async () => relayEnviron()],
+  );
+  // Another port on the same host, for a run made as the relay uid: its hole
+  // is one port, not the host.
+  const otherPort = process.env["MANDATE_VERIFY_HOST_OTHER_PORT"];
+  if (otherPort !== undefined) {
+    checks.push(["direct.relay-host-other-port", () => direct(ip, Number(otherPort))]);
+  }
+}
 
 for (const [name, run] of checks) {
   console.log(`${name}=${await run()}`);

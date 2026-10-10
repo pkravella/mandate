@@ -28,8 +28,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # firewall rules that bound it.
 RUN useradd --create-home --shell /bin/bash agent
 
+# The relay's own uid: the one route to `mandate serve` on the host is opened
+# for this uid and not the agent's. No home, no shell.
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin relay
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY verify.mjs /usr/local/lib/mandate-verify.mjs
+COPY relay.mjs /usr/local/lib/mandate-relay.mjs
+COPY mcp.mjs /usr/local/lib/mandate-mcp.mjs
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
 # Belt: a well-behaved tool honours these. Braces: the iptables rules reject

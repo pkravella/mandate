@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
+import { randomBytes } from "node:crypto";
+import net from "node:net";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -12,6 +14,7 @@ import type { MintDeps } from "@mandate-dev/compiler";
 import { parseJsonl } from "@mandate-dev/proxy";
 import { runRun, MCP_CONFIG_PLACEHOLDER, type RunArgs } from "./run.js";
 import { runServe, untilSignalled, type ServeArgs, type ServeDeps } from "./serve.js";
+import { HANDSHAKE_PREFIX } from "../listen.js";
 import type { Session } from "../session.js";
 
 const fixture = (name: string): string =>
@@ -54,13 +57,15 @@ destinations:
   allow: ["github.com/acme/api"]
 `);
 
-const fakeGithub = (): { deps: MintDeps; revokes: () => number } => {
+const fakeGithub = (): { deps: MintDeps; revokes: () => number; mints: () => number } => {
   let revokes = 0;
+  let mints = 0;
   return {
     revokes: () => revokes,
+    mints: () => mints,
     deps: {
       installationId: 1,
-      asApp: async () => ({
+      asApp: async () => (mints += 1, {
         status: 201,
         data: {
           token: "ghs_fake", expires_at: new Date(Date.now() + 3_600_000).toISOString(),
@@ -379,6 +384,120 @@ describe("mandate serve", () => {
     );
     expect(source).not.toMatch(/console\.(log|info|debug)\(/);
     expect(source).not.toMatch(/process\.stdout\.write/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mandate serve --listen: the sandboxed agent's transport
+// ---------------------------------------------------------------------------
+
+/**
+ * Sends the handshake and each request as a line, and resolves with one parsed
+ * response per request. Raw JSON-RPC rather than an SDK client: there is no
+ * shared test-helper module, and two requests do not need one.
+ */
+const rpcOver = (port: number, secret: string, requests: readonly object[]): Promise<unknown[]> =>
+  new Promise((resolve, reject) => {
+    const sock = net.connect(port, "127.0.0.1");
+    const out: unknown[] = [];
+    let buf = "";
+    sock.on("error", reject);
+    sock.on("connect", () => {
+      sock.write(`${HANDSHAKE_PREFIX}${secret}\n`);
+      for (const r of requests) sock.write(`${JSON.stringify(r)}\n`);
+    });
+    sock.on("data", (d: Buffer) => {
+      buf += d.toString("utf8");
+      let nl = buf.indexOf("\n");
+      while (nl !== -1) {
+        out.push(JSON.parse(buf.slice(0, nl)));
+        buf = buf.slice(nl + 1);
+        nl = buf.indexOf("\n");
+      }
+      if (out.length === requests.length) { sock.end(); resolve(out); }
+    });
+    sock.on("close", () => { if (out.length < requests.length) resolve(out); });
+  });
+
+const INIT = {
+  jsonrpc: "2.0", id: 1, method: "initialize",
+  params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "a", version: "0" } },
+};
+const LIST = { jsonrpc: "2.0", id: 2, method: "tools/list" };
+
+/** Polls for the ready file serve writes once it is listening. */
+const readyPort = async (path: string): Promise<number> => {
+  for (let i = 0; i < 200; i++) {
+    if (existsSync(path)) return (JSON.parse(readFileSync(path, "utf8")) as { port: number }).port;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error(`serve never wrote ${path}`);
+};
+
+describe("mandate serve --listen", () => {
+  const relaySecret = randomBytes(32).toString("hex");
+  const listenServe = (over: Partial<ServeArgs>, deps: Partial<ServeDeps> = {}) => {
+    const gh = fakeGithub();
+    const chunks: string[] = [];
+    const done = runServe(serveArgs(over), (s) => chunks.push(s), {
+      github: gh.deps, upstream: fakeUpstream, relaySecret, ...deps,
+    });
+    return { gh, done, out: () => chunks.join("\n") };
+  };
+
+  it("serves the enforced tools to a client that presents the secret", async () => {
+    const readyFile = join(mkdtempSync(join(tmpdir(), "mandate-listen-")), "ready.json");
+    const { gh, done } = listenServe({ listen: "127.0.0.1:0", readyFile });
+    const port = await readyPort(readyFile);
+    const [, list] = await rpcOver(port, relaySecret, [INIT, LIST]) as [unknown, { result: { tools: { name: string }[] } }];
+    // Filtered by the mandate: the fake upstream also offers merge_pull_request.
+    expect(list.result.tools.map((t) => t.name)).toEqual(["get_file_contents"]);
+    expect(await done).toBe(0);
+    expect(gh.mints()).toBe(1);
+    // The session ended because the client went away, and the token went back.
+    expect(gh.revokes()).toBe(1);
+  });
+
+  it("names the address it listens on in the ready file, and nothing secret", async () => {
+    const readyFile = join(mkdtempSync(join(tmpdir(), "mandate-listen-")), "ready.json");
+    const { done } = listenServe({ listen: "127.0.0.1:0", readyFile });
+    const port = await readyPort(readyFile);
+    const text = readFileSync(readyFile, "utf8");
+    expect(JSON.parse(text)).toEqual({ host: "127.0.0.1", port });
+    expect(text).not.toContain(relaySecret);
+    expect(text).not.toContain("ghs_");
+    await rpcOver(port, relaySecret, [INIT]);
+    await done;
+  });
+
+  it("refuses to listen without a relay secret, before minting anything", async () => {
+    const { gh, done, out } = listenServe({ listen: "127.0.0.1:0" }, { relaySecret: undefined });
+    expect(await done).toBe(2);
+    expect(out()).toMatch(/MANDATE_RELAY_SECRET/);
+    expect(gh.mints()).toBe(0);
+  });
+
+  it("refuses a malformed or wildcard listen address, before minting anything", async () => {
+    for (const listen of ["127.0.0.1", "localhost:0", "0.0.0.0:0", "127.0.0.1:99999"]) {
+      const { gh, done } = listenServe({ listen });
+      expect(await done, listen).toBe(2);
+      expect(gh.mints(), listen).toBe(0);
+    }
+  });
+
+  // A serve started by `mandate run` has no agent on its stdin. If listen mode
+  // waited on stdin ending, as stdio mode does, it would shut down at once.
+  it("does not end the session because its stdin closed", async () => {
+    const readyFile = join(mkdtempSync(join(tmpdir(), "mandate-listen-")), "ready.json");
+    const stdin = new EventEmitter();
+    const { done } = listenServe({ listen: "127.0.0.1:0", readyFile }, { stdin });
+    const port = await readyPort(readyFile);
+    stdin.emit("end");
+    stdin.emit("close");
+    await new Promise((r) => setTimeout(r, 30));
+    const [, list] = await rpcOver(port, relaySecret, [INIT, LIST]) as [unknown, { result: { tools: unknown[] } }];
+    expect(list.result.tools).toHaveLength(1);
+    await done;
   });
 });
 

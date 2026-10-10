@@ -41,6 +41,39 @@ mounted so that nothing has to be written to a shared filesystem.
   denied egress attempt lands there, which is the audit record for traffic the
   action graph (R8) cannot see.
 
+## Reaching `mandate serve` on the host
+
+`mandate serve` holds the minted token and mints it from the App's private key,
+so it stays on the host. The agent reaches it through a relay:
+
+```
+agent ──stdio──▶ mandate-mcp.mjs ──/run/mandate/mcp.sock──▶ mandate-relay.mjs
+      (uid agent, no network)                              (uid relay)
+                                   ──TCP, secret handshake──▶ mandate serve --listen
+```
+
+Start the container with `MANDATE_RELAY_TARGET=host.docker.internal:<port>` and
+`MANDATE_RELAY_SECRET=<64+ hex chars>`, and point the agent's MCP config at
+`node /usr/local/lib/mandate-mcp.mjs`. Every hop was chosen by probing Docker
+Desktop 29.7.2:
+
+- A host Unix socket bind-mounted into the container returns `ENOTSUP`, so the
+  channel is TCP.
+- A host listener on `127.0.0.1` is reachable from **every** container on the
+  machine and sees each as `127.0.0.1`. So arriving proves nothing, and serve
+  accepts one connection, and only one that opens with the secret.
+- The `agent` uid still has no network. The one iptables hole — that address,
+  that port, TCP — belongs to the `relay` uid, which is otherwise rejected over
+  IPv4 and IPv6 alike.
+- The secret is in the relay's environment, which the agent's uid cannot read
+  (`/proc/<pid>/environ` is `EACCES`), and the entrypoint strips it, along with
+  the squid config, before the agent starts.
+
+Linux is not yet supported here: `host.docker.internal` needs
+`--add-host=host.docker.internal:host-gateway`, and a host listener on
+`127.0.0.1` is not reachable from a Linux container at all. That path is
+unprobed, and the gated test skips off macOS rather than claim it.
+
 ## Checking it yourself
 
 `verify.mjs` runs inside the sandbox as `agent` and prints one line per check:
@@ -77,7 +110,12 @@ actually fail:
 
 ```bash
 MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test sandbox
+MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/cli test relay
 ```
+
+The second runs the relay end to end against the real host listener, checks the
+relay uid's hole is one port and not the host, and has a negative control for
+each claim above.
 
 ## What it does not close
 

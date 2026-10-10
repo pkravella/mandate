@@ -180,9 +180,15 @@ export function main(argv: readonly string[]): void {
       .requiredOption("--mandate <file>", "the validated mandate YAML"),
   )
     .option("--trace <path>", "write the action graph here when the session ends (R8)")
+    .option(
+      "--listen <ip:port>",
+      "serve one sandboxed agent over TCP instead of stdio; the relay presents MANDATE_RELAY_SECRET",
+    )
+    .option("--ready-file <path>", "with --listen: write {host, port} here once listening")
     .action(async (opts: {
       mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
       as: string; level?: string; repo?: string; trace?: string;
+      listen?: string; readyFile?: string;
     }) => {
       // stdout is the JSON-RPC stream. Every diagnostic goes to stderr, or the
       // agent sees a parse error instead of a tool list.
@@ -203,7 +209,14 @@ export function main(argv: readonly string[]): void {
         ...(opts.level === undefined ? {} : { level: opts.level }),
         ...(opts.repo === undefined ? {} : { repo: opts.repo }),
         ...(opts.trace === undefined ? {} : { trace: opts.trace }),
-      }, log, { github, ...(resolve === undefined ? {} : { resolve }) });
+        ...(opts.listen === undefined ? {} : { listen: opts.listen }),
+        ...(opts.readyFile === undefined ? {} : { readyFile: opts.readyFile }),
+      }, log, {
+        github,
+        ...(resolve === undefined ? {} : { resolve }),
+        // From the environment, never a flag: argv is readable by every process.
+        relaySecret: process.env["MANDATE_RELAY_SECRET"],
+      });
     });
 
   mandateOptions(

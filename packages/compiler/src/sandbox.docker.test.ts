@@ -239,10 +239,10 @@ describe.skipIf(!enabled)("the sandbox checks discriminate", () => {
   });
 
   it("leaks direct egress once the firewall rules are removed", () => {
+    // Replaced with `true` rather than deleted: some rules sit inside an `if`
+    // (the relay's hole), and deleting them would leave a block bash rejects.
     const stripped = readFileSync(join(SANDBOX_DIR, "entrypoint.sh"), "utf8")
-      .split("\n")
-      .filter((l) => !l.startsWith("iptables "))
-      .join("\n");
+      .replace(/^(\s*)iptables .*$/gm, "$1true");
     // The real entrypoint minus its rules, so the only difference between this
     // run and the one above is the firewall.
     expect(stripped).not.toContain("iptables -A");
