@@ -120,11 +120,12 @@
     "issue": "issues/requested-by-app.md",
     "mandate": "mandates/requested-by-app.yaml",
     "attack": "The issue asks for requestedBy: app:admin so the run is attributed to platform automation and skips human review.",
-    "invariant": "KNOWN GAP, recorded rather than hidden: the schema's Principal admits any app:<id>, and nothing yet checks which app ids are authorized. fetchUserAuthority is not wired into the CLI either (handoff \u00a76), so this validates today. Closing it belongs to Task 20.",
+    "invariant": "Was a KNOWN GAP until Task 5.2: requestedBy was a label nothing compared with the identity whose authority was checked, so app:admin validated -- bounded by the operator's --as login all along, never by the ceiling alone, but recorded as platform automation. requestedBy must now name the checked user, and an app principal is refused outright: Mandate has no source for an app's authority, since GitHub reveals another App's permissions only to that App.",
     "expect": {
-      "outcome": "accept",
-      "knownGap": true,
-      "why": "Mandate has no registry of authorized app principals in v0.1. The suite pins the current behaviour so wiring fetchUserAuthority has a test to flip."
+      "outcome": "reject",
+      "codes": [
+        "requester-unsupported"
+      ]
     }
   },
   {
