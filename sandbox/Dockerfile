@@ -38,15 +38,10 @@ COPY relay.mjs /usr/local/lib/mandate-relay.mjs
 COPY mcp.mjs /usr/local/lib/mandate-mcp.mjs
 RUN chmod 0755 /usr/local/bin/entrypoint.sh
 
-# Belt: a well-behaved tool honours these. Braces: the iptables rules reject
-# everything else from the agent uid, so a tool that ignores them fails at the
-# network layer instead of reaching the internet.
-ENV HTTP_PROXY=http://127.0.0.1:3128 \
-    HTTPS_PROXY=http://127.0.0.1:3128 \
-    http_proxy=http://127.0.0.1:3128 \
-    https_proxy=http://127.0.0.1:3128 \
-    NO_PROXY=127.0.0.1,localhost \
-    no_proxy=127.0.0.1,localhost
+# The proxy variables are set by the entrypoint, not here. An image's ENV
+# applies to every build step of every image built FROM it, so with them here
+# `RUN npm install` in an operator's agent image went to a proxy that only
+# exists at runtime, and failed.
 
 # Root to install the rules; the entrypoint drops to `agent` with setpriv.
 USER root

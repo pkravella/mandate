@@ -76,7 +76,7 @@ function runSandbox(opts: {
 
   const checks: Record<string, string> = {};
   for (const line of output.split("\n")) {
-    const m = /^((?:proxy|direct)\.[a-z0-9-]+)=(.+)$/.exec(line.trim());
+    const m = /^((?:proxy|direct|env)\.[a-z0-9-]+)=(.+)$/.exec(line.trim());
     if (m?.[1] !== undefined && m[2] !== undefined) checks[m[1]] = m[2];
   }
   return { status, output, checks };
@@ -153,6 +153,22 @@ describe.skipIf(!enabled)("the agent sandbox, against a real container", () => {
     // Even an allowed host: the allowlist lives at the proxy, and the proxy is
     // the only way to reach anything at all.
     expect(checks["direct.allowed-host-ip"]).toMatch(/^blocked:/);
+  });
+
+  // Docker applies an image's ENV to every build step of every image built
+  // FROM it. With the proxy set there, `RUN npm install` in an operator's agent
+  // image went to a proxy that exists only at runtime and failed -- found
+  // building the first real agent image. The entrypoint sets it instead.
+  it("keeps the proxy out of the image's ENV, so images built FROM it can install", () => {
+    const env = execFileSync("docker", [
+      "image", "inspect", IMAGE, "--format", "{{json .Config.Env}}",
+    ], { encoding: "utf8" });
+    expect(env).not.toMatch(/_PROXY=|_proxy=/);
+  });
+
+  it("gives the agent the proxy at runtime, where it exists", () => {
+    const { checks } = runSandbox({ squidConf: conf });
+    expect(checks["env.https-proxy"]).toBe("http://127.0.0.1:3128");
   });
 
   it("gives the agent no resolver of its own", () => {

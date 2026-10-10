@@ -132,6 +132,9 @@ if (relayTarget !== undefined) {
   }
 }
 
+// The proxy a well-behaved tool will use. Set by the entrypoint, not the image.
+checks.push(["env.https-proxy", async () => process.env["HTTPS_PROXY"] ?? "unset"]);
+
 for (const [name, run] of checks) {
   console.log(`${name}=${await run()}`);
 }
