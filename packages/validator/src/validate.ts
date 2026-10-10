@@ -19,6 +19,8 @@ export type RejectionCode =
   | "layer-disagreement"
   | "undecidable"
   | "destination-not-permitted"
+  | "requester-mismatch"
+  | "requester-unsupported"
   | "lint";
 
 export interface Rejection {
@@ -57,6 +59,14 @@ export function validate(
   // Cedar witness draws on it, so a mandate cannot buy unbounded work by
   // spreading it across grants that each stay under the per-automaton cap.
   const budget = ctx.budget ?? workBudget();
+
+  // ---- check 0: the requester is the identity whose authority is checked --
+  // `requestedBy` used to be a label nothing compared with `ctx.authority`, so
+  // a mandate could name anyone -- `user:bob`, `app:admin` -- while alice's
+  // level bounded every grant, and the permission diff printed the label.
+  // That never over-granted; it put the wrong name on the record.
+  const requesterRefusal = checkRequester(proposed.requestedBy, ctx.authority);
+  if (requesterRefusal !== undefined) rejections.push(requesterRefusal);
 
   for (const [i, grant] of proposed.grants.entries()) {
     // ---- check 1: the requester's own authority on the repository --------
@@ -366,4 +376,37 @@ function witnesses(
     out.push(candidate);
   }
   return out.length > 0 ? out : ["w"];
+}
+
+/**
+ * Whether `requestedBy` names the identity `authority` describes.
+ *
+ * `app:` principals are refused outright for now. Their authority has no
+ * source: GitHub answers what a user may do on a repository, but what another
+ * App may do is readable only with that App's own credentials, and Mandate's
+ * App bounds every token it mints already. Refusing is the honest answer until
+ * something that requests as an app exists to design against.
+ */
+function checkRequester(requestedBy: string, authority: UserAuthority): Rejection | undefined {
+  const colon = requestedBy.indexOf(":");
+  const kind = requestedBy.slice(0, colon);
+  const id = requestedBy.slice(colon + 1);
+  if (kind === "app") {
+    return {
+      code: "requester-unsupported",
+      message: `requestedBy ${requestedBy} is an app principal, and Mandate has no source for an `
+        + "app's authority yet; it is refused rather than bounded by whichever person ran the "
+        + `check. Request it as the user whose authority applies (user:${authority.login}).`,
+    };
+  }
+  // GitHub logins are case-insensitive.
+  if (id.toLowerCase() !== authority.login.toLowerCase()) {
+    return {
+      code: "requester-mismatch",
+      message: `requestedBy ${requestedBy}, but the authority checked was ${authority.login}'s; `
+        + "the mandate would be recorded as someone else's request. Set requestedBy to "
+        + `user:${authority.login}, or check it as the requester.`,
+    };
+  }
+  return undefined;
 }

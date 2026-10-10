@@ -344,11 +344,11 @@ approval flow R5 describes while being neither reviewed nor authorized.
 
 The CLI half of R5 — the permission diff — is built and is what `--diff` prints.
 
-**`app:` principals are unbounded.** `requestedBy: app:admin` validates. The
-schema admits any `app:<id>` and nothing yet checks which app principals are
-authorized to request a mandate.
-`fixtures/adversarial/mandates/requested-by-app.yaml` pins the current
-behaviour, so closing it has a test to flip.
+**No `app:` requesters.** A mandate requested by an automation account is
+refused: GitHub reveals what another App may do only to that App, so Mandate
+has no source for an app principal's authority, and borrowing the operator's
+would attribute the request to the automation while a person's level bounded
+it. `requestedBy` must name the user checked with `--as`.
 
 **R12's other backends and R16's audit log are interfaces only.** `Backend` in
 `compiler/src/rules.ts` and `GraphSink` in `proxy/src/graph.ts` are the seams

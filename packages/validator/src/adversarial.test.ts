@@ -208,8 +208,8 @@ describe("adversarial: the ceiling holds whatever the task text says", () => {
       }
 
       // The accepted cases are the interesting ones: each documents WHY it is
-      // not a breach, and two of them pin behaviour that is a known gap rather
-      // than a guarantee. A `deny`/`allow` expectation belongs to the proxy
+      // not a breach. A case may also be marked `knownGap` to pin behaviour
+      // that is a gap rather than a guarantee, so closing it has a test to flip. A `deny`/`allow` expectation belongs to the proxy
       // families and must never appear on a mandate case.
       expect(expected?.outcome, `${c.id} expects a proxy outcome`).toBe("accept");
       if (expected?.outcome !== "accept") return;

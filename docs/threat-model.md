@@ -34,7 +34,7 @@ it anyway. The question is never "did the model notice?"
 | --- | --- |
 | It cannot grant itself anything | `ValidatedMandate`'s constructor is private to the validator. The writer's output is typed `ProposedMandate` and exactly one function accepts it. This is a compile-time property, not a convention. |
 | It cannot exceed the ceiling | Containment is a glob→DFA language-inclusion check, not a policy engine answering point queries. A grant is a *pattern*, so it denotes a set, and a point query proves nothing about the rest of that set. |
-| It cannot exceed the requester's own authority | Decided separately and reported separately, from the requester's real GitHub permission. |
+| It cannot exceed the requester's own authority | Decided separately and reported separately, from the requester's real GitHub permission. The mandate's `requestedBy` must name that same person, so the record cannot attribute the request to someone whose authority was never checked, and an `app:` requester is refused rather than borrowing the operator's. |
 | It cannot see tools it was not granted | The proxy filters `tools/list`. Measured: 46 tools to 7, which is also an 84% cut in tool-schema tokens. |
 | It cannot reach a repository, branch, path or base outside the grant | Enforced per call at the proxy, with the clause named on refusal. |
 | It cannot write a default branch | No mandate may grant it, and the lints reject one that tries. |

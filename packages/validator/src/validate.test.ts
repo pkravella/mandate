@@ -42,8 +42,12 @@ const PR = {
   branches: ["agent/42-*"], base: "main", max: 1,
 };
 
+/** The mandate names whoever is checked, so these tests measure levels, not requesters. */
 const codes = (grants: unknown[], authority: UserAuthority = alice) => {
-  const r = validate(propose(grants), { ceiling, authority });
+  const proposed = MandateSchema.parse({
+    ...propose(grants), requestedBy: `user:${authority.login}`,
+  }) as ProposedMandate;
+  const r = validate(proposed, { ceiling, authority });
   return r.ok ? [] : r.rejections.map((x) => x.code);
 };
 
@@ -164,7 +168,10 @@ describe("validate — ceiling containment", () => {
 describe("validate — user authority, a separate check from the ceiling", () => {
   it("rejects a code write when the user only has pull", () => {
     const bob: UserAuthority = { login: "bob", level: "pull" };
-    const r = validate(propose([WRITE]), { ceiling, authority: bob });
+    const r = validate(
+      MandateSchema.parse({ ...propose([WRITE]), requestedBy: "user:bob" }) as ProposedMandate,
+      { ceiling, authority: bob },
+    );
     expect(r.ok).toBe(false);
     if (r.ok) return;
     const rej = r.rejections.find((x) => x.code === "user-authority")!;
@@ -191,6 +198,73 @@ describe("validate — user authority, a separate check from the ceiling", () =>
     // admin still cannot exceed the org ceiling.
     expect(codes([{ action: "secrets.read", enforcedBy: "token", resources: ["acme/api"] }],
       { login: "root", level: "admin" })).toContain("no-ceiling-rule");
+  });
+});
+
+// Task 5.2. `requestedBy` was a label nothing compared with the identity whose
+// authority was checked: a mandate saying `user:bob`, validated as alice, was
+// attributed to bob while alice's level bounded it, and the permission diff
+// printed "Requested by user:bob". The adversarial case asked for `app:admin`
+// so the run would read as platform automation. Neither over-granted -- every
+// grant was still checked against alice -- but the record named someone else.
+describe("validate — the requester is the identity whose authority was checked", () => {
+  const as = (requestedBy: string): ProposedMandate =>
+    MandateSchema.parse({ ...propose([READ]), requestedBy }) as ProposedMandate;
+
+  it("accepts a requester that names the checked login", () => {
+    expect(validate(as("user:alice"), { ceiling, authority: alice }).ok).toBe(true);
+  });
+
+  // GitHub logins are case-insensitive: Alice and alice are one account.
+  it("compares logins case-insensitively", () => {
+    expect(validate(as("user:Alice"), { ceiling, authority: alice }).ok).toBe(true);
+  });
+
+  it("refuses a requester that names someone else, naming both", () => {
+    const r = validate(as("user:bob"), { ceiling, authority: alice });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    const mismatch = r.rejections.find((x) => x.code === "requester-mismatch");
+    expect(mismatch?.message).toContain("user:bob");
+    expect(mismatch?.message).toContain("alice");
+  });
+
+  // A login that merely starts like the requester's is someone else.
+  it("refuses a login that is a prefix of the requester's", () => {
+    const r = validate(as("user:alice2"), { ceiling, authority: alice });
+    expect(r.ok).toBe(false);
+  });
+
+  // No source for an app's authority exists yet: GitHub will not tell us what
+  // another App may do without that App's own credentials. Refused, rather
+  // than bounded by whichever human ran the command.
+  it("refuses an app principal, saying why", () => {
+    const r = validate(as("app:admin"), { ceiling, authority: alice });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    const codes = r.rejections.map((x) => x.code);
+    expect(codes).toContain("requester-unsupported");
+    expect(codes).not.toContain("requester-mismatch");
+  });
+
+  it("refuses an app principal even when its id matches the login", () => {
+    const r = validate(as("app:alice"), { ceiling, authority: alice });
+    expect(r.ok).toBe(false);
+  });
+
+  // Reported alongside the grant checks, not instead of them: an operator
+  // fixing the requester should see everything else that is wrong too.
+  it("still reports the grant checks when the requester is refused", () => {
+    const proposed = MandateSchema.parse({
+      ...propose([{ action: "pull_request.merge", enforcedBy: "token", resources: ["acme/api"] }]),
+      requestedBy: "user:bob",
+    }) as ProposedMandate;
+    const r = validate(proposed, { ceiling, authority: alice });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    const codes = r.rejections.map((x) => x.code);
+    expect(codes).toContain("requester-mismatch");
+    expect(codes.some((c) => c !== "requester-mismatch")).toBe(true);
   });
 });
 

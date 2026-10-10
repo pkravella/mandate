@@ -228,6 +228,15 @@ describe("runBench, offline", () => {
     expect(r?.cost).toBeGreaterThan(0);
   });
 
+  // The harness hard-coded `requestedBy: user:bench` while the live sweep
+  // validated as pkravella, so every benchmark mandate named a requester whose
+  // authority nobody checked. With the requester now checked, a hard-coded
+  // label would refuse every task run as anyone but "bench".
+  it("names the identity it validates as, so a run as another login is not refused", async () => {
+    const results = await runBench(oneTask(), depsFor({ authority: { login: "pkravella", level: "admin" } }));
+    expect(results[0]?.proposalRejected).toBe(false);
+  });
+
   it("revokes the token for every task, including when the run fails", async () => {
     const gh = fakeGithub();
     await runBench(oneTask(), depsFor({

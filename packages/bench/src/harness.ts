@@ -228,7 +228,10 @@ export async function runBench(
     // ---- write ------------------------------------------------------
     const writerUsage: Anthropic.Usage[] = [];
     const written = await writeMandate(recordingUsage(deps.anthropic, writerUsage), {
-      task: taskText, repo: corpus.repo, requestedBy: "user:bench",
+      // The identity whose authority validates it below. This was hard-coded to
+      // `user:bench` while the live sweep validated as pkravella, so every
+      // published benchmark mandate named a requester nobody checked.
+      task: taskText, repo: corpus.repo, requestedBy: `user:${deps.authority.login}`,
       ceiling: deps.ceiling, issueNumber,
     });
 
