@@ -1,4 +1,5 @@
 export { createProxyServer, denial, type Decision, type ProxyDeps } from "./proxy.js";
+export { attributeCall, type Attribution } from "./attribution.js";
 export {
   extractArgs, makeArgumentEnforcer, makeFacetEnforcer, type ArgExtract,
   type UnreadableDestination,

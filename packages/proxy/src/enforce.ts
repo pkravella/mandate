@@ -17,6 +17,12 @@ export interface ArgExtract {
    * doubt, and an unparseable value used to be dropped and the call allowed.
    */
   readonly unreadableDestinations?: readonly UnreadableDestination[];
+  /**
+   * `issue_write`'s `method`, which says whether the call is a create or an
+   * update -- the one shared tool whose arguments name the operation. Absent
+   * for every other tool. See attribution.ts.
+   */
+  readonly method?: string;
 }
 
 export interface UnreadableDestination {
@@ -187,7 +193,7 @@ const searchRepo = (args: Record<string, unknown>): string | undefined => {
   return m?.[1];
 };
 
-export function extractArgs(_tool: string, args: Record<string, unknown>): ArgExtract {
+export function extractArgs(tool: string, args: Record<string, unknown>): ArgExtract {
   const owner = str(args["owner"]);
   const repoName = str(args["repo"]);
   const repo = owner !== undefined && repoName !== undefined
@@ -220,6 +226,10 @@ export function extractArgs(_tool: string, args: Record<string, unknown>): ArgEx
     ...(base !== undefined ? { base } : {}),
     destinations: [...collected.destinations],
     ...(collected.unreadable.length > 0 ? { unreadableDestinations: collected.unreadable } : {}),
+    // Kept as a string whatever it was, so a non-string reaches attribution as
+    // something that is neither create nor update, and is refused.
+    ...(tool === "issue_write" && args["method"] !== undefined && args["method"] !== null
+      ? { method: String(args["method"]) } : {}),
   };
 }
 

@@ -53,6 +53,12 @@ export interface ActionNode {
    * ground-truth trace refuses them too. Absent when there are none.
    */
   readonly unreadableDestinations?: readonly UnreadableDestination[];
+  /**
+   * `issue_write`'s `method`, which decides which grant may decide the call --
+   * recorded so replay attributes it as the proxy did. Absent for other tools,
+   * and from traces recorded before Task 5.5.
+   */
+  readonly method?: string;
   readonly decision: "allow" | "deny";
   /** The clause that refused the call. Always present on a denial. */
   readonly clause?: string;
@@ -275,7 +281,7 @@ function startOf(input: CallInput | DenialInput): {
     base: (seq: number) => Pick<
       ActionNode,
       "seq" | "at" | "tool" | "action" | "resource" | "branch" | "paths" | "base" | "destinations"
-      | "unreadableDestinations"
+      | "unreadableDestinations" | "method"
     >;
     elapsed: () => number;
   } {
@@ -297,6 +303,7 @@ function startOf(input: CallInput | DenialInput): {
       destinations: e.destinations,
       ...(e.unreadableDestinations !== undefined
         ? { unreadableDestinations: e.unreadableDestinations } : {}),
+      ...(e.method !== undefined ? { method: e.method } : {}),
     }),
     elapsed: () => Math.round(performance.now() - started),
   };
@@ -339,6 +346,7 @@ const NodeLineSchema = z.object({
   destinations: z.array(z.string()),
   unreadableDestinations: z.array(z.object({ field: z.string(), value: z.string() }).strict())
     .min(1).optional(),
+  method: z.string().optional(),
   decision: z.enum(["allow", "deny"]),
   clause: z.string().min(1).optional(),
   reason: z.string().optional(),
@@ -381,6 +389,7 @@ function toNode(l: NodeLine): ActionNode {
     destinations: l.destinations,
     ...(l.unreadableDestinations !== undefined
       ? { unreadableDestinations: l.unreadableDestinations } : {}),
+    ...(l.method !== undefined ? { method: l.method } : {}),
     decision: l.decision,
     ...(l.clause !== undefined ? { clause: l.clause } : {}),
     ...(l.reason !== undefined ? { reason: l.reason } : {}),

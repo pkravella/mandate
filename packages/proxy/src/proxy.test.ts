@@ -689,3 +689,75 @@ describe("compiled rules carry the mandate hash", () => {
     expect(rules.mandateHash).toMatch(/^[0-9a-f]{64}$/);
   });
 });
+
+// Task 5.5. A call is allowed when any rule for its tool allows it, so once a
+// limited operation's quota ran out, the call was tried under the next grant
+// on the same tool. Measured: issue.create max 1 with issue.update granted let
+// three creates through, each recorded as an update. issue_write says which it
+// is -- `method: create | update` -- so a create may only be decided by the
+// issue.create grant, and an update only by the others.
+describe("createProxyServer: a call is decided by the grant it actually is", () => {
+  const issueRules = (extra: Partial<ProxyRules> = {}): ProxyRules => ({
+    ...rules,
+    allowedTools: ["issue_write"],
+    rules: [
+      { tool: "issue_write", action: "issue.create", resources: ["acme/api"], max: 1 },
+      { tool: "issue_write", action: "issue.update", resources: ["acme/api"], max: 5 },
+    ],
+    ...extra,
+  });
+  const write = (agent: Client, method: unknown) => agent.callTool({
+    name: "issue_write", arguments: { owner: "acme", repo: "api", method, title: "t" },
+  });
+  const proxyFor = async (r: ProxyRules, decisions: Decision[] = []) => {
+    const { client, seen } = await fakeUpstream();
+    const agent = await connectAgent(createProxyServer({
+      rules: r, upstream: client, enforceArguments: makeArgumentEnforcer(r),
+      onDecision: (d) => decisions.push(d),
+    }));
+    return { agent, seen };
+  };
+
+  it("stops creates at the create grant's max, whatever else is granted on the tool", async () => {
+    const decisions: Decision[] = [];
+    const { agent, seen } = await proxyFor(issueRules(), decisions);
+    expect((await write(agent, "create")).isError).toBeFalsy();
+    const second = await write(agent, "create");
+    expect(second.isError).toBe(true);
+    expect(JSON.stringify(second.content)).toContain("issue.create.max");
+    expect(seen.filter((s) => (s.args as { method?: string }).method === "create")).toHaveLength(1);
+  });
+
+  it("still allows updates after the creates are used up", async () => {
+    const { agent } = await proxyFor(issueRules());
+    await write(agent, "create");
+    await write(agent, "create");
+    expect((await write(agent, "update")).isError).toBeFalsy();
+  });
+
+  it("refuses a create when only updates are granted", async () => {
+    const r = issueRules({ rules: [{ tool: "issue_write", action: "issue.update", resources: ["acme/api"], max: 5 }] });
+    const { agent, seen } = await proxyFor(r);
+    const res = await write(agent, "create");
+    expect(res.isError).toBe(true);
+    expect(JSON.stringify(res.content)).toContain("issue.create");
+    expect(seen).toEqual([]);
+  });
+
+  it("refuses an update when only creates are granted", async () => {
+    const r = issueRules({ rules: [{ tool: "issue_write", action: "issue.create", resources: ["acme/api"], max: 1 }] });
+    const { agent, seen } = await proxyFor(r);
+    expect((await write(agent, "update")).isError).toBe(true);
+    expect(seen).toEqual([]);
+  });
+
+  // Anything but the two values the real tool accepts cannot be matched to a
+  // grant, and is refused rather than guessed at.
+  it("refuses an issue_write whose method is neither create nor update", async () => {
+    for (const method of ["CREATE", "delete", undefined, 1]) {
+      const { agent, seen } = await proxyFor(issueRules());
+      expect((await write(agent, method)).isError, String(method)).toBe(true);
+      expect(seen, String(method)).toEqual([]);
+    }
+  });
+});

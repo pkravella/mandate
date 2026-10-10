@@ -163,11 +163,19 @@ in the way of the raw REST API. `branch.delete` is the sharp one. Most are
 classed `forbidden` or `elevated` and the lints reject them, which is the real
 mitigation.
 
-### 3.5 Quotas reset, and a failed call still spends one
+### 3.5 `max` limits a session, not a task
 
-`max` counts per proxy process. Restart the proxy and the quota resets. A call
-the enforcer allowed but that failed upstream still spends its quota, which is
-the safe direction but not the intuitive one.
+`max` counts calls in one session and a new session starts at zero. With
+`--sandbox` only the operator can start one; without it, the agent can, by
+restarting the MCP server it spawned. A call the proxy allowed but that failed
+upstream still spends its quota -- the safe direction, not the intuitive one.
+
+Where operations share a tool and a call cannot be told apart from its
+arguments -- `issue_write` updates, `update_pull_request`, `add_issue_comment`
+-- the grants' limits combine into one allowance for the group. An
+`issue_write` create is told apart, by its `method`, and is held to
+`issue.create`'s own limit; until Phase 5 it was not, and creates past the limit
+passed as updates.
 
 ### 3.6 Mandate ids can collide
 
