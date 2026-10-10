@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -148,6 +149,13 @@ describe("mandate run --sandbox", () => {
     expect(rec.serve?.env["MANDATE_RELAY_SECRET"]).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  // An init process as PID 1, so the agent is not: PID 1 ignores signals it
+  // installs no handler for, and docker stop then waits ten seconds to kill it.
+  it("runs the container with an init process", async () => {
+    const { rec } = await sandboxRun();
+    expect(rec.docker?.argv).toContain("--init");
+  });
+
   it("names every container variable in argv and puts no value there", async () => {
     const { rec } = await sandboxRun();
     const argv = rec.docker?.argv ?? [];
@@ -179,11 +187,13 @@ describe("mandate run --sandbox", () => {
     }
   });
 
-  it("compiles egress without the GitHub API hosts and with the operator's agent hosts", async () => {
+  it("compiles egress with the operator's agent hosts and no GitHub host at all", async () => {
     const { rec } = await sandboxRun();
     const conf = rec.docker?.env["MANDATE_SQUID_CONF"] ?? "";
-    const acl = /^acl mandate_allowed dstdomain (.*)$/m.exec(conf)?.[1]?.split(" ") ?? [];
-    expect(acl.sort()).toEqual(["api.anthropic.com", "github.com"]);
+    const acl = /^acl mandate_allowed dstdomain -n (.*)$/m.exec(conf)?.[1]?.split(" ") ?? [];
+    // github.com is the mandate's destination, and the agent reaches it only
+    // through serve: an open github.com is where a leaked credential would push.
+    expect(acl.sort()).toEqual(["api.anthropic.com"]);
   });
 
   it("mounts a clone of HEAD read-only, never the checkout itself", async () => {
@@ -225,6 +235,53 @@ describe("mandate run --sandbox", () => {
   });
 });
 
+// Found reviewing Phase 5: `mandate run --sandbox` had no signal handling, so
+// Ctrl-C or a `kill` ended it by the default action -- no `finally` ran, the
+// temporary workspace stayed in $TMPDIR, and a serve that was not also
+// signalled was left holding a live token.
+describe("mandate run --sandbox, interrupted", () => {
+  const interruptible = async (when: "serve" | "docker", signal: string) => {
+    const signals = new EventEmitter();
+    const rec: { stopped: boolean; launched: boolean; mounts: string[] } = { stopped: false, launched: false, mounts: [] };
+    const code = await runRun(args(), () => undefined, {
+      selfPath: SELF, cwd: repo(), platform: "darwin", env: HOST_ENV, signals,
+      startServe: async () => {
+        if (when === "serve") signals.emit(signal);
+        return { port: 1, stop: async () => { rec.stopped = true; return 0; } };
+      },
+      launch: (_c, argv, _e, abort) => new Promise((resolve) => {
+        rec.launched = true;
+        rec.mounts = argv.flatMap((a, i) => (argv[i - 1] === "-v" ? [a.slice(0, a.indexOf(":"))] : []));
+        abort?.addEventListener("abort", () => resolve(143));
+        if (when === "docker") signals.emit(signal);
+      }),
+    });
+    return { code, rec, signals };
+  };
+
+  it("stops docker, then serve, and removes its files, on SIGTERM while the agent runs", async () => {
+    const { code, rec, signals } = await interruptible("docker", "SIGTERM");
+    expect(rec.launched).toBe(true);
+    expect(code).toBe(143);
+    expect(rec.stopped).toBe(true);
+    for (const m of rec.mounts) expect(existsSync(m), m).toBe(false);
+    expect(signals.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  it("does not start docker when interrupted while serve is starting", async () => {
+    const { code, rec, signals } = await interruptible("serve", "SIGINT");
+    expect(rec.launched).toBe(false);
+    expect(rec.stopped).toBe(true);
+    expect(code).toBe(130);
+    expect(signals.listenerCount("SIGINT")).toBe(0);
+  });
+
+  it("handles SIGHUP the same way", async () => {
+    const { rec } = await interruptible("docker", "SIGHUP");
+    expect(rec.stopped).toBe(true);
+  });
+});
+
 describe("mandate run --sandbox refuses, before anything is minted", () => {
   const refused = async (over: Partial<RunArgs>, deps: Partial<RunDeps> = {}) => {
     const r = await sandboxRun(over, deps);
@@ -246,7 +303,11 @@ describe("mandate run --sandbox refuses, before anything is minted", () => {
   });
 
   it("when asked to pass a credential into the container", async () => {
-    for (const name of ["GITHUB_TOKEN", "GH_TOKEN", "MANDATE_APP_KEY_PATH", "MANDATE_RELAY_SECRET", "SSH_AUTH_SOCK"]) {
+    for (const name of [
+      "GITHUB_TOKEN", "GH_TOKEN", "MANDATE_APP_KEY_PATH", "MANDATE_RELAY_SECRET", "SSH_AUTH_SOCK",
+      // Found reviewing Phase 5: the list was exact names only.
+      "HOMEBREW_GITHUB_API_TOKEN", "GH_ENTERPRISE_TOKEN", "MY_GITHUB_PAT",
+    ]) {
       const { code, out } = await refused({ passEnv: [name] });
       expect(code, name).toBe(2);
       expect(out, name).toContain(name);

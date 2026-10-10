@@ -105,7 +105,7 @@ fi
 
 if [ -n "$relay_ip" ]; then
   install -d -o relay -g relay -m 0755 /run/mandate
-  setpriv --reuid=relay --regid=relay --clear-groups \
+  setpriv --reuid=relay --regid=relay --clear-groups --no-new-privs --bounding-set=-all --inh-caps=-all \
     node /usr/local/lib/mandate-relay.mjs &
   relay_pid=$!
   ready=0
@@ -144,7 +144,12 @@ export HTTP_PROXY=http://127.0.0.1:3128 HTTPS_PROXY=http://127.0.0.1:3128
 export http_proxy=http://127.0.0.1:3128 https_proxy=http://127.0.0.1:3128
 export NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
 
+# --no-new-privs and an empty bounding set: found reviewing Phase 5, the uid
+# drop alone left a setuid binary in the image able to come back with every
+# capability the container holds, NET_ADMIN -- which rewrites these rules --
+# among them. Neither the agent nor the relay needs any.
+#
 # The secret is the relay's, and the squid config is root's business. Neither
 # goes to the agent. `env -u` names variables, so no value reaches any argv.
 exec env -u MANDATE_RELAY_SECRET -u MANDATE_SQUID_CONF \
-  setpriv --reuid=agent --regid=agent --clear-groups "$@"
+  setpriv --reuid=agent --regid=agent --clear-groups --no-new-privs --bounding-set=-all --inh-caps=-all "$@"
