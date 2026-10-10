@@ -33,7 +33,11 @@ interface IndexCase {
   readonly id: string;
   readonly file?: string;
   readonly invariant: string;
-  readonly expect?: { readonly outcome: string; readonly clause?: string; readonly why?: string };
+  readonly expect?: {
+    readonly outcome: string; readonly clause?: string; readonly why?: string;
+    /** A phrase the denial's reason must contain, pinning WHY it was denied. */
+    readonly reasonContains?: string;
+  };
 }
 const INDEX = JSON.parse(read("fixtures/adversarial/index.json")) as readonly IndexCase[];
 
@@ -107,6 +111,12 @@ describe("adversarial: argument-level escapes", () => {
         if (decision.kind !== "deny") return;
         // R10: the denial names the clause it hit and gives a reason.
         expect(decision.clause).toBe(c.expect.clause);
+        // The clause alone cannot tell "read and outside the list" from "could
+        // not be read": both are destinations.allow. Found reviewing Phase 5 --
+        // a parse regression would have passed every destination case.
+        if (c.expect.reasonContains !== undefined) {
+          expect(decision.reason, c.id).toContain(c.expect.reasonContains);
+        }
         expect(decision.reason.length).toBeGreaterThan(20);
         return;
       }

@@ -1,3 +1,4 @@
+import { callClass } from "./attribution.js";
 import { getOperation } from "@mandate-dev/catalog";
 import {
   mandateHash, unwrap, type EnforcedBy, type Grant, type ValidatedMandate,
@@ -95,10 +96,9 @@ type Facet = (typeof FACETS)[number];
  * adding a grant would narrow the mandate — but it has a consequence worth
  * stating out loud: the *loosest* rule for a tool is the one that decides.
  * `enforcementReport` reports where that makes a limit useless.
- */
-/**
- * The proxy's rules for one mandate. `expiresAt` here is the mandate's own
- * clock; `openSession` caps it at the credential's with `capToCredential`.
+ *
+ * `expiresAt` here is the mandate's own clock; `openSession` caps it at the
+ * credential's with `capToCredential`.
  */
 export function compileRules(m: ValidatedMandate, now: Date = new Date()): ProxyRules {
   const mandate = unwrap(m);
@@ -214,8 +214,12 @@ export function enforcementReport(m: ValidatedMandate): readonly EnforcementRow[
     for (const facet of FACETS) {
       if (g[facet] === undefined) continue;
       for (const tool of tools) {
+        // Only grants that can decide the same calls: an issue_write create is
+        // decided by issue.create alone, so issue.update's lack of a limit
+        // cannot reach it (attribution.ts).
         const looser = (grantsByTool.get(tool) ?? [])
           .filter((other) => other !== g && other[facet] === undefined)
+          .filter((other) => callClass(tool, other.action) === callClass(tool, g.action))
           .map((other) => other.action);
         if (looser.length > 0) {
           gaps.push(

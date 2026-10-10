@@ -274,9 +274,10 @@ export function main(argv: readonly string[]): void {
     program.parse(argv, { from: "user" });
   } catch (e) {
     if (!(e instanceof CommanderError)) throw e;
-    process.exitCode = e.code === "commander.helpDisplayed" || e.code === "commander.version"
-      ? 0
-      : 2;
+    // Commander's own exitCode, not a list of codes: `mandate help` raises
+    // commander.help with exitCode 0, and listing only helpDisplayed and
+    // version mapped it to 2 -- found reviewing Phase 5.
+    process.exitCode = e.exitCode === 0 ? 0 : 2;
   }
 }
 

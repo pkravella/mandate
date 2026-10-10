@@ -226,6 +226,18 @@ describe("scoreMandate replays the recorded facets exactly", () => {
     expect(s.underGrants[0]?.clause).toBe("issue.create.max");
   });
 
+  // Found reviewing Phase 5: a refused attribution added every operation the
+  // tool serves to missingActions, so a mandate granting issue.update and
+  // issue.close was told it lacked them.
+  it("names only the operation the call actually needed when attribution refuses it", () => {
+    const m = mandate([
+      { action: "issue.update", enforcedBy: "proxy", resources: ["acme/api"], max: 5 },
+      { action: "issue.close", enforcedBy: "proxy", resources: ["acme/api"], max: 1 },
+    ]);
+    const s = scoreMandate(m, trace([node("issue_write", { method: "create" })]));
+    expect(s.missingActions).toEqual(["issue.create"]);
+  });
+
   // A trace recorded before the method was, says nothing about it. Replay
   // cannot know what such a call was, so it keeps the old union.
   it("keeps the old reading for an issue_write node recorded without a method", () => {

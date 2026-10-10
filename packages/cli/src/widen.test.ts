@@ -278,6 +278,13 @@ destinations:
     expect(r.code).toBe(2);
   });
 
+  // validate, serve and run name the ceiling they checked against by file and
+  // hash; widen re-validates and did not say which -- found reviewing Phase 5.
+  it("names the ceiling it re-validated against", () => {
+    const r = run(req());
+    expect(r.out).toMatch(/Ceiling: org-policy-v12\.cedar, sha256:[0-9a-f]{64}/);
+  });
+
   it("returns 2 when the mandate file cannot be read", () => {
     const chunks: string[] = [];
     const code = runWiden(
