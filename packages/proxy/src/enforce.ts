@@ -226,10 +226,12 @@ export function extractArgs(tool: string, args: Record<string, unknown>): ArgExt
     ...(base !== undefined ? { base } : {}),
     destinations: [...collected.destinations],
     ...(collected.unreadable.length > 0 ? { unreadableDestinations: collected.unreadable } : {}),
-    // Kept as a string whatever it was, so a non-string reaches attribution as
-    // something that is neither create nor update, and is refused.
+    // A string as given; anything else as its JSON, so it reaches attribution
+    // as neither create nor update and is refused. String() would not do:
+    // String(["create"]) is "create" -- found reviewing Phase 5.
     ...(tool === "issue_write" && args["method"] !== undefined && args["method"] !== null
-      ? { method: String(args["method"]) } : {}),
+      ? { method: typeof args["method"] === "string" ? args["method"] : JSON.stringify(args["method"]) }
+      : {}),
   };
 }
 

@@ -14,3 +14,4 @@ export {
 export {
   compileEgress, EgressCompileError, type EgressOptions, type EgressPolicy,
 } from "./egress.js";
+export { attributeCall, callClass, type Attribution } from "./attribution.js";

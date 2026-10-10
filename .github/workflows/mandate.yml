@@ -59,6 +59,12 @@ jobs:
       # entitled to ask: check that yourself before this step. R2 is that task
       # text and context arrive from an authorized source, and a drive-by
       # comment is not one.
+      #
+      # The mandate's `requestedBy` must name that same person: Mandate refuses
+      # a mandate whose requester is not the user whose authority was checked,
+      # because the record would name someone nobody checked. With `as` set to
+      # github.actor below, a committed mandate.yaml is accepted only when the
+      # person who dispatched the run is the one it names.
       - uses: ./
         with:
           mandate: mandate.yaml

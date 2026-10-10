@@ -6,7 +6,7 @@ import {
 } from "@mandate-dev/schema";
 import { loadCeiling, validate, type UserAuthority } from "@mandate-dev/validator";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
-import { ceilingLabel } from "../prepare.js";
+import { ceilingLabel, describeCeiling } from "../prepare.js";
 
 /**
  * R10's widen flow.
@@ -183,6 +183,8 @@ export function runWiden(args: WidenArgs, log: (s: string) => void): number {
     log(`Could not load the ceiling: ${message(e)}`);
     return 2;
   }
+  // Which ceiling this re-validation used, as validate, serve and run say.
+  log(describeCeiling(ceiling, widened.ceiling));
 
   // The whole point: the widened mandate is proved from scratch. Nothing about
   // it being a widen rather than a first draft gives it any standing.
