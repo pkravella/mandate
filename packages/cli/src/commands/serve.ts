@@ -1,4 +1,5 @@
-import { writeFileSync } from "node:fs";
+import { EventEmitter } from "node:events";
+import { renameSync, writeFileSync } from "node:fs";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { MintDeps } from "@mandate-dev/compiler";
 import type { Decision } from "@mandate-dev/proxy";
@@ -6,6 +7,9 @@ import { renderRejections } from "../diff.js";
 import { prepareMandate, type PrepareArgs } from "../prepare.js";
 import { openSession, type Session, type SessionOptions } from "../session.js";
 import type { AuthorityDeps } from "../authority.js";
+import {
+  checkRelaySecret, ListenError, listenForAgent, parseListenAddress, type AgentListener,
+} from "../listen.js";
 
 /**
  * `mandate serve` — the enforced MCP server an agent spawns.
@@ -28,6 +32,14 @@ import type { AuthorityDeps } from "../authority.js";
 export interface ServeArgs extends PrepareArgs {
   /** Where to write the action graph when the session ends. R8. */
   readonly trace?: string | undefined;
+  /**
+   * `ip:port` to serve one sandboxed agent on, instead of stdio. The agent is
+   * in a container and cannot spawn this process, so `mandate run --sandbox`
+   * starts it on the host and the container's relay connects. See listen.ts.
+   */
+  readonly listen?: string | undefined;
+  /** Written with `{host, port}` once listening, so the launcher can read the port. */
+  readonly readyFile?: string | undefined;
 }
 
 export interface ServeDeps extends AuthorityDeps {
@@ -41,6 +53,13 @@ export interface ServeDeps extends AuthorityDeps {
   readonly connect?: (session: Session) => Promise<void>;
   /** Resolves when the server should shut down. Defaults to the process ending. */
   readonly until?: () => Promise<void>;
+  /**
+   * The relay's shared secret, for `listen`. Read from MANDATE_RELAY_SECRET by
+   * the CLI, so it is never in argv, where any process can read it.
+   */
+  readonly relaySecret?: string | undefined;
+  /** The stream whose end stops a stdio session. Injected for tests. */
+  readonly stdin?: NodeJS.EventEmitter;
 }
 
 /**
@@ -71,6 +90,24 @@ export const untilSignalled = (
 export async function runServe(
   args: ServeArgs, log: (s: string) => void, deps: ServeDeps,
 ): Promise<number> {
+  // Listen-mode inputs are checked before anything is minted: a token minted
+  // for a server that then cannot listen is a credential nobody can use.
+  let listenAt: { host: string; port: number } | undefined;
+  if (args.listen !== undefined) {
+    try {
+      listenAt = parseListenAddress(args.listen);
+      if (deps.relaySecret === undefined) {
+        throw new ListenError(
+          "listening for a sandboxed agent needs MANDATE_RELAY_SECRET, the secret its relay presents",
+        );
+      }
+      checkRelaySecret(deps.relaySecret);
+    } catch (e) {
+      log(e instanceof Error ? e.message : String(e));
+      return 2;
+    }
+  }
+
   const prepared = await prepareMandate(args, deps);
   if (!prepared.ok) {
     if (prepared.code === 1) {
@@ -85,6 +122,7 @@ export async function runServe(
 
   const decisions: Decision[] = [];
   let session: Session;
+  let listener: AgentListener | undefined;
   try {
     session = await openSession({
       mandate: prepared.mandate,
@@ -112,12 +150,35 @@ export async function runServe(
       );
     }
 
-    const connect = deps.connect
-      ?? (async (s: Session) => { await s.proxy.connect(new StdioServerTransport()); });
-    await connect(session);
+    if (listenAt !== undefined && deps.relaySecret !== undefined) {
+      const s = session;
+      listener = await listenForAgent({
+        ...listenAt, secret: deps.relaySecret,
+        connect: async (t) => { await s.proxy.connect(t); },
+      });
+      if (args.readyFile !== undefined) {
+        // Renamed into place, so the launcher never reads a half-written file.
+        writeFileSync(
+          `${args.readyFile}.tmp`,
+          `${JSON.stringify({ host: listener.host, port: listener.port })}\n`, "utf8",
+        );
+        renameSync(`${args.readyFile}.tmp`, args.readyFile);
+      }
+      log(`Listening on ${listener.host}:${listener.port} for the sandbox relay.`);
+      // Not stdin: a serve started by `mandate run` has no agent on it, and
+      // waiting for it to end would shut the session down at once.
+      const l = listener;
+      await (deps.until
+        ?? (() => Promise.race([l.ended, untilSignalled(process, new EventEmitter())])))();
+    } else {
+      const connect = deps.connect
+        ?? (async (s: Session) => { await s.proxy.connect(new StdioServerTransport()); });
+      await connect(session);
 
-    await (deps.until ?? untilSignalled)();
+      await (deps.until ?? (() => untilSignalled(process, deps.stdin ?? process.stdin)))();
+    }
   } finally {
+    if (listener !== undefined) await listener.close();
     // Ordered: the trace is evidence of what happened and is written even when
     // the session ended badly, before the token goes back.
     if (args.trace !== undefined) {
