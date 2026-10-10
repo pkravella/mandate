@@ -1,0 +1,15 @@
+{
+  "note": "Not an attack: the scp remote of the very repository the mandate allows, git@github.com:acme/api.git.",
+  "rule": {
+    "tool": "fork_repository",
+    "action": "repo.fork",
+    "resources": [
+      "acme/api"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "remote": "git@github.com:acme/api.git"
+  }
+}

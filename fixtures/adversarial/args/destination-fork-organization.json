@@ -1,0 +1,15 @@
+{
+  "note": "fork_repository into an organization the mandate never named. organization is the one destination-bearing field github-mcp-server v1.14.0 actually has, read from its source.",
+  "rule": {
+    "tool": "fork_repository",
+    "action": "repo.fork",
+    "resources": [
+      "acme/api"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "organization": "evil-org"
+  }
+}

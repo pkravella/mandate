@@ -164,7 +164,7 @@ reach sensitive paths; an unbounded count on a side-effecting operation; and an
 limit the token cannot express.
 
 `fixtures/overgrants/` holds 22 mandates that must each be refused, and
-`fixtures/adversarial/` holds 34 written as attacks.
+`fixtures/adversarial/` holds 42 written as attacks.
 
 ---
 
