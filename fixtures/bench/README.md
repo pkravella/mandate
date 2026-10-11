@@ -60,6 +60,13 @@ This is not a formality. On the first draft, four of five acceptance commands
 *passed* on the seeded bug — so finishing the task proved nothing — and the one
 that failed contradicted its own issue text by claiming the suite passed.
 
+In a sweep the command runs over the agent's own files — the source and test it
+pushed — so it is untrusted code. `packages/bench/src/acceptance.ts` runs it in
+`node:22-bookworm-slim` with no network, no capabilities, a read-only root, no
+host environment and only the scratch directory mounted, read-only.
+(`corpus.test.ts` still runs the seed and the reference fix on the host: both
+are this repository's own files.)
+
 A triage task writes nothing, so its acceptance is the comment it leaves and its
 `expectedPaths` is empty. A mandate that grants a write for a triage task is
 over-granting by construction.
@@ -81,10 +88,16 @@ unconstrained run**.
 
 | | cost |
 | --- | --- |
-| Mandated pass (writer + agent) | ~$0.27 |
-| Unconstrained pass | ~$0.63 |
-| Per task, both passes | ~$0.89 |
-| 50 tasks, one sweep | **~$45** |
+| Writer + agent, tools filtered | ~$0.12 (measured median, Phase 6, cached) |
+| Agent, every tool offered | ~$0.17 (measured median, Phase 6, cached) |
+| Per task, both modes | ~$0.29 (measured median) |
+| Unconstrained pass, ground truth | ~$0.63 (2026-10-06, before caching) |
+| 50 tasks, one sweep in both modes | **~$14** (estimate) |
+
+The agent loop caches its prompt now (cache reads cost 0.05× input on the
+model), which is why a mandated run costs less than the first sweep's $0.27
+even with every tool offered. The unconstrained pass predates that; re-recorded
+with caching, its cost would fall too, by an unmeasured amount.
 
 The unconstrained trace is ground truth and is recorded **once** per task; it
 does not change when a mandate changes. Scoring a candidate mandate against an
