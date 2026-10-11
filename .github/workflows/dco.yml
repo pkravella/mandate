@@ -25,6 +25,8 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
+          # Who opened the pull request. GitHub sets it; a commit cannot.
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -euo pipefail
 
@@ -46,6 +48,16 @@ jobs:
             checked=$((checked + 1))
             author_email="$(git show -s --format='%ae' "$sha" | tr '[:upper:]' '[:lower:]')"
             committer_email="$(git show -s --format='%ce' "$sha" | tr '[:upper:]' '[:lower:]')"
+
+            # Dependabot cannot sign off. Its own commits on its own pull
+            # requests are exempt, and nothing else: the author email alone is
+            # whatever a committer chose to set, and the pull request's author
+            # alone would also exempt a human pushing onto Dependabot's branch.
+            if [ "$PR_AUTHOR" = "dependabot[bot]" ] \
+            && [ "$author_email" = "49699333+dependabot[bot]@users.noreply.github.com" ]; then
+              echo "skip  ${sha:0:8}  ${author_email} (Dependabot)"
+              continue
+            fi
 
             # `|| true` matters: with `set -o pipefail`, a grep that finds no
             # sign-off would otherwise abort the whole step instead of letting
