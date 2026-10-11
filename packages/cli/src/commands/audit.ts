@@ -142,7 +142,10 @@ export function runAuditVerify(args: AuditVerifyArgs, log: (s: string) => void):
     }
   }
   if (v.sealed) {
-    log("Sealed: the session closed cleanly and this is the whole log.");
+    log(v.sealedAs === "never-opened"
+      ? "Sealed: the session never opened (the mint or the upstream failed), so nothing was "
+        + "served; this is the whole log."
+      : "Sealed: the session served and then closed, and this is the whole log.");
     return 0;
   }
   log(

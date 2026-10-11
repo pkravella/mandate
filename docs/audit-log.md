@@ -39,6 +39,12 @@ Before anything is minted, Mandate checks that the key exists and is an Ed25519
 key only its owner can read, and that the log file does not already exist. An
 audit log is never overwritten. If any of those fails, nothing runs.
 
+One log is one session. Without `--sandbox` the agent starts serve itself, and
+if it restarts its MCP server (a crash, or a manual reconnect) the new serve
+finds the log already there and refuses to start, so the agent loses its tools
+for the rest of the run. Start a new run with a new log name instead. With
+`--sandbox` serve takes one connection and only the operator can start another.
+
 ## Checking a log
 
 ```bash
@@ -58,12 +64,17 @@ Proved against ceiling org-policy-v12.cedar (sha256 c07d000000000000000000000000
 Not sealed: the session was killed, or the end of the log was cut off. Nothing in the file can tell which, so events after the last one here may be missing.
 ```
 
-A session that closed cleanly ends `Sealed: the session closed cleanly and this
-is the whole log.` instead.
+A sealed log ends with one of two lines. `Sealed: the session served and then
+closed` means the agent was served and the session ended: the agent left, a
+signal arrived, or the mandate expired. `Sealed: the session never opened`
+means the mint or the upstream failed and nothing was served. A seal says the
+log is complete, not that the task succeeded.
 
 Exit 0 means intact and sealed. Exit 1 means either that a line does not verify,
 in which case the line is named, or that the log has no seal. Exit 2 means a
-file could not be read or the key is not an Ed25519 public key.
+file could not be read or the key is not an Ed25519 public key. Given the
+private key by mistake, it refuses and says so: whoever holds that file can
+sign any log.
 
 **A log with no seal** comes from one of two things: the session was killed, or
 someone cut lines off the end. Nothing in the file can tell those apart, and the
@@ -118,9 +129,9 @@ The events:
 | `type` | When | Carries |
 | --- | --- | --- |
 | `open` | First, before the token is minted | `format`, `at`, `keyId` (sha256 of the public key's SPKI DER), a random `session`, `mandateId`, `mandateHash`, `ceiling` (`label`, `sha256`), and the `mandate` itself |
-| `forwarded` | An allowed call, as it is sent upstream | `call` (1, 2, …) and what the call named: `at`, `tool`, `action`, `resource`, `branch`, `paths`, `base`, `destinations` |
+| `forwarded` | An allowed call, as it is sent upstream | `call` (1, 2, …) and what the call named, as a trace node names it: `at`, `tool`, `action`, `resource`, `branch`, `paths`, `base`, `destinations`, `unreadableDestinations`, `method` |
 | `node` | A decision, as it completes | `node` (an action-graph node, held to the trace's rules) and, on an allowed call, the `call` it finishes |
-| `seal` | After the session closed and the token was revoked | `at` |
+| `seal` | After the session closed and the token was revoked | `at`, and `reason`: `closed` (it served) or `never-opened` |
 
 The verifier also recomputes the mandate's hash from the embedded mandate,
 requires one `open` event and nothing after the `seal`, requires every allowed

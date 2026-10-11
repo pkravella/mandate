@@ -236,6 +236,32 @@ describe("verifyAuditLog", () => {
   });
 
   // The case completion-only recording loses: sent to GitHub, never answered.
+  // A seal says the log is complete, not that the agent ran. A session whose
+  // mint or upstream failed is sealed too, and must not read as one that ran.
+  it("records why the log was sealed", () => {
+    const { path: keyPath, publicPem } = keyFile();
+    const ran = join(dir, "ran.jsonl");
+    session(ran, keyPath);
+    expect(verifyAuditLog(readFileSync(ran, "utf8"), publicPem)).toMatchObject({ sealedAs: "closed" });
+
+    const never = join(dir, "never.jsonl");
+    const log = AuditLog.create(never, loadAuditKey(keyPath));
+    log.open(MANDATE, CEILING);
+    log.seal("never-opened");
+    expect(verifyAuditLog(readFileSync(never, "utf8"), publicPem))
+      .toMatchObject({ ok: true, sealed: true, sealedAs: "never-opened" });
+  });
+
+  // An auditor handed the signing key by mistake must be told, not given a
+  // clean verdict while holding the one file that can forge a log.
+  it("refuses a private key given as the public key", () => {
+    const { path: keyPath } = keyFile();
+    const logPath = join(dir, "audit.jsonl");
+    session(logPath, keyPath);
+    expect(() => verifyAuditLog(readFileSync(logPath, "utf8"), readFileSync(keyPath, "utf8")))
+      .toThrow(/private key/);
+  });
+
   it("names a call that was forwarded and never completed", () => {
     const { path: keyPath, publicPem } = keyFile();
     const logPath = join(dir, "audit.jsonl");
@@ -324,7 +350,7 @@ describe("verifyAuditLog", () => {
         mandateHash: mandateHash(MANDATE),
       mandate: MANDATE,
     }, privateKey);
-    forge(ls, { type: "seal", at: new Date().toISOString() }, privateKey);
+    forge(ls, { type: "seal", at: new Date().toISOString(), reason: "closed" }, privateKey);
     expect(verifyAuditLog(ls.map((l) => `${l}\n`).join(""), publicPem))
       .toMatchObject({ ok: true, sealed: true });
   });

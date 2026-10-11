@@ -170,9 +170,9 @@ export async function runServe(
     const proof = proofOf(prepared.mandate);
     audit.open(prepared.mandate, { label: proof.ceilingId, sha256: proof.ceilingSha256 });
   }
-  const sealAudit = (): void => {
+  const sealAudit = (reason: "closed" | "never-opened"): void => {
     if (audit === undefined) return;
-    log(audit.seal()
+    log(audit.seal(reason)
       ? `Sealed the audit log at ${args.auditLog ?? ""}.`
       : `The audit log at ${args.auditLog ?? ""} is not sealed; see the error above.`);
   };
@@ -190,7 +190,7 @@ export async function runServe(
     });
   } catch (e) {
     log(`Could not open an enforced session: ${e instanceof Error ? e.message : String(e)}`);
-    sealAudit();
+    sealAudit("never-opened");
     return 2;
   }
 
@@ -279,7 +279,7 @@ export async function runServe(
     log("Session closed and the token revoked.");
     // After close: a call still in flight comes back as the upstream closes,
     // and the seal is the claim that nothing follows it.
-    sealAudit();
+    sealAudit("closed");
   }
 
   const denied = decisions.filter((d) => d.kind === "deny").length;

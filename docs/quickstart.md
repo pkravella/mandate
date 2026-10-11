@@ -147,7 +147,8 @@ node packages/cli/dist/index.js run ... -- node -e \
 clause behind every refusal. It is what replay reads, and `parseJsonl` reads it
 back strictly — an unknown line type, a denial with no clause, or a gap in the
 sequence is a rejection rather than a dropped row. It is written when the
-session ends, so a killed session leaves none.
+session ends, including on Ctrl-C or SIGTERM, so only a session killed outright
+(SIGKILL, a crash) leaves none.
 
 For evidence that survives a kill and can be checked by someone else, add
 `--audit-log session.audit.jsonl` with `MANDATE_AUDIT_KEY_PATH` set to a key

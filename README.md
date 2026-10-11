@@ -201,7 +201,7 @@ which includes the Action's Linux runners.
 
 `--audit-log <path>` on `run` or `serve` writes a signed, append-only record of
 the session as it happens: the mandate, every call sent to GitHub, every
-decision, and a seal when the session closes cleanly. Each line is signed with
+decision, and a seal saying whether the session served or never opened. Each line is signed with
 an Ed25519 key of its own (`MANDATE_AUDIT_KEY_PATH`, made by
 `mandate audit keygen`), never the App's, and chained to the line before it.
 `mandate audit verify <log> --public-key <pub>` checks it with the public half

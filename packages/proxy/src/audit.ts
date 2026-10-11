@@ -30,8 +30,7 @@ import {
  * event carries `seq` (1, 2, ...) and `prev`: the sha256 of the whole previous
  * line, or null on the first. The first event is `open` (the mandate, its
  * hash, the ceiling, the key's id, a random session id), then `forwarded` and
- * `node` events, then a
- * `seal` when the session closed cleanly.
+ * `node` events, then a `seal` saying why the log ended.
  *
  * **Append-only, to the extent a file can be.** Editing, removing or
  * reordering an event breaks a signature or the chain. Cutting lines off the
@@ -53,6 +52,14 @@ export class AuditLogError extends Error {
     this.name = "AuditLogError";
   }
 }
+
+/**
+ * Why a log was sealed. A seal says the log is complete; it does not say the
+ * agent ran. `never-opened`: the session failed before serving (the mint, or
+ * the upstream), so nothing was forwarded. `closed`: the session served and
+ * ended -- the agent left, a signal, or its expiry.
+ */
+export type SealReason = "closed" | "never-opened";
 
 export interface AuditKey {
   readonly privateKey: KeyObject;
@@ -208,9 +215,9 @@ export class AuditLog implements GraphSink {
    * whether the log is sealed: false if it failed earlier or the seal itself
    * could not be written.
    */
-  seal(): boolean {
+  seal(reason: SealReason = "closed"): boolean {
     if (this.#state !== "open") return this.#state === "sealed";
-    this.#emit({ type: "seal", at: this.#now().toISOString() });
+    this.#emit({ type: "seal", at: this.#now().toISOString(), reason });
     if (this.#state === "open") this.#state = "sealed";
     this.#safeClose();
     return this.#state === "sealed";
@@ -307,7 +314,9 @@ const NodeEvent = z.object({
   node: z.unknown(),
 }).strict();
 
-const SealEvent = z.object({ ...Chain, type: z.literal("seal"), at: Timestamp }).strict();
+const SealEvent = z.object({
+  ...Chain, type: z.literal("seal"), at: Timestamp, reason: z.enum(["closed", "never-opened"]),
+}).strict();
 
 const Event = z.discriminatedUnion("type", [OpenEvent, ForwardedEvent, NodeEvent, SealEvent]);
 
@@ -319,6 +328,8 @@ export type AuditVerdict =
     readonly ok: true;
     /** False when the log ends without a seal: killed, or cut off. Indistinguishable. */
     readonly sealed: boolean;
+    /** Present when sealed: whether the session served at all. */
+    readonly sealedAs?: SealReason;
     readonly keyId: string;
     readonly mandateId: string;
     readonly mandateHash: string;
@@ -343,6 +354,21 @@ export type AuditVerdict =
  * Throws `AuditKeyError` if the key is not an Ed25519 public key.
  */
 export function verifyAuditLog(src: string, publicKeyPem: string): AuditVerdict {
+  // createPublicKey would derive the public half from a private key and carry
+  // on. An auditor holding the signing key should be told, not given a clean
+  // verdict with the one file that can forge a log.
+  let isPrivate = true;
+  try {
+    createPrivateKey(publicKeyPem);
+  } catch {
+    isPrivate = false;
+  }
+  if (isPrivate) {
+    throw new AuditKeyError(
+      "that is a private key. Verify with the public key (`.pub`); whoever holds this file "
+      + "can sign any log, so treat it as exposed if it was shared",
+    );
+  }
   let publicKey: KeyObject;
   try {
     publicKey = createPublicKey(publicKeyPem);
@@ -366,6 +392,7 @@ export function verifyAuditLog(src: string, publicKeyPem: string): AuditVerdict 
   let open: z.infer<typeof OpenEvent> | undefined;
   let mandate: Mandate | undefined;
   let sealed = false;
+  let sealedAs: SealReason | undefined;
   let prevLine: string | undefined;
   let verified = 0;
   const nodes: ActionNode[] = [];
@@ -457,6 +484,7 @@ export function verifyAuditLog(src: string, publicKeyPem: string): AuditVerdict 
       }
       case "seal": {
         sealed = true;
+        sealedAs = event.reason;
         break;
       }
     }
@@ -471,6 +499,7 @@ export function verifyAuditLog(src: string, publicKeyPem: string): AuditVerdict 
   return {
     ok: true,
     sealed,
+    ...(sealedAs === undefined ? {} : { sealedAs }),
     keyId: open.keyId,
     mandateId: open.mandateId,
     mandateHash: open.mandateHash,

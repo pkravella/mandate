@@ -14,5 +14,5 @@ export {
 } from "./graph.js";
 export {
   AUDIT_FORMAT, AuditKeyError, AuditLog, AuditLogError, auditKeyId, loadAuditKey,
-  verifyAuditLog, type AuditKey, type AuditLogOptions, type AuditVerdict, type UnfinishedCall,
+  verifyAuditLog, type AuditKey, type AuditLogOptions, type AuditVerdict, type SealReason, type UnfinishedCall,
 } from "./audit.js";

@@ -92,6 +92,27 @@ describe("mandate audit verify", () => {
     expect(out).toContain("org-policy-v12.cedar");
   });
 
+  it("does not say a session ran when it never opened", async () => {
+    const key = fresh("k.pem");
+    const pub = fresh("k.pub");
+    await run(runAuditKeygen, { out: key, publicOut: pub });
+    const log = fresh("never.jsonl");
+    const sink = AuditLog.create(log, loadAuditKey(key));
+    sink.open(MANDATE);
+    sink.seal("never-opened");
+    const { code, out } = await run(runAuditVerify, { file: log, publicKey: pub });
+    expect(code).toBe(0);
+    expect(out).toMatch(/never opened/);
+    expect(out).not.toMatch(/closed cleanly/);
+  });
+
+  it("exits 2, and says so, when given the private key to verify with", async () => {
+    const { key, log } = await keyAndLog();
+    const { code, out } = await run(runAuditVerify, { file: log, publicKey: key });
+    expect(code).toBe(2);
+    expect(out).toMatch(/private key/);
+  });
+
   it("exits 1 for an unsealed log and says a kill and a truncation look the same", async () => {
     const { pub, log } = await keyAndLog({ seal: false });
     const { code, out } = await run(runAuditVerify, { file: log, publicKey: pub });

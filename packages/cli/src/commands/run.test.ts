@@ -505,7 +505,9 @@ describe("mandate serve --audit-log", () => {
     expect(code).toBe(0);
     expect(out).toContain(`Sealed the audit log at ${auditLog}`);
     const v = verifyAuditLog(readFileSync(auditLog, "utf8"), key.publicPem);
-    expect(v).toMatchObject({ ok: true, sealed: true, mandateId: "fix-issue-42", unfinished: [] });
+    expect(v).toMatchObject({
+      ok: true, sealed: true, sealedAs: "closed", mandateId: "fix-issue-42", unfinished: [],
+    });
     if (!v.ok) return;
     expect(v.graph).toEqual(parseJsonl(readFileSync(trace, "utf8")));
     expect(v.graph.nodes.map((n) => n.decision)).toEqual(["allow", "deny"]);
@@ -553,7 +555,7 @@ describe("mandate serve --audit-log", () => {
     });
     expect(code).toBe(2);
     const v = verifyAuditLog(readFileSync(auditLog, "utf8"), key.publicPem);
-    expect(v).toMatchObject({ ok: true, sealed: true, unfinished: [] });
+    expect(v).toMatchObject({ ok: true, sealed: true, sealedAs: "never-opened", unfinished: [] });
     if (v.ok) expect(v.graph.nodes).toEqual([]);
   });
 });
