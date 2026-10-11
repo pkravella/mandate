@@ -328,7 +328,7 @@ Phase 3 added the runtime half and measured it. The full
 | Authority cut, token layer, against 63 repositories | 98.9% | at least 80% |
 | Authority cut, proxy layer, against 63 repositories | 99.8% | at least 80% |
 | Over-grant | **0.0%** | under 10% |
-| Write latency | 11,915 ms | under 10 s |
+| Write latency | 13,010 ms | under 10 s |
 
 Two caveats the report states at length and this table cannot: the corpus is
 **6 tasks, not the 50** Phase 3's exit criterion asks for, and those tasks are
@@ -341,14 +341,23 @@ repository scoping that any token limited to one repository gets without
 Mandate. What Mandate adds per repository is 31 operations to 21 at the token
 and to 4 at the proxy.
 
-**The finding worth reading the report for.** The proxy issued **zero denials**
-across all six runs while replay predicted **seven under-granted calls**.
-Filtering `tools/list` means a tool no grant reaches is never offered, so it is
-never attempted — R10's promise that every pause names the clause it hit is true
-and *vacuous where there is no pause*. An under-grant surfaces as a silent
-workaround or a silent failure instead. The triage task is the clean case: seven
-allowed reads, zero denials, and a failure, because the mandate granted no
-`issue.comment` and the agent had no way to report what it found.
+**The finding worth reading the report for.** With tools filtered, as the
+product runs, the proxy issued **zero denials** across six runs while replay
+predicted **seven under-granted calls**. Filtering `tools/list` means a tool no
+grant reaches is never offered, so it is never attempted — R10's promise that
+every pause names the clause it hit is true and *vacuous where there is no
+pause*.
+
+So the benchmark also runs each mandate with **every tool offered** and refused
+on call. That produced five denials, and they split two ways. Four were
+`issue_read`, three of them on tasks that finished anyway: the agent already had
+the issue text, so most of the "seven predicted" were redundant calls, not
+mandates too narrow.
+The fifth is the real one: the triage agent tried `add_issue_comment`, was
+refused, and could not report what it found. None of the five could be fixed by
+a widen, which may not add an operation, so "widen requests" stays at zero by
+design and the useful count is denials that need a new mandate. One run per mode
+per task; the report says how noisy that is.
 
 ### Packages
 

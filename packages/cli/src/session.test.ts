@@ -163,6 +163,20 @@ describe("openSession", () => {
     await session.close();
   });
 
+  // Task 6.1. The benchmark's measurement mode goes through the one session
+  // seam, so the mode it measures is the enforcement `mandate serve` runs.
+  it("offers every upstream tool when asked to, and still refuses the ungranted ones", async () => {
+    const session = await openSession({
+      mandate: mandate(), github: fakeGithub().deps, upstream: fakeUpstream().connect,
+      toolVisibility: "all",
+    });
+    const agent = await agentFor(session);
+    expect((await agent.listTools()).tools.map((t) => t.name)).toContain("merge_pull_request");
+    const denied = await agent.callTool({ name: "merge_pull_request", arguments: {} });
+    expect(denied.isError).toBe(true);
+    await session.close();
+  });
+
   it("reports every decision it took to the caller", async () => {
     const seen: string[] = [];
     const session = await openSession({

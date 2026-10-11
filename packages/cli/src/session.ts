@@ -41,6 +41,12 @@ export interface SessionOptions {
    */
   readonly upstream?: (token: string) => Promise<Client>;
   readonly onDecision?: (d: Decision) => void;
+  /**
+   * The proxy's `toolVisibility`. The benchmark's measurement mode offers
+   * every tool and refuses on call; it is an option here, rather than a second
+   * way to build a session, so the benchmark measures this enforcement.
+   */
+  readonly toolVisibility?: "granted" | "all";
 }
 
 export interface Session {
@@ -111,6 +117,7 @@ export async function openSession(opts: SessionOptions): Promise<Session> {
       enforceArguments: makeArgumentEnforcer(rules),
       recorder,
       ...(opts.onDecision === undefined ? {} : { onDecision: opts.onDecision }),
+      ...(opts.toolVisibility === undefined ? {} : { toolVisibility: opts.toolVisibility }),
     });
 
     const connected = upstream;

@@ -24,7 +24,12 @@ mandate changes. The published report is
 [`docs/benchmark-report.md`](../../docs/benchmark-report.md).
 
 Beside its traces a sweep writes `results.json`: every result, including the
-validated mandate each run was enforced under. A trace header names its mandate
+validated mandate each run was enforced under. Each task's agent runs once per
+tool-visibility mode under one mandate (`granted`, the product, which offers
+only granted tools; `all`, which offers every tool and refuses on call), and
+each run's trace is `<id>.<mode>.mandated.jsonl`. Before each run the harness
+closes the task's open pull requests and deletes its branch, and it grades
+only what that run created, with a token of its own rather than the mandate's. A trace header names its mandate
 only by id and hash, and the report computes the authority cut from the
 mandates, so without this file a published figure cannot be recomputed — which
 is what happened to the first sweep's.
