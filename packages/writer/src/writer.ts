@@ -44,8 +44,9 @@ const EFFORTS: readonly string[] = ["low", "medium", "high"];
 /**
  * Measured, not assumed (Task 6.2, 2026-10-11). Six corpus tasks written again
  * at `medium` for both calls produced mandates identical to the ones `high`
- * wrote, grant by grant and facet by facet, and every write was faster -- by
- * 0.4 to 5.3 s, median 10.2 s against 11.7 s. Lowering prune alone (`high`
+ * wrote, grant by grant and facet by facet. On the five tasks written at both
+ * settings, every `medium` write was faster -- by 0.4 to 5.3 s, median 10.4 s
+ * against 11.7 s (10.2 s across all six). Lowering prune alone (`high`
  * cover, `low` prune) changed or broke three of five mandates, so the two
  * calls move together. Still over the 10 s target.
  */

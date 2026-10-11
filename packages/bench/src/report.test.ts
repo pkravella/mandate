@@ -395,3 +395,24 @@ describe("renderReport across tool-visibility modes", () => {
     expect(both).toMatch(/Over-grant counts granted operations[^\n]*\(operation × repository\) pairs/);
   });
 });
+
+describe("renderReport after the Phase 6 review", () => {
+  // A run with no mandate -- validate() refused it, or the writer produced
+  // none -- has no over-grant. It entered the median as 0%, the flattering
+  // direction, the same mistake 6.4 fixed for the authority cut.
+  it("leaves runs without a mandate out of the over-grant median, and says how many", () => {
+    const half = { ...result().score, granted: 4, exercised: 2, overGrantRate: 0.5 };
+    const { mandate: _none, ...rejected } =
+      result({ taskId: "t2", proposalRejected: true, completed: false });
+    const out = renderReport([result({ score: half }), rejected], meta());
+    expect(out).toMatch(/\| Over-grant \| 50\.0% \(1 run without a mandate not counted\) \|/);
+  });
+
+  it("says how many runs the figures are over, not that they all completed", () => {
+    const out = renderReport([
+      result(), result({ visibility: "all", completed: false }),
+    ], meta());
+    expect(out).toMatch(/Every figure below is over 2 runs \(1 task × 2 modes\)/);
+    expect(out).not.toMatch(/completed runs/);
+  });
+});

@@ -291,8 +291,9 @@ denial, and that denial was the merge.
 
 Writing a mandate costs about **$0.03** and misses the PRD's under-ten-second
 target. Phase 6 measured the lever: six tasks written again at effort `medium`
-gave mandates identical to `high`'s, facet by facet, and were faster on every
-task -- a median of **10.2 seconds** against 11.7 -- so `medium` is now the
+gave mandates identical to `high`'s, facet by facet. On the five tasks written
+at both settings, every `medium` write was faster -- a median of **10.4
+seconds** against 11.7 (10.2 across all six) -- so `medium` is now the
 default. Lowering only the second call changed three mandates in five. The
 remaining cost is two sequential model calls
 ([writer-effort-results.json](docs/writer-effort-results.json)).

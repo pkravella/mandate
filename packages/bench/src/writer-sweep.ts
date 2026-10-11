@@ -198,3 +198,44 @@ export function summarizeWriterSweep(records: readonly WriterSweepRecord[]): str
   lines.push("", diffs.length === 0 ? "Every mandate matched its baseline." : diffs.join("\n"));
   return lines.join("\n");
 }
+
+/**
+ * The figures a setting comparison rests on, paired by task: a candidate
+ * against the control on the tasks both ran, so a missing write at one setting
+ * cannot make the other look faster or slower.
+ */
+export function effortFindings(
+  records: readonly WriterSweepRecord[], control: WriterSetting, candidate: WriterSetting,
+): {
+  readonly paired: number;
+  readonly candidateFasterOnAll: boolean;
+  readonly candidatePairedMedianMs: number;
+  readonly controlPairedMedianMs: number;
+  readonly candidateAllMedianMs: number;
+  readonly fastestGainMs: number;
+  readonly largestGainMs: number;
+  readonly candidateIdentical: readonly [number, number];
+  readonly controlIdentical: readonly [number, number];
+} {
+  const of = (s: WriterSetting) => records.filter((r) => key(r.setting) === key(s));
+  const c = of(candidate);
+  const k = of(control);
+  const pairs = c.flatMap((r) => {
+    const m = k.find((x) => x.taskId === r.taskId);
+    return m === undefined ? [] : [{ cand: r.latencyMs, ctrl: m.latencyMs }];
+  });
+  const gains = pairs.map((p) => p.ctrl - p.cand);
+  const identical = (rs: readonly WriterSweepRecord[]): readonly [number, number] =>
+    [rs.filter((r) => r.identical).length, rs.length];
+  return {
+    paired: pairs.length,
+    candidateFasterOnAll: pairs.length > 0 && gains.every((g) => g > 0),
+    candidatePairedMedianMs: median(pairs.map((p) => p.cand)),
+    controlPairedMedianMs: median(pairs.map((p) => p.ctrl)),
+    candidateAllMedianMs: median(c.map((r) => r.latencyMs)),
+    fastestGainMs: gains.length === 0 ? 0 : Math.min(...gains),
+    largestGainMs: gains.length === 0 ? 0 : Math.max(...gains),
+    candidateIdentical: identical(c),
+    controlIdentical: identical(k),
+  };
+}

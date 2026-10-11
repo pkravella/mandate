@@ -65,6 +65,12 @@ interface GithubCall { readonly route: string; readonly token: string; readonly 
 const fakeGithub = (opts: {
   pulls?: (listing: number) => readonly { number: number; head: { ref: string } }[];
   comments?: (listing: number) => readonly { id: number; body: string }[];
+  /** What deleting the task branch answers. 204 by default. */
+  refDelete?: { status: number; message?: string };
+  /** What closing a pull request answers. 200 by default. */
+  prClose?: number;
+  /** What listing pull requests answers. 200 by default. */
+  pullsStatus?: number;
 } = {}): {
   deps: MintDeps; revokes: () => number; calls: GithubCall[]; mints: Record<string, unknown>[];
 } => {
@@ -105,7 +111,13 @@ const fakeGithub = (opts: {
         }
         if (route === "GET /repos/{owner}/{repo}/pulls") {
           pullListings += 1;
-          return { status: 200, data: opts.pulls?.(pullListings) ?? [] };
+          return { status: opts.pullsStatus ?? 200, data: opts.pulls?.(pullListings) ?? [] };
+        }
+        if (route === "DELETE /repos/{owner}/{repo}/git/refs/{ref}" && opts.refDelete !== undefined) {
+          return { status: opts.refDelete.status, data: { message: opts.refDelete.message ?? "" } };
+        }
+        if (route.startsWith("PATCH ") && opts.prClose !== undefined) {
+          return { status: opts.prClose, data: {} };
         }
         if (route.startsWith("PATCH ") || route.startsWith("DELETE ")) {
           return { status: route.startsWith("DELETE ") ? 204 : 200, data: {} };
@@ -643,5 +655,82 @@ describe("reusing an earlier sweep's results", () => {
     expect(merged.map((r) => `${r.taskId}:${r.visibility}`)).toEqual([
       `${first!.id}:granted`, `${first!.id}:all`, `${second!.id}:granted`, `${second!.id}:all`,
     ]);
+  });
+});
+
+// Found by the Phase 6 review. A writer failure propagated out of runBench, so
+// the task recorded nothing, its spend was counted nowhere and the report was
+// never written; and a reset that failed was not noticed, so the second mode
+// could be graded on the first mode's commits.
+describe("runBench after the Phase 6 review", () => {
+  /** A writer whose prune keeps nothing, which the mandate contract refuses. */
+  const emptyPrune = (failFirstOnly = false): Anthropic => {
+    const real = fakeAnthropic();
+    const stream = real.messages.stream.bind(real.messages);
+    let prunes = 0;
+    (real.messages as { stream: unknown }).stream = (params: Anthropic.MessageStreamParams) => {
+      if (!toolNames(params).includes("keep_grants")) return stream(params);
+      prunes += 1;
+      if (failFirstOnly && prunes > 1) return stream(params);
+      return {
+        finalMessage: async () => ({
+          stop_reason: "tool_use", stop_details: null, usage,
+          content: [{ type: "tool_use", id: "tu", name: "keep_grants", input: { keep: [] }, caller: { type: "direct" } }],
+        }),
+      };
+    };
+    return real;
+  };
+
+  it("records a writer failure once per mode, charges its spend once, and goes on", async () => {
+    const corpus = loadCorpus(CORPUS);
+    const two = { ...corpus, tasks: corpus.tasks.slice(0, 2) };
+    const results = await runBench(two, depsFor({ anthropic: emptyPrune(true), modes: ["granted", "all"] }));
+    // The second task still ran: it has a mandate, and its evidence is its run's.
+    expect(results.map((r) => [r.taskId === two.tasks[0]!.id, r.visibility, r.mandate !== undefined]))
+      .toEqual([[true, "granted", false], [true, "all", false], [false, "granted", true], [false, "all", true]]);
+    expect(results[2]!.completionEvidence).not.toMatch(/writer/);
+    expect(results[0]!.completionEvidence).toMatch(/writer/);
+    expect(results[0]!.mandate).toBeUndefined();
+    expect(results[0]!.cost).toBeGreaterThan(0);
+    expect(results[1]!.cost).toBe(0);
+  });
+
+  it("does not run a mode whose reset could not delete the branch", async () => {
+    const agentRequests: Anthropic.MessageStreamParams[] = [];
+    const gh = fakeGithub({ refDelete: { status: 403, message: "Resource not accessible by integration" } });
+    const results = await runBench(oneTask(), depsFor({
+      github: gh.deps, anthropic: fakeAnthropic({ agentRequests }), modes: ["granted", "all"],
+    }));
+    expect(results.map((r) => r.completed)).toEqual([false, false]);
+    expect(results[0]!.completionEvidence).toMatch(/reset/);
+    expect(agentRequests).toHaveLength(0);
+  });
+
+  it("does not run a mode whose reset could not close an open pull request", async () => {
+    const gh = fakeGithub({
+      pulls: () => [{ number: 3, head: { ref: "agent/retry-swallows-last-error" } }], prClose: 403,
+    });
+    const results = await runBench(oneTask(), depsFor({ github: gh.deps }));
+    expect(results[0]?.completionEvidence).toMatch(/reset[^]*#3/);
+  });
+
+  it("does not run a mode whose reset could not list the branch's pull requests", async () => {
+    const results = await runBench(oneTask(), depsFor({ github: fakeGithub({ pullsStatus: 502 }).deps }));
+    expect(results[0]?.completionEvidence).toMatch(/reset[^]*502/);
+  });
+
+  it("treats a branch that is already gone as reset", async () => {
+    for (const refDelete of [{ status: 404 }, { status: 422, message: "Reference does not exist" }]) {
+      const results = await runBench(oneTask(), depsFor({ github: fakeGithub({ refDelete }).deps }));
+      expect(results[0]?.completionEvidence, JSON.stringify(refDelete)).not.toMatch(/reset/);
+    }
+  });
+
+  it("does not treat any other 422 as a branch already gone", async () => {
+    const results = await runBench(oneTask(), depsFor({
+      github: fakeGithub({ refDelete: { status: 422, message: "Validation Failed" } }).deps,
+    }));
+    expect(results[0]?.completionEvidence).toMatch(/reset/);
   });
 });
