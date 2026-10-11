@@ -256,6 +256,9 @@ const depsFor = (over: Partial<BenchDeps> = {}): BenchDeps => {
     issues: Object.fromEntries(corpus.tasks.map((t, i) => [t.id, i + 7])),
     outDir,
     upstream: fakeUpstream([]),
+    // Offline, acceptance never runs anything: it fails, as the stub files
+    // would have when it ran them on the host.
+    acceptance: () => ({ passed: false, detail: "offline" }),
     log: (m: string) => { if (process.env.BENCH_DEBUG) console.log('LOG:', m); },
     ...over,
   };
@@ -732,5 +735,34 @@ describe("runBench after the Phase 6 review", () => {
       github: fakeGithub({ refDelete: { status: 422, message: "Validation Failed" } }).deps,
     }));
     expect(results[0]?.completionEvidence).toMatch(/reset/);
+  });
+});
+
+// The acceptance command runs the agent's own files; the harness hands it to a
+// runner (a locked-down container by default) and never runs it itself.
+describe("runBench's acceptance runner", () => {
+  it("hands the runner the task's command and a directory holding the branch's files", async () => {
+    const seen: { dir: string; command: string; files: string[] }[] = [];
+    const results = await runBench(oneTask(), depsFor({
+      acceptance: (dir, command) => {
+        seen.push({ dir, command, files: readdirSync(join(dir, "src")) });
+        return { passed: true, detail: "" };
+      },
+      github: fakeGithub({
+        pulls: (n) => (n === 1 ? [] : [{ number: 7, head: { ref: "agent/retry-swallows-last-error" } }]),
+      }).deps,
+    }));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.command).toBe(oneTask().tasks[0]!.acceptance.kind === "test"
+      ? (oneTask().tasks[0]!.acceptance as { command: string }).command : "");
+    expect(seen[0]!.files).toContain("retry.js");
+    expect(results[0]?.completed).toBe(true);
+  });
+
+  it("puts the runner's reason in the evidence when acceptance fails", async () => {
+    const results = await runBench(oneTask(), depsFor({
+      acceptance: () => ({ passed: false, detail: "timed out after 120 s" }),
+    }));
+    expect(results[0]?.completionEvidence).toMatch(/timed out after 120 s/);
   });
 });
