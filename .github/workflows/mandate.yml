@@ -85,7 +85,7 @@ jobs:
 
       # The action graph is the audit record for the run: every call, its
       # decision, and the clause behind every refusal.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: mandate-trace
