@@ -634,6 +634,38 @@ export function selectTasks(
   return { corpus: { ...corpus, tasks: corpus.tasks.filter((t) => wanted.has(t.id)) }, subset: true };
 }
 
+/**
+ * An earlier sweep's results, reused rather than paid for again
+ * (`MANDATE_BENCH_PRIOR`). A task is done only if they cover it in every mode
+ * this sweep runs; a partial task runs again and its earlier results are
+ * dropped, so no task mixes runs from two sweeps.
+ */
+export function applyPrior(
+  corpus: Corpus, prior: readonly BenchResult[], modes: readonly ToolVisibility[],
+): { readonly corpus: Corpus; readonly kept: readonly BenchResult[] } {
+  for (const r of prior) {
+    if (!corpus.tasks.some((t) => t.id === r.taskId)) {
+      throw new Error(`earlier results name ${JSON.stringify(r.taskId)}, which is not in the corpus`);
+    }
+  }
+  const done = new Set(corpus.tasks
+    .filter((t) => modes.every((m) => prior.some((r) => r.taskId === t.id && r.visibility === m)))
+    .map((t) => t.id));
+  return {
+    corpus: { ...corpus, tasks: corpus.tasks.filter((t) => !done.has(t.id)) },
+    kept: prior.filter((r) => done.has(r.taskId) && modes.includes(r.visibility)),
+  };
+}
+
+/** Results in corpus order, then mode order, whichever sweep produced them. */
+export function inCorpusOrder(
+  corpus: Corpus, results: readonly BenchResult[], modes: readonly ToolVisibility[],
+): readonly BenchResult[] {
+  const at = (r: BenchResult): number =>
+    corpus.tasks.findIndex((t) => t.id === r.taskId) * modes.length + modes.indexOf(r.visibility);
+  return [...results].sort((a, b) => at(a) - at(b));
+}
+
 /** Reads the committed ground-truth traces for a corpus. */
 export function loadGroundTruth(
   corpusDir: string, corpus: Corpus,

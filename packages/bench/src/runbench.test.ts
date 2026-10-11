@@ -12,7 +12,11 @@ import type { MintDeps } from "@mandate-dev/compiler";
 import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
 import { parseJsonl } from "@mandate-dev/proxy";
 import { mandateHash, MandateSchema } from "@mandate-dev/schema";
-import { costOf, parseModes, runBench, loadGroundTruth, selectTasks, type BenchDeps } from "./harness.js";
+import {
+  applyPrior, costOf, inCorpusOrder, parseModes, runBench, loadGroundTruth, selectTasks,
+  type BenchDeps,
+} from "./harness.js";
+import type { BenchResult } from "./report.js";
 import { loadCorpus } from "./tasks.js";
 
 /**
@@ -589,5 +593,42 @@ describe("sweep options", () => {
 
   it("refuses a task id it does not know", () => {
     expect(() => selectTasks(loadCorpus(CORPUS), "no-such-task")).toThrow(/no-such-task/);
+  });
+});
+
+// Stage 2 of the 6.1 sweep reuses stage 1's paid-for run instead of buying it
+// again. A task counts as done only if the earlier results cover it in every
+// mode this sweep runs; anything partial is run again rather than mixed.
+describe("reusing an earlier sweep's results", () => {
+  const corpus = loadCorpus(CORPUS);
+  const [first, second] = corpus.tasks;
+  const prior = (taskId: string, visibility: "granted" | "all"): BenchResult =>
+    ({ taskId, visibility, category: "single-file-fix" } as unknown as BenchResult);
+
+  it("skips a task the earlier results cover in every mode, and keeps those results", () => {
+    const earlier = [prior(first!.id, "granted"), prior(first!.id, "all")];
+    const { corpus: rest, kept } = applyPrior(corpus, earlier, ["granted", "all"]);
+    expect(rest.tasks.map((t) => t.id)).not.toContain(first!.id);
+    expect(rest.tasks).toHaveLength(corpus.tasks.length - 1);
+    expect(kept).toEqual(earlier);
+  });
+
+  it("runs a task again when the earlier results lack one of its modes, and drops them", () => {
+    const { corpus: rest, kept } = applyPrior(corpus, [prior(first!.id, "granted")], ["granted", "all"]);
+    expect(rest.tasks.map((t) => t.id)).toContain(first!.id);
+    expect(kept).toEqual([]);
+  });
+
+  it("refuses results for a task the corpus does not have", () => {
+    expect(() => applyPrior(corpus, [prior("no-such-task", "granted")], ["granted"])).toThrow(/no-such-task/);
+  });
+
+  it("puts merged results in corpus order, then mode order", () => {
+    const merged = inCorpusOrder(corpus, [
+      prior(second!.id, "all"), prior(first!.id, "all"), prior(second!.id, "granted"), prior(first!.id, "granted"),
+    ], ["granted", "all"]);
+    expect(merged.map((r) => `${r.taskId}:${r.visibility}`)).toEqual([
+      `${first!.id}:granted`, `${first!.id}:all`, `${second!.id}:granted`, `${second!.id}:all`,
+    ]);
   });
 });

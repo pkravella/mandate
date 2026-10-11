@@ -7,8 +7,10 @@ import { githubAppDeps } from "@mandate-dev/compiler";
 import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
 import { seededIssues } from "./seed.js";
 import { loadCorpus, compositionOf } from "./tasks.js";
-import { loadGroundTruth, parseModes, runBench, selectTasks } from "./harness.js";
-import { renderReport, type CorpusMeta } from "./report.js";
+import {
+  applyPrior, inCorpusOrder, loadGroundTruth, parseModes, runBench, selectTasks,
+} from "./harness.js";
+import { renderReport, type BenchResult, type CorpusMeta } from "./report.js";
 
 /**
  * The mandated sweep, and the v0.1 report. **This is Phase 3's exit
@@ -23,7 +25,9 @@ import { renderReport, type CorpusMeta } from "./report.js";
  * MANDATE_BENCH_MODES=granted,all (the default) runs each task's agent once
  * per tool-visibility mode under one mandate (Task 6.1). MANDATE_BENCH_TASKS
  * runs only the named tasks, and then writes its report to bench/out/ rather
- * than replacing the published one.
+ * than replacing the published one. MANDATE_BENCH_PRIOR names an earlier
+ * sweep's results.json: tasks it covers in every mode are not run again, and
+ * the report and results.json cover both.
  */
 const env = (n: string): string | undefined => process.env[n];
 const enabled = env("MANDATE_BENCH") === "1"
@@ -88,7 +92,11 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       expect(issues[task.id], `${task.id} has no seeded issue`).toBeDefined();
     }
 
-    const results = await runBench(corpus, {
+    const priorPath = env("MANDATE_BENCH_PRIOR");
+    const prior = priorPath === undefined ? [] : JSON.parse(read(priorPath)) as BenchResult[];
+    const { corpus: toRun, kept } = applyPrior(corpus, prior, modes);
+
+    const fresh = await runBench(toRun, {
       anthropic: new Anthropic(),
       github,
       installationId,
@@ -101,6 +109,9 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       budget: Number(env("MANDATE_BENCH_BUDGET") ?? "2.50"),
       log: (s) => { console.log(`    ${s}`); },
     });
+    // One file holds every result the report is computed from.
+    const results = inCorpusOrder(corpus, [...kept, ...fresh], modes);
+    writeFileSync(join(OUT, "results.json"), `${JSON.stringify(results, null, 2)}\n`, "utf8");
 
     const meta: CorpusMeta = {
       repo: corpus.repo,
