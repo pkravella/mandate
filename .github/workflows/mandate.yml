@@ -26,12 +26,12 @@ jobs:
   mandated-run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7.0.1
         with:
           # Do not leave a credential in .git/config for the agent to use.
           persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
 
@@ -85,7 +85,7 @@ jobs:
 
       # The action graph is the audit record for the run: every call, its
       # decision, and the clause behind every refusal.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: mandate-trace
