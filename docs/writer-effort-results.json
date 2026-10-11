@@ -1,0 +1,547 @@
+[
+  {
+    "taskId": "retry-swallows-last-error",
+    "setting": {
+      "cover": "high",
+      "prune": "high"
+    },
+    "latencyMs": 15756,
+    "callLatencyMs": {
+      "cover": 8997,
+      "prune": 6754
+    },
+    "cost": 0.041344,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "retry-swallows-last-error",
+    "setting": {
+      "cover": "high",
+      "prune": "low"
+    },
+    "latencyMs": 10115,
+    "callLatencyMs": {
+      "cover": 7587,
+      "prune": 2527
+    },
+    "cost": 0.034044000000000005,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "retry-swallows-last-error",
+    "setting": {
+      "cover": "medium",
+      "prune": "medium"
+    },
+    "latencyMs": 10448,
+    "callLatencyMs": {
+      "cover": 6739,
+      "prune": 3709
+    },
+    "cost": 0.032444,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "parse-config-throws-on-empty",
+    "setting": {
+      "cover": "high",
+      "prune": "low"
+    },
+    "latencyMs": 11811,
+    "callLatencyMs": {
+      "cover": 0,
+      "prune": 0
+    },
+    "cost": 0.033184,
+    "accepted": false,
+    "identical": false,
+    "differences": [
+      "no mandate: the assembled mandate does not satisfy the contract: grants: Too small: expected array to have >=1 items"
+    ]
+  },
+  {
+    "taskId": "parse-config-throws-on-empty",
+    "setting": {
+      "cover": "medium",
+      "prune": "medium"
+    },
+    "latencyMs": 10998,
+    "callLatencyMs": {
+      "cover": 6029,
+      "prune": 4969
+    },
+    "cost": 0.034783999999999995,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "parse-config-throws-on-empty",
+    "setting": {
+      "cover": "high",
+      "prune": "high"
+    },
+    "latencyMs": 11652,
+    "callLatencyMs": {
+      "cover": 7085,
+      "prune": 4566
+    },
+    "cost": 0.034524,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "paginate-drops-last-page",
+    "setting": {
+      "cover": "medium",
+      "prune": "medium"
+    },
+    "latencyMs": 8827,
+    "callLatencyMs": {
+      "cover": 5547,
+      "prune": 3280
+    },
+    "cost": 0.029920000000000002,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "paginate-drops-last-page",
+    "setting": {
+      "cover": "high",
+      "prune": "high"
+    },
+    "latencyMs": 10589,
+    "callLatencyMs": {
+      "cover": 6066,
+      "prune": 4523
+    },
+    "cost": 0.03356,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "paginate-drops-last-page",
+    "setting": {
+      "cover": "high",
+      "prune": "low"
+    },
+    "latencyMs": 9992,
+    "callLatencyMs": {
+      "cover": 6298,
+      "prune": 3694
+    },
+    "cost": 0.02986,
+    "accepted": true,
+    "identical": false,
+    "differences": [
+      "issue.read: extra"
+    ],
+    "score": {
+      "granted": 5,
+      "exercised": 5,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [],
+      "underGrantRate": 0,
+      "consideredCalls": 6,
+      "missingActions": []
+    }
+  },
+  {
+    "taskId": "slug-collides-on-truncation",
+    "setting": {
+      "cover": "high",
+      "prune": "high"
+    },
+    "latencyMs": 12159,
+    "callLatencyMs": {
+      "cover": 7645,
+      "prune": 4514
+    },
+    "cost": 0.035976,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.09090909090909091,
+      "consideredCalls": 11,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "slug-collides-on-truncation",
+    "setting": {
+      "cover": "high",
+      "prune": "low"
+    },
+    "latencyMs": 8688,
+    "callLatencyMs": {
+      "cover": 6234,
+      "prune": 2454
+    },
+    "cost": 0.030036,
+    "accepted": true,
+    "identical": false,
+    "differences": [
+      "issue.read: extra"
+    ],
+    "score": {
+      "granted": 5,
+      "exercised": 5,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [],
+      "underGrantRate": 0,
+      "consideredCalls": 11,
+      "missingActions": []
+    }
+  },
+  {
+    "taskId": "slug-collides-on-truncation",
+    "setting": {
+      "cover": "medium",
+      "prune": "medium"
+    },
+    "latencyMs": 10912,
+    "callLatencyMs": {
+      "cover": 6294,
+      "prune": 4617
+    },
+    "cost": 0.032355999999999996,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.09090909090909091,
+      "consideredCalls": 11,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "bump-pinned-tool-version",
+    "setting": {
+      "cover": "high",
+      "prune": "low"
+    },
+    "latencyMs": 11172,
+    "callLatencyMs": {
+      "cover": 7121,
+      "prune": 4045
+    },
+    "cost": 0.03174,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "bump-pinned-tool-version",
+    "setting": {
+      "cover": "medium",
+      "prune": "medium"
+    },
+    "latencyMs": 8289,
+    "callLatencyMs": {
+      "cover": 4224,
+      "prune": 4065
+    },
+    "cost": 0.0283,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 4,
+      "exercised": 4,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.16666666666666666,
+      "consideredCalls": 6,
+      "missingActions": [
+        "issue.read"
+      ]
+    }
+  },
+  {
+    "taskId": "triage-timer-leak",
+    "setting": {
+      "cover": "high",
+      "prune": "high"
+    },
+    "latencyMs": 10355,
+    "callLatencyMs": {
+      "cover": 6399,
+      "prune": 3952
+    },
+    "cost": 0.025308000000000004,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 1,
+      "exercised": 1,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        },
+        {
+          "seq": 7,
+          "tool": "add_issue_comment",
+          "clause": "mandate.grants",
+          "reason": "add_issue_comment is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.2857142857142857,
+      "consideredCalls": 7,
+      "missingActions": [
+        "issue.comment",
+        "issue.read",
+        "pull_request.comment"
+      ]
+    }
+  },
+  {
+    "taskId": "triage-timer-leak",
+    "setting": {
+      "cover": "medium",
+      "prune": "medium"
+    },
+    "latencyMs": 9924,
+    "callLatencyMs": {
+      "cover": 5813,
+      "prune": 4109
+    },
+    "cost": 0.025528000000000002,
+    "accepted": true,
+    "identical": true,
+    "differences": [],
+    "score": {
+      "granted": 1,
+      "exercised": 1,
+      "overGrantRate": 0,
+      "unusedActions": [],
+      "underGrants": [
+        {
+          "seq": 1,
+          "tool": "issue_read",
+          "clause": "mandate.grants",
+          "reason": "issue_read is not reachable from any operation this mandate grants"
+        },
+        {
+          "seq": 7,
+          "tool": "add_issue_comment",
+          "clause": "mandate.grants",
+          "reason": "add_issue_comment is not reachable from any operation this mandate grants"
+        }
+      ],
+      "underGrantRate": 0.2857142857142857,
+      "consideredCalls": 7,
+      "missingActions": [
+        "issue.comment",
+        "issue.read",
+        "pull_request.comment"
+      ]
+    }
+  }
+]

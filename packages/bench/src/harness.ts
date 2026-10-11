@@ -63,7 +63,7 @@ export const costOf = (u: BilledUsage): number =>
  * assumed. `WriteResult` carries a latency but no cost, and quoting a remembered
  * $0.03 in a published report would be a number nobody took.
  */
-const recordingUsage = (
+export const recordingUsage = (
   real: Anthropic, into: Anthropic.Usage[],
 ): Parameters<typeof writeMandate>[0] => ({
   messages: {

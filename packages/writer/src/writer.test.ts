@@ -214,13 +214,61 @@ describe("writeMandate", () => {
     expect(rec.sent).toHaveLength(2);
     for (const params of rec.sent) {
       expect(params.model).toBe("claude-opus-5-5");
-      // Opus 5.5 defaults to `medium`; mandate writing is correctness-sensitive.
-      expect(params.output_config?.effort).toBe("high");
+      // Explicit, never the model's default. `medium` by measurement (Task
+      // 6.2): six tasks wrote mandates identical to `high`'s, faster on every
+      // task; `high/low` changed three of five, so prune is not lowered alone.
+      expect(params.output_config?.effort).toBe("medium");
       expect(params.thinking).toEqual({ type: "adaptive" });
       // Forced tool_choice is a 400 on this model.
       expect(params.tool_choice).toEqual({ type: "auto" });
       expect(params.tools?.every((t) => "strict" in t && t.strict === true)).toBe(true);
     }
+  });
+
+  // Task 6.2. Effort is the latency lever, and cover (what is granted) and
+  // prune (what of it to keep) carry different risk, so each call has its own.
+  it("asks each call at the effort the request names", async () => {
+    const rec = stub(FIX_42);
+    await writeMandate(rec.client, { ...req, effort: { cover: "high", prune: "low" } });
+    expect(rec.sent.map((p) => p.output_config?.effort)).toEqual(["high", "low"]);
+  });
+
+  it("uses medium for a call the request does not name", async () => {
+    const rec = stub(FIX_42);
+    await writeMandate(rec.client, { ...req, effort: { prune: "high" } });
+    expect(rec.sent.map((p) => p.output_config?.effort)).toEqual(["medium", "high"]);
+  });
+
+  it("refuses an effort it does not know, before calling the model", async () => {
+    const rec = stub(FIX_42);
+    await expect(writeMandate(rec.client, {
+      ...req, effort: { cover: "max" as unknown as "high" },
+    })).rejects.toThrow(/effort/);
+    expect(rec.sent).toHaveLength(0);
+  });
+
+  // Total latency alone cannot say which of the two sequential calls to make
+  // faster.
+  it("reports each call's latency as well as the total", async () => {
+    const slow = (ms: number, name: string, input: unknown) => ({
+      finalMessage: async () => {
+        await new Promise((r) => setTimeout(r, ms));
+        return { stop_reason: "tool_use" as const, stop_details: null, content: [toolUse(name, input)] };
+      },
+    });
+    let call = 0;
+    const client: AnthropicLike = {
+      messages: {
+        stream: () => (call++ === 0
+          ? slow(60, "propose_grants", FIX_42[0])
+          : slow(20, "keep_grants", FIX_42[1])),
+      },
+    };
+    const r = await writeMandate(client, req);
+    expect(r.callLatencyMs.cover).toBeGreaterThanOrEqual(55);
+    expect(r.callLatencyMs.prune).toBeGreaterThanOrEqual(15);
+    expect(r.callLatencyMs.prune).toBeLessThan(r.callLatencyMs.cover);
+    expect(r.latencyMs).toBeGreaterThanOrEqual(r.callLatencyMs.cover + r.callLatencyMs.prune);
   });
 
   // The test that would have caught the plan's central bug. Nothing the writer
