@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -16,6 +15,7 @@ import { WriterError, writeMandate } from "@mandate-dev/writer";
 import { scoreMandate, type Score } from "@mandate-dev/replay";
 import type { ValidatedMandate } from "@mandate-dev/schema";
 import { openSession } from "@mandate-dev/cli";
+import { dockerAcceptance, type AcceptanceRunner } from "./acceptance.js";
 import { branchFor, taskPrompt } from "./prompt.js";
 import type { BenchResult, CorpusMeta, ToolVisibility } from "./report.js";
 import { compositionOf, type Corpus, type LoadedTask } from "./tasks.js";
@@ -101,6 +101,11 @@ export interface BenchDeps {
    * Docker upstream, so a sweep is unchanged.
    */
   readonly upstream?: (token: string) => Promise<Client>;
+  /**
+   * Runs a task's acceptance command over the agent's files. Defaults to a
+   * locked-down container; injectable so the loop can be tested offline.
+   */
+  readonly acceptance?: AcceptanceRunner;
   /** Stop before a task that would take the sweep past this. */
   readonly budget?: number;
   /**
@@ -223,13 +228,11 @@ async function acceptancePasses(
     writeFileSync(target, Buffer.from(raw, "base64").toString("utf8"), "utf8");
   }
 
-  try {
-    execFileSync("bash", ["-c", task.acceptance.command], { cwd: dir, stdio: "pipe" });
-    return { passed: true, evidence: `${task.acceptance.command} passed on ${branch}` };
-  } catch (e) {
-    const detail = e instanceof Error ? e.message.split("\n")[0] ?? "" : String(e);
-    return { passed: false, evidence: `${task.acceptance.command} failed on ${branch}: ${detail}` };
-  }
+  // The agent's own code, so never run here: see acceptance.ts.
+  const run = (deps.acceptance ?? dockerAcceptance)(dir, task.acceptance.command);
+  return run.passed
+    ? { passed: true, evidence: `${task.acceptance.command} passed on ${branch}` }
+    : { passed: false, evidence: `${task.acceptance.command} failed on ${branch}: ${run.detail}` };
 }
 
 /**
