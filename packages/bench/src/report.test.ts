@@ -31,6 +31,7 @@ const mandateWith = (ops = 3): Mandate => MandateSchema.parse({
 const result = (over: Partial<BenchResult> = {}): BenchResult => ({
   taskId: "t1",
   category: "single-file-fix",
+  visibility: "granted",
   completed: true,
   completionEvidence: "node --test test/t1.test.js passed on agent/t1",
   widenRequests: 0,
@@ -296,8 +297,8 @@ describe("renderReport detail sections", () => {
     const out = renderReport([result(), result({ taskId: "second" })], meta());
     expect(out).toContain("## Per task");
     // The row, so dropping the table is caught rather than just its heading.
-    expect(out).toMatch(/\| t1 \| single-file-fix \| yes \|/);
-    expect(out).toMatch(/\| second \| single-file-fix \| yes \|/);
+    expect(out).toMatch(/\| t1 \| filtered \| single-file-fix \| yes \|/);
+    expect(out).toMatch(/\| second \| filtered \| single-file-fix \| yes \|/);
   });
 
   it("reports what the sweep cost", () => {
@@ -318,5 +319,79 @@ describe("renderReport detail sections", () => {
     const out = renderReport([], meta({ composition: { "single-file-fix": 0, "multi-file-fix": 0, "dependency-bump": 0, triage: 0 } }));
     expect(out).not.toContain("NaN");
     expect(out).toMatch(/no tasks|0 of/i);
+  });
+});
+
+const underGranted = {
+  granted: 4, exercised: 4, overGrantRate: 0, unusedActions: [],
+  underGrants: [{ seq: 1, tool: "issue_read", clause: "mandate.grants", reason: "no" }],
+  underGrantRate: 0.16, consideredCalls: 6, missingActions: ["issue.read"],
+};
+
+// Task 6.1. Each task ran under one mandate in two modes; the report has to
+// say which mode produced which figure, and must not count a task's mandate
+// twice because it ran twice.
+describe("renderReport across tool-visibility modes", () => {
+  const filtered = result({ score: underGranted });
+  const offered = result({
+    visibility: "all", completed: false, score: underGranted,
+    deniedCalls: 3, falsePauses: 1, widenRequests: 1, widenRefusals: 2,
+  });
+  const both = renderReport([filtered, offered], meta());
+
+  it("renders one metrics table per mode, each named", () => {
+    expect(both).toContain("### Tools filtered");
+    expect(both).toContain("### Every tool offered");
+    const [, afterFiltered = ""] = both.split("### Tools filtered");
+    const [filteredTable = "", afterOffered = ""] = afterFiltered.split("### Every tool offered");
+    expect(filteredTable).toMatch(/\| Task completion \| 100\.0% \|/);
+    expect(afterOffered).toMatch(/\| Task completion \| 0\.0% \|/);
+  });
+
+  it("names the mode even when only one ran", () => {
+    expect(renderReport([filtered], meta())).toContain("### Tools filtered");
+  });
+
+  it("counts denials, and how many of them a widen could satisfy", () => {
+    expect(both).toMatch(/\| Denials \| 3 \(1 a widen could satisfy\) \|/);
+  });
+
+  it("says only of the filtered mode that its zero false pauses are vacuous", () => {
+    const filteredOnly = renderReport([filtered], meta());
+    expect(filteredOnly).toMatch(/0 because nothing paused/);
+    expect(renderReport([offered], meta())).not.toMatch(/0 because nothing paused/);
+  });
+
+  it("says, with every tool offered, how many denials needed a new mandate rather than a widen", () => {
+    expect(both).toMatch(/With every tool offered[^\n]*3 denials/);
+    expect(both).toMatch(/2 need a new mandate/);
+  });
+
+  // A refused call the ground truth made can still leave the task finishable:
+  // both passes are given the issue text, so a refused issue_read costs little.
+  it("says how many runs with a false pause still completed", () => {
+    const stillDone = result({ visibility: "all", completed: true, deniedCalls: 1, falsePauses: 1 });
+    const out = renderReport([offered, { ...stillDone, taskId: "t2" }], meta());
+    expect(out).toMatch(/2 runs? had a false pause, and 1 of them still completed/);
+  });
+
+  it("compares the modes task by task, and says one run per mode is noisy", () => {
+    expect(both).toContain("## What filtering hides");
+    expect(both).toMatch(/\| t1 \| yes \| \*\*no\*\* \| 0 \| 3 \| 1 \|/);
+    expect(both).toMatch(/one run per mode/i);
+    expect(renderReport([filtered], meta())).not.toContain("## What filtering hides");
+  });
+
+  it("counts each task's predicted under-grants once, however many modes ran", () => {
+    expect(both).toMatch(/- `mandate\.grants`: 1$/m);
+  });
+
+  it("counts each task's mandate once in the authority-cut breakdown", () => {
+    expect(both).toMatch(/Medians across the 1 minted mandate,/);
+  });
+
+  // The plan asked for this next to the tables rather than in a source comment.
+  it("says beside the tables that over-grant and the authority cut count different things", () => {
+    expect(both).toMatch(/Over-grant counts granted operations[^\n]*\(operation × repository\) pairs/);
   });
 });

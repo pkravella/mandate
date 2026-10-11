@@ -7,7 +7,7 @@ import { githubAppDeps } from "@mandate-dev/compiler";
 import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
 import { seededIssues } from "./seed.js";
 import { loadCorpus, compositionOf } from "./tasks.js";
-import { loadGroundTruth, runBench } from "./harness.js";
+import { loadGroundTruth, parseModes, runBench, selectTasks } from "./harness.js";
 import { renderReport, type CorpusMeta } from "./report.js";
 
 /**
@@ -19,6 +19,11 @@ import { renderReport, type CorpusMeta } from "./report.js";
  *
  *   MANDATE_BENCH=1 MANDATE_BENCH_BUDGET=2.50 \
  *     pnpm --filter @mandate-dev/bench exec vitest run src/bench.live
+ *
+ * MANDATE_BENCH_MODES=granted,all (the default) runs each task's agent once
+ * per tool-visibility mode under one mandate (Task 6.1). MANDATE_BENCH_TASKS
+ * runs only the named tasks, and then writes its report to bench/out/ rather
+ * than replacing the published one.
  */
 const env = (n: string): string | undefined => process.env[n];
 const enabled = env("MANDATE_BENCH") === "1"
@@ -40,7 +45,9 @@ const read = (p: string): string => readFileSync(p, "utf8");
 
 describe.skipIf(!enabled)("the mandated sweep", () => {
   it("runs the corpus under mandates and writes the report", async () => {
-    const corpus = loadCorpus(CORPUS);
+    const modes = parseModes(env("MANDATE_BENCH_MODES"));
+    const selected = selectTasks(loadCorpus(CORPUS), env("MANDATE_BENCH_TASKS"));
+    const corpus = selected.corpus;
     const groundTruth = loadGroundTruth(CORPUS, corpus);
     expect(Object.keys(groundTruth).length, "no ground truth recorded").toBeGreaterThan(0);
 
@@ -90,6 +97,7 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       groundTruth,
       issues,
       outDir: OUT,
+      modes,
       budget: Number(env("MANDATE_BENCH_BUDGET") ?? "2.50"),
       log: (s) => { console.log(`    ${s}`); },
     });
@@ -115,9 +123,11 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
     };
 
     const report = renderReport(results, meta);
-    mkdirSync(dirname(REPORT), { recursive: true });
-    writeFileSync(REPORT, `${report}\n`, "utf8");
-    console.log(`\n--- report written to ${REPORT}\n`);
+    // A subset's report is a probe, not the published result.
+    const target = selected.subset ? join(OUT, "report.md") : REPORT;
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, `${report}\n`, "utf8");
+    console.log(`\n--- report written to ${target}\n`);
     console.log(report);
 
     expect(results.length).toBeGreaterThan(0);

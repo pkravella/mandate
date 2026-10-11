@@ -129,6 +129,53 @@ describe("proxy tools/list", () => {
   });
 });
 
+// Task 6.1. Filtering tools/list means an ungranted tool is never attempted,
+// so an under-grant never becomes a denial: six runs, zero denials, seven
+// predicted under-grants. A measurement mode offers every tool and refuses on
+// call. Only visibility differs; enforcement must not.
+describe("proxy tools/list, offering every tool", () => {
+  it("lists every upstream tool, granted or not", async () => {
+    const { client } = await fakeUpstream();
+    const agent = await connectAgent(
+      createProxyServer({ rules, upstream: client, toolVisibility: "all" }),
+    );
+    const names = (await agent.listTools()).tools.map((t) => t.name);
+    expect(names.sort()).toEqual([...TOOL_NAMES].sort());
+  });
+
+  it("annotates only the granted tools, so the limits still say what is granted", async () => {
+    const { client } = await fakeUpstream();
+    const agent = await connectAgent(
+      createProxyServer({ rules, upstream: client, toolVisibility: "all" }),
+    );
+    const tools = (await agent.listTools()).tools;
+    expect(tools.find((t) => t.name === "create_or_update_file")?.description)
+      .toContain("Mandate limits");
+    expect(tools.find((t) => t.name === "merge_pull_request")?.description)
+      .not.toContain("Mandate limits");
+  });
+
+  it("still refuses an offered tool the mandate does not grant, without touching upstream", async () => {
+    const { client, seen } = await fakeUpstream();
+    const decisions: Decision[] = [];
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, toolVisibility: "all", onDecision: (d) => decisions.push(d),
+    }));
+    const res = await agent.callTool({ name: "merge_pull_request", arguments: { pullNumber: 1 } });
+    expect(res.isError).toBe(true);
+    expect(seen).toEqual([]);
+    expect(decisions).toEqual([expect.objectContaining({ kind: "deny", clause: "mandate.grants" })]);
+  });
+
+  it("offers nothing once the mandate has expired", async () => {
+    const { client } = await fakeUpstream();
+    const agent = await connectAgent(createProxyServer({
+      rules: expiredRules(), upstream: client, toolVisibility: "all",
+    }));
+    expect((await agent.listTools()).tools).toEqual([]);
+  });
+});
+
 describe("proxy tools/call passthrough", () => {
   it("forwards an allowed call unchanged", async () => {
     const { client, seen } = await fakeUpstream();

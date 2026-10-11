@@ -12,7 +12,7 @@ import type { MintDeps } from "@mandate-dev/compiler";
 import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
 import { parseJsonl } from "@mandate-dev/proxy";
 import { mandateHash, MandateSchema } from "@mandate-dev/schema";
-import { runBench, loadGroundTruth, type BenchDeps } from "./harness.js";
+import { costOf, parseModes, runBench, loadGroundTruth, selectTasks, type BenchDeps } from "./harness.js";
 import { loadCorpus } from "./tasks.js";
 
 /**
@@ -49,44 +49,66 @@ const AUTHORITY: UserAuthority = { login: "bench", level: "admin" };
 const toolNames = (params: Anthropic.MessageStreamParams): string[] =>
   (params.tools ?? []).flatMap((t) => ("name" in t && typeof t.name === "string" ? [t.name] : []));
 
-/** Enough of a GitHub to mint, read a file, find a PR and run acceptance. */
-const fakeGithub = (opts: { prNumber?: number; acceptance?: boolean } = {}): {
-  deps: MintDeps; revokes: () => number;
+interface GithubCall { readonly route: string; readonly token: string; readonly params: Record<string, unknown> }
+
+/**
+ * Enough of a GitHub to mint, read a file, find a PR and run acceptance.
+ *
+ * `pulls` and `comments` are called on every listing, so a test can say what
+ * existed before a run and what the run added. Every call is recorded with the
+ * token it carried, and each mint hands out a distinct token.
+ */
+const fakeGithub = (opts: {
+  pulls?: (listing: number) => readonly { number: number; head: { ref: string } }[];
+  comments?: (listing: number) => readonly { id: number; body: string }[];
+} = {}): {
+  deps: MintDeps; revokes: () => number; calls: GithubCall[]; mints: Record<string, unknown>[];
 } => {
   let revokes = 0;
+  let minted = 0;
+  let pullListings = 0;
+  let commentListings = 0;
+  const calls: GithubCall[] = [];
+  const mints: Record<string, unknown>[] = [];
   return {
     revokes: () => revokes,
+    calls,
+    mints,
     deps: {
       installationId: 1,
-      asApp: async () => ({
-        status: 201,
-        data: {
-          token: "ghs_fake", expires_at: new Date(Date.now() + 3_600_000).toISOString(),
-          // metadata:read included because mintToken refuses a token narrower
-          // than requested -- leaving it out is what surfaced the leaked-token
-          // bug this fake first tripped over.
-          permissions: {
-            contents: "write", issues: "write", pull_requests: "write", metadata: "read",
+      asApp: async (_route: string, params: Record<string, unknown> = {}) => {
+        minted += 1;
+        mints.push(params);
+        return {
+          status: 201,
+          data: {
+            token: `ghs_fake${minted}`, expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+            // metadata:read included because mintToken refuses a token narrower
+            // than requested -- leaving it out is what surfaced the leaked-token
+            // bug this fake first tripped over.
+            permissions: {
+              contents: "write", issues: "write", pull_requests: "write", metadata: "read",
+            },
+            repositories: [{ name: "mandate-sandbox" }],
           },
-          repositories: [{ name: "mandate-sandbox" }],
-        },
-      }),
-      asInstallation: async (route: string) => {
+        };
+      },
+      asInstallation: async (route: string, token: string, params: Record<string, unknown> = {}) => {
+        calls.push({ route, token, params });
         if (route === "DELETE /installation/token") {
           revokes += 1;
           return { status: 204, data: null };
         }
-        if (route.includes("/pulls")) {
-          return opts.prNumber === undefined
-            ? { status: 200, data: [] }
-            : {
-              status: 200,
-              data: [{
-                number: opts.prNumber,
-                head: { ref: "agent/x" },
-                base: { ref: "main" },
-              }],
-            };
+        if (route === "GET /repos/{owner}/{repo}/pulls") {
+          pullListings += 1;
+          return { status: 200, data: opts.pulls?.(pullListings) ?? [] };
+        }
+        if (route.startsWith("PATCH ") || route.startsWith("DELETE ")) {
+          return { status: route.startsWith("DELETE ") ? 204 : 200, data: {} };
+        }
+        if (route.includes("/comments")) {
+          commentListings += 1;
+          return { status: 200, data: opts.comments?.(commentListings) ?? [] };
         }
         if (route.includes("/files")) {
           return { status: 200, data: [{ filename: "src/retry.js" }] };
@@ -134,7 +156,14 @@ const usage = { input_tokens: 1000, output_tokens: 200 };
  * than counted, because the number of writer calls is the writer's business and
  * a positional stub breaks the moment cover-then-prune changes shape.
  */
-const fakeAnthropic = (opts: { agentCalls?: string[] } = {}): Anthropic => {
+const fakeAnthropic = (opts: {
+  agentCalls?: string[];
+  /** Every request the agent loop made, in order. */
+  agentRequests?: Anthropic.MessageStreamParams[];
+  usage?: Partial<Anthropic.Usage>;
+  /** Writer requests, counted. */
+  writerRequests?: { n: number };
+} = {}): Anthropic => {
   const toolUse = (name: string, input: unknown): Anthropic.ContentBlock =>
     ({ type: "tool_use", id: `tu-${name}`, name, input, caller: { type: "direct" } });
 
@@ -145,6 +174,9 @@ const fakeAnthropic = (opts: { agentCalls?: string[] } = {}): Anthropic => {
         const names = toolNames(params);
         const content: Anthropic.ContentBlock[] = [];
 
+        if (names.includes("propose_grants") && opts.writerRequests !== undefined) {
+          opts.writerRequests.n += 1;
+        }
         if (names.includes("propose_grants")) {
           content.push(toolUse("propose_grants", {
             grants: [
@@ -164,7 +196,11 @@ const fakeAnthropic = (opts: { agentCalls?: string[] } = {}): Anthropic => {
             keep: ["contents.write", "pull_request.create"],
           }));
         } else {
-          // The agent loop. One granted call, then stop.
+          // The agent loop. One granted call, then stop. A conversation of
+          // one message is a new run, which starts the script again.
+          if (params.messages.length === 1) agentTurn = 0;
+          // A copy: the harness appends to the same messages array afterwards.
+          opts.agentRequests?.push({ ...params, messages: [...params.messages] });
           const want = opts.agentCalls ?? ["get_file_contents"];
           const next = want[agentTurn];
           agentTurn += 1;
@@ -182,7 +218,7 @@ const fakeAnthropic = (opts: { agentCalls?: string[] } = {}): Anthropic => {
             stop_reason: content.length > 0 ? "tool_use" : "end_turn",
             stop_details: null,
             content,
-            usage,
+            usage: { ...usage, ...opts.usage },
           }),
         };
       },
@@ -244,7 +280,11 @@ describe("runBench, offline", () => {
       github: gh.deps,
       upstream: async () => { throw new Error("docker is not running"); },
     }));
-    expect(gh.revokes(), "a session that could not open still minted a token").toBe(1);
+    // Every token minted -- the mandate's, and the one the harness grades
+    // with -- is given back, though the session never opened.
+    const revoked = gh.calls.filter((c) => c.route === "DELETE /installation/token").map((c) => c.token);
+    expect(revoked.sort()).toEqual(gh.mints.map((_, i) => `ghs_fake${i + 1}`).sort());
+    expect(gh.revokes()).toBe(2);
   });
 
   it("writes a trace the strict parser reads back", async () => {
@@ -337,5 +377,217 @@ describe("runBench, offline", () => {
     expect(gh.revokes(), "nothing was minted, so nothing is revoked").toBe(0);
     // No mandate exists, so there is no authority for the report to cut.
     expect(results[0]?.mandate).toBeUndefined();
+  });
+});
+
+const taskOf = (category: string) => {
+  const corpus = loadCorpus(CORPUS);
+  const task = corpus.tasks.find((t) => t.category === category);
+  expect(task, `the corpus has no ${category} task`).toBeDefined();
+  return { ...corpus, tasks: task === undefined ? [] : [task] };
+};
+
+/** The tool names the agent loop was offered, per run. */
+const offeredPerRun = (requests: Anthropic.MessageStreamParams[]): string[][] =>
+  requests.filter((r) => r.messages.length === 1).map(toolNames);
+
+// Task 6.1. One mandate per task, run in each tool-visibility mode, so the
+// difference between the modes is the mode and not a different mandate.
+describe("runBench, in both tool-visibility modes", () => {
+  it("writes one mandate per task and runs the agent once per mode under it", async () => {
+    const writerRequests = { n: 0 };
+    const results = await runBench(oneTask(), depsFor({
+      anthropic: fakeAnthropic({ writerRequests }), modes: ["granted", "all"],
+    }));
+    expect(results.map((r) => r.visibility)).toEqual(["granted", "all"]);
+    expect(writerRequests.n).toBe(1);
+    expect(mandateHash(results[0]!.mandate!)).toBe(mandateHash(results[1]!.mandate!));
+  });
+
+  it("offers the agent only the granted tools in one mode and every tool in the other", async () => {
+    const agentRequests: Anthropic.MessageStreamParams[] = [];
+    await runBench(oneTask(), depsFor({
+      anthropic: fakeAnthropic({ agentRequests }), modes: ["granted", "all"],
+    }));
+    const [granted, all] = offeredPerRun(agentRequests);
+    expect(granted).not.toContain("merge_pull_request");
+    expect(all).toContain("merge_pull_request");
+  });
+
+  // "You only have the tools listed" is false when every tool is listed, and a
+  // prompt that differs between the modes would be what the comparison measured.
+  it("gives the agent the same instructions in both modes, true in each", async () => {
+    const agentRequests: Anthropic.MessageStreamParams[] = [];
+    await runBench(oneTask(), depsFor({
+      anthropic: fakeAnthropic({ agentRequests }), modes: ["granted", "all"],
+    }));
+    const first = agentRequests.filter((r) => r.messages.length === 1).map((r) => r.messages[0]);
+    expect(first).toHaveLength(2);
+    expect(first[0]).toEqual(first[1]);
+    expect(JSON.stringify(first[0])).not.toMatch(/only have the tools listed/);
+  });
+
+  it("keeps each mode's trace, rather than the second overwriting the first", async () => {
+    const deps = depsFor({ modes: ["granted", "all"] });
+    await runBench(oneTask(), deps);
+    const traces = readdirSync(deps.outDir).filter((f) => f.endsWith(".mandated.jsonl")).sort();
+    expect(traces).toEqual([
+      "retry-swallows-last-error.all.mandated.jsonl",
+      "retry-swallows-last-error.granted.mandated.jsonl",
+    ]);
+  });
+
+  it("charges the writer once, to the first mode's result", async () => {
+    const results = await runBench(oneTask(), depsFor({ modes: ["granted", "all"] }));
+    // The fake bills every call alike, so the first run carries the writer's
+    // calls on top of the same agent run the second one made.
+    expect(results[0]!.cost).toBeGreaterThan(results[1]!.cost);
+  });
+
+  it("records a rejected proposal once per mode, so each mode's completion counts it", async () => {
+    const overAsking = fakeAnthropic();
+    const stream = overAsking.messages.stream.bind(overAsking.messages);
+    (overAsking.messages as { stream: unknown }).stream = (params: Anthropic.MessageStreamParams) => {
+      const names = toolNames(params);
+      if (!names.includes("propose_grants") && !names.includes("keep_grants")) return stream(params);
+      const input = names.includes("propose_grants")
+        ? {
+          grants: [{ action: "pull_request.merge", resources: ["pkravella/mandate-sandbox"], max: 1 }],
+          destinations: ["github.com/pkravella/mandate-sandbox"],
+        }
+        : { keep: ["pull_request.merge"] };
+      return {
+        finalMessage: async () => ({
+          stop_reason: "tool_use", stop_details: null, usage,
+          content: [{
+            type: "tool_use", id: "tu", input, caller: { type: "direct" },
+            name: names.includes("propose_grants") ? "propose_grants" : "keep_grants",
+          }],
+        }),
+      };
+    };
+    const results = await runBench(oneTask(), depsFor({ anthropic: overAsking, modes: ["granted", "all"] }));
+    expect(results.map((r) => [r.visibility, r.proposalRejected])).toEqual([["granted", true], ["all", true]]);
+    expect(results[0]!.cost).toBeGreaterThan(0);
+    expect(results[1]!.cost).toBe(0);
+  });
+
+  it("stops before a task whose runs across every mode would exceed the budget", async () => {
+    // One mode fits under $0.50; two do not.
+    expect(await runBench(oneTask(), depsFor({ budget: 0.5 }))).toHaveLength(1);
+    expect(await runBench(oneTask(), depsFor({ budget: 0.5, modes: ["granted", "all"] }))).toHaveLength(0);
+  });
+});
+
+// A pull request or a comment left by an earlier run -- an earlier sweep, or
+// the other mode a moment ago -- was credited to whichever run looked next:
+// the lookups searched every PR on the branch, closed ones included, and every
+// comment on the issue.
+describe("runBench grades only what the run itself did", () => {
+  it("does not credit a pull request that existed before the run", async () => {
+    const gh = fakeGithub({ pulls: () => [{ number: 3, head: { ref: "agent/retry-swallows-last-error" } }] });
+    const results = await runBench(oneTask(), depsFor({ github: gh.deps }));
+    expect(results[0]?.pullRequestOpened).toBe(false);
+  });
+
+  it("credits a pull request the run opened", async () => {
+    const ref = { ref: "agent/retry-swallows-last-error" };
+    const gh = fakeGithub({ pulls: (n) => (n === 1 ? [] : [{ number: 7, head: ref }]) });
+    const results = await runBench(oneTask(), depsFor({ github: gh.deps }));
+    expect(results[0]?.pullRequestOpened).toBe(true);
+  });
+
+  it("does not credit a triage comment left before the run", async () => {
+    const gh = fakeGithub({ comments: () => [{ id: 1, body: "the timer leaks" }] });
+    const results = await runBench(taskOf("triage"), depsFor({ github: gh.deps }));
+    expect(results[0]?.completed).toBe(false);
+  });
+
+  it("credits a triage comment the run left", async () => {
+    const gh = fakeGithub({ comments: (n) => (n === 1 ? [] : [{ id: 2, body: "the timer leaks" }]) });
+    const results = await runBench(taskOf("triage"), depsFor({ github: gh.deps }));
+    expect(results[0]?.completed).toBe(true);
+  });
+
+  it("closes the task's open pull requests and deletes its branch before each run", async () => {
+    const ref = { ref: "agent/retry-swallows-last-error" };
+    const gh = fakeGithub({ pulls: () => [{ number: 3, head: ref }] });
+    await runBench(oneTask(), depsFor({ github: gh.deps, modes: ["granted", "all"] }));
+    const closes = gh.calls.filter((c) => c.route === "PATCH /repos/{owner}/{repo}/pulls/{pull_number}");
+    const deletes = gh.calls.filter((c) => c.route === "DELETE /repos/{owner}/{repo}/git/refs/{ref}");
+    expect(closes.map((c) => [c.params.pull_number, c.params.state])).toEqual([[3, "closed"], [3, "closed"]]);
+    expect(deletes.map((c) => c.params.ref)).toEqual([
+      "heads/agent/retry-swallows-last-error", "heads/agent/retry-swallows-last-error",
+    ]);
+  });
+
+  // Grading with the mandate's token made the grade depend on the mandate: a
+  // triage mandate without issues access could not read the comment it was
+  // graded on.
+  it("grades and resets with its own token, not the mandate's, and revokes it", async () => {
+    const gh = fakeGithub();
+    await runBench(oneTask(), depsFor({ github: gh.deps }));
+    const housekeeping = gh.calls.filter((c) =>
+      c.route.includes("/pulls") || c.route.includes("/contents/") || c.route.includes("/git/refs"));
+    expect(housekeeping.length).toBeGreaterThan(0);
+    const harnessMint = gh.mints.findIndex((m) =>
+      (m.permissions as Record<string, string> | undefined)?.pull_requests === "write"
+      && (m.permissions as Record<string, string> | undefined)?.issues === "read");
+    expect(harnessMint, "no harness token was minted").toBeGreaterThanOrEqual(0);
+    const harnessToken = `ghs_fake${harnessMint + 1}`;
+    expect(new Set(housekeeping.map((c) => c.token))).toEqual(new Set([harnessToken]));
+    expect(gh.calls.some((c) => c.route === "DELETE /installation/token" && c.token === harnessToken)).toBe(true);
+  });
+});
+
+describe("runBench cost", () => {
+  it("asks for prompt caching on every agent turn", async () => {
+    const agentRequests: Anthropic.MessageStreamParams[] = [];
+    await runBench(oneTask(), depsFor({ anthropic: fakeAnthropic({ agentRequests }) }));
+    expect(agentRequests.length).toBeGreaterThan(0);
+    for (const r of agentRequests) expect(r.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  // usage.input_tokens excludes cached tokens, so a formula reading only it
+  // reports a cached run as nearly free.
+  it("bills cache writes and cache reads, not only uncached input", () => {
+    // Opus 5.5: $4 input, $20 output, cache writes 1.25x, cache reads $0.20.
+    expect(costOf({
+      input_tokens: 1_000_000, output_tokens: 1_000_000,
+      cache_creation_input_tokens: 1_000_000, cache_read_input_tokens: 1_000_000,
+    })).toBeCloseTo(4 + 20 + 5 + 0.2, 6);
+    expect(costOf({
+      input_tokens: 1_000_000, output_tokens: 0,
+      cache_creation_input_tokens: null, cache_read_input_tokens: null,
+    })).toBeCloseTo(4, 6);
+  });
+});
+
+// The live sweep's switches, read from the environment. A typo must stop the
+// sweep before it spends anything, not run something else.
+describe("sweep options", () => {
+  it("runs both modes by default, and reads a list", () => {
+    expect(parseModes(undefined)).toEqual(["granted", "all"]);
+    expect(parseModes("all")).toEqual(["all"]);
+    expect(parseModes(" granted , all ")).toEqual(["granted", "all"]);
+  });
+
+  it("refuses a mode it does not know, or none", () => {
+    expect(() => parseModes("offered")).toThrow(/offered/);
+    expect(() => parseModes("")).toThrow();
+  });
+
+  it("selects the named tasks, in corpus order, or all of them", () => {
+    const corpus = loadCorpus(CORPUS);
+    const [first, second] = corpus.tasks;
+    expect(selectTasks(corpus, undefined).subset).toBe(false);
+    expect(selectTasks(corpus, undefined).corpus.tasks).toHaveLength(corpus.tasks.length);
+    const picked = selectTasks(corpus, `${second?.id},${first?.id}`);
+    expect(picked.subset).toBe(true);
+    expect(picked.corpus.tasks.map((t) => t.id)).toEqual([first?.id, second?.id]);
+  });
+
+  it("refuses a task id it does not know", () => {
+    expect(() => selectTasks(loadCorpus(CORPUS), "no-such-task")).toThrow(/no-such-task/);
   });
 });
