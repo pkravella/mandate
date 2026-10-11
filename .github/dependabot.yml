@@ -13,9 +13,18 @@ updates:
     ignore:
       - dependency-name: "@cedar-policy/cedar-wasm"
         update-types: ["version-update:semver-major"]
+      # The types describe the oldest Node the project supports (engines), not
+      # the newest. Newer majors let code use APIs that Node lacks.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule: { interval: weekly }
   - package-ecosystem: docker
     directory: "/sandbox"
     schedule: { interval: weekly }
+    # Odd-numbered Node releases are never LTS. CI does not build this image
+    # (it is behind MANDATE_SANDBOX), so a green check says nothing about one.
+    ignore:
+      - dependency-name: node
+        versions: ["23.x", "25.x", "27.x", "29.x", "31.x"]
