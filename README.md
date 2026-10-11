@@ -323,14 +323,23 @@ Phase 3 added the runtime half and measured it. The full
 | Metric | Result | v0.1 target |
 | --- | --- | --- |
 | Task completion | 83.3% | at least 90% |
-| Authority cut, token layer | 32.0% | at least 80% |
-| Authority cut, proxy layer | **87.0%** | at least 80% |
+| Authority cut, token layer, against 1 repository | 32.3% | at least 80% |
+| Authority cut, proxy layer, against 1 repository | **87.1%** | at least 80% |
+| Authority cut, token layer, against 63 repositories | 98.9% | at least 80% |
+| Authority cut, proxy layer, against 63 repositories | 99.8% | at least 80% |
 | Over-grant | **0.0%** | under 10% |
 | Write latency | 11,915 ms | under 10 s |
 
 Two caveats the report states at length and this table cannot: the corpus is
 **6 tasks, not the 50** Phase 3's exit criterion asks for, and those tasks are
 **synthetic**, so the completion figure is optimistic.
+
+The authority cut is reported against two baselines and neither is the figure.
+One repository is the conservative one. Sixty-three is what the developer's own
+token reaches, which is the PRD's comparison, and nearly all of that cut is
+repository scoping that any token limited to one repository gets without
+Mandate. What Mandate adds per repository is 31 operations to 21 at the token
+and to 4 at the proxy.
 
 **The finding worth reading the report for.** The proxy issued **zero denials**
 across all six runs while replay predicted **seven under-granted calls**.

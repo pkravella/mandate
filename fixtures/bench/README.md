@@ -23,6 +23,12 @@ mandated trace is the *output* of one sweep and goes stale the moment the
 mandate changes. The published report is
 [`docs/benchmark-report.md`](../../docs/benchmark-report.md).
 
+Beside its traces a sweep writes `results.json`: every result, including the
+validated mandate each run was enforced under. A trace header names its mandate
+only by id and hash, and the report computes the authority cut from the
+mandates, so without this file a published figure cannot be recomputed — which
+is what happened to the first sweep's.
+
 Seed and reference files are real source files rather than strings inside JSON,
 so a reviewer reads JavaScript instead of escaped text.
 

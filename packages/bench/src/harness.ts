@@ -14,7 +14,7 @@ import {
 } from "@mandate-dev/proxy";
 import { writeMandate } from "@mandate-dev/writer";
 import { scoreMandate } from "@mandate-dev/replay";
-import { authorityCut, openSession } from "@mandate-dev/cli";
+import { openSession } from "@mandate-dev/cli";
 import { branchFor, taskPrompt } from "./prompt.js";
 import type { BenchResult } from "./report.js";
 import type { Corpus, LoadedTask } from "./tasks.js";
@@ -205,6 +205,15 @@ export async function runBench(
   const log = deps.log ?? ((): void => undefined);
   const budget = deps.budget ?? Number.POSITIVE_INFINITY;
   const results: BenchResult[] = [];
+  // Rewritten after every task, beside the traces, so a published figure can
+  // be recomputed from what the sweep enforced -- and a sweep that dies part
+  // way still leaves the tasks it paid for. A trace header names its mandate
+  // only by id and hash.
+  const record = (r: BenchResult): void => {
+    results.push(r);
+    mkdirSync(deps.outDir, { recursive: true });
+    writeFileSync(join(deps.outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`, "utf8");
+  };
   let spent = 0;
 
   for (const task of corpus.tasks) {
@@ -248,7 +257,7 @@ export async function runBench(
       // Nothing was minted and nothing ran, so there is no mandate to score.
       // The writer's cost still counts: it was spent.
       spent += writerCost;
-      results.push({
+      record({
         taskId: task.id,
         category: task.category,
         completed: false,
@@ -265,7 +274,6 @@ export async function runBench(
           underGrants: [], underGrantRate: 0, consideredCalls: 0, missingActions: [],
         },
         writeLatencyMs: written.latencyMs,
-        authorityCut: { token: 0, proxy: 0 },
         cost: writerCost,
       });
       continue;
@@ -275,7 +283,6 @@ export async function runBench(
     // ---- score against ground truth, before anything runs -----------
     // The score is a property of the mandate and the trace, not of this run.
     const score = scoreMandate(mandate, groundTruth);
-    const cut = authorityCut(written.proposed);
 
     // ---- mint and enforce -------------------------------------------
     // A per-task failure — a refused mint, a Docker that will not start, an API
@@ -297,13 +304,13 @@ export async function runBench(
       const detail = e instanceof Error ? e.message : String(e);
       log(`${task.id}: session FAILED — ${detail}`);
       spent += writerCost;
-      results.push({
+      record({
         taskId: task.id, category: task.category, completed: false,
         completionEvidence: `the enforced session could not be opened: ${detail}`,
         pullRequestOpened: false, deniedCalls: 0,
         widenRequests: 0, widenRefusals: 0, falsePauses: 0, proposalRejected: false,
         score, writeLatencyMs: written.latencyMs,
-        authorityCut: { token: cut.token.cutPercent / 100, proxy: cut.proxy.cutPercent / 100 },
+        mandate,
         cost: writerCost,
       });
       continue;
@@ -416,14 +423,14 @@ export async function runBench(
       // format bug, so it is checked on every run rather than trusted.
       parseJsonl(trace);
 
-      results.push({
+      record({
         taskId: task.id, category: task.category,
         completed, completionEvidence: evidence,
         pullRequestOpened: prNumber !== undefined,
         deniedCalls: denials.length,
         widenRequests, widenRefusals, falsePauses, proposalRejected: false,
         score, writeLatencyMs: written.latencyMs,
-        authorityCut: { token: cut.token.cutPercent / 100, proxy: cut.proxy.cutPercent / 100 },
+        mandate,
         cost,
       });
 
@@ -437,13 +444,13 @@ export async function runBench(
       log(`${task.id}: run FAILED — ${detail}`);
       const cost = dollars(inTok, outTok) + writerCost;
       spent += cost;
-      results.push({
+      record({
         taskId: task.id, category: task.category, completed: false,
         completionEvidence: `the run did not finish: ${detail}`,
         pullRequestOpened: false, deniedCalls: 0,
         widenRequests: 0, widenRefusals: 0, falsePauses: 0, proposalRejected: false,
         score, writeLatencyMs: written.latencyMs,
-        authorityCut: { token: cut.token.cutPercent / 100, proxy: cut.proxy.cutPercent / 100 },
+        mandate,
         cost,
       });
     } finally {

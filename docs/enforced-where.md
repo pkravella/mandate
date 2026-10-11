@@ -39,6 +39,9 @@ enforcement while carrying a branch or path limit — because that grant is
 describing a control that does not exist.
 
 This is also why the benchmark reports **authority cut twice**, once per layer.
+The gap between the two is not the whole of this section's point, though: the
+cut counts (operation × repository) pairs, so the branch and path limits above,
+which only the proxy holds, do not appear in it at all.
 
 ## What minting actually does, measured
 

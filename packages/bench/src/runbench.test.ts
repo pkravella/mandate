@@ -11,6 +11,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import type { MintDeps } from "@mandate-dev/compiler";
 import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
 import { parseJsonl } from "@mandate-dev/proxy";
+import { mandateHash, MandateSchema } from "@mandate-dev/schema";
 import { runBench, loadGroundTruth, type BenchDeps } from "./harness.js";
 import { loadCorpus } from "./tasks.js";
 
@@ -258,6 +259,23 @@ describe("runBench, offline", () => {
     if (trace.mode === "enforced") expect(trace.mandateHash).toMatch(/^[0-9a-f]{64}$/);
   });
 
+  // Task 6.4. The published cut could not be recomputed: the sweep kept
+  // neither its mandates nor its results, and a trace header carries only the
+  // mandate's id and hash. The result now carries the mandate that was
+  // enforced, and the sweep writes its results beside its traces.
+  it("keeps the mandate it enforced, and writes its results beside the traces", async () => {
+    const deps = depsFor();
+    const results = await runBench(oneTask(), deps);
+    const kept = JSON.parse(readFileSync(join(deps.outDir, "results.json"), "utf8")) as unknown[];
+    expect(kept).toHaveLength(1);
+    const mandate = MandateSchema.parse((kept[0] as { mandate: unknown }).mandate);
+    // The one the session was enforced under, not merely one the writer proposed.
+    const files = readdirSync(deps.outDir).filter((f) => f.endsWith(".mandated.jsonl"));
+    const trace = parseJsonl(readFileSync(join(deps.outDir, files[0] ?? ""), "utf8"));
+    expect(trace.mode === "enforced" ? trace.mandateHash : "").toBe(mandateHash(mandate));
+    expect(results[0]?.mandate).toBeDefined();
+  });
+
   it("records the proxy's denial rather than forwarding an ungranted call", async () => {
     const seen: { tool: string }[] = [];
     const results = await runBench(oneTask(), depsFor({
@@ -317,5 +335,7 @@ describe("runBench, offline", () => {
     expect(results[0]?.completed).toBe(false);
     expect(results[0]?.cost).toBeGreaterThan(0);
     expect(gh.revokes(), "nothing was minted, so nothing is revoked").toBe(0);
+    // No mandate exists, so there is no authority for the report to cut.
+    expect(results[0]?.mandate).toBeUndefined();
   });
 });

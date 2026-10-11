@@ -41,17 +41,27 @@ const reachableWith = (
     .map((o) => o.id);
 
 export interface LayerCut {
+  /** Operations reachable at this layer in each repository the mandate names. */
+  readonly operations: number;
   /** (operation, repository) pairs reachable at this layer. */
   readonly reachable: number;
   readonly cutPercent: number;
 }
 
 export interface AuthorityCut {
+  /** Operations the baseline static token reaches in each repository. */
+  readonly baselineOperations: number;
   /** (operation, repository) pairs reachable under the baseline static token. */
   readonly baseline: number;
+  /**
+   * Repositories the baseline reaches: the count given, or one, and never
+   * fewer than the mandate names.
+   */
   readonly repositories: number;
   /** Whether `repositories` was given or defaulted to one. */
   readonly repositoriesAssumed: boolean;
+  /** Repositories the mandate reaches. A pattern reaches every baseline one. */
+  readonly mandateRepositories: number;
   readonly token: LayerCut;
   readonly proxy: LayerCut;
 }
@@ -67,9 +77,16 @@ export interface AuthorityCut {
  * the operations the mandate actually granted.
  */
 export function authorityCut(m: Mandate, opts: { repositories?: number } = {}): AuthorityCut {
-  const repositories = opts.repositories ?? 1;
+  const resources = new Set(m.grants.flatMap((g) => [...g.resources]));
+  const patterned = [...resources].some((r) => r.includes("*"));
+  const exact = [...resources].filter((r) => !r.includes("*")).length;
+  // A baseline narrower than the mandate would make the cut negative.
+  const repositories = Math.max(opts.repositories ?? 1, exact);
   const baselineOps = reachableWith(BASELINE_TOKEN).length;
   const baseline = baselineOps * repositories;
+  // `acme/*` passes the lints, and nothing here knows which repositories it
+  // matches, so it is counted as reaching all of the baseline's.
+  const mandateRepos = patterned ? repositories : exact;
 
   // What the minted token holds: the union of the granted operations' permissions.
   const held: Partial<Record<GhPermission, "read" | "write">> = { metadata: "read" };
@@ -81,21 +98,23 @@ export function authorityCut(m: Mandate, opts: { repositories?: number } = {}): 
       : "read";
   }
 
-  const mandateRepos = new Set(m.grants.flatMap((g) => [...g.resources])).size;
-  const tokenReachable = reachableWith(held).length * mandateRepos;
-  const proxyReachable = new Set(m.grants.map((g) => g.action)).size * mandateRepos;
-
-  const cut = (reachable: number): LayerCut => ({
-    reachable,
-    cutPercent: baseline === 0 ? 0 : Math.round(((baseline - reachable) / baseline) * 100),
-  });
+  const cut = (operations: number): LayerCut => {
+    const reachable = operations * mandateRepos;
+    return {
+      operations,
+      reachable,
+      cutPercent: baseline === 0 ? 0 : Math.round(((baseline - reachable) / baseline) * 100),
+    };
+  };
 
   return {
+    baselineOperations: baselineOps,
     baseline,
     repositories,
     repositoriesAssumed: opts.repositories === undefined,
-    token: cut(tokenReachable),
-    proxy: cut(proxyReachable),
+    mandateRepositories: mandateRepos,
+    token: cut(reachableWith(held).length),
+    proxy: cut(new Set(m.grants.map((g) => g.action)).size),
   };
 }
 
