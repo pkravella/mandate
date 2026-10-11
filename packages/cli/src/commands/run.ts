@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
 import { prepareMandate, type PrepareArgs } from "../prepare.js";
+import { auditInputs } from "./audit.js";
 import type { AuthorityDeps } from "../authority.js";
 import {
   checkSandboxInputs, CONTAINER_MCP_CONFIG, defaultStartServe, runSandboxed,
@@ -50,6 +51,8 @@ export interface RunArgs extends PrepareArgs, SandboxArgs {
   readonly trace?: string | undefined;
   /** Print the permission diff before launching. */
   readonly diff?: boolean | undefined;
+  /** R16: serve writes a signed log of the session here. See serve.ts. */
+  readonly auditLog?: string | undefined;
 }
 
 export interface RunDeps extends AuthorityDeps {
@@ -121,6 +124,17 @@ export async function runRun(
       log(refusal);
       return 2;
     }
+  }
+
+  // Checked here as well as in serve: without --sandbox the agent starts serve,
+  // and a serve that refuses to start leaves the agent running with no tools
+  // and an error only its MCP client sees.
+  const audited = auditInputs(
+    args.auditLog, (deps.env ?? process.env)["MANDATE_AUDIT_KEY_PATH"],
+  );
+  if ("error" in audited) {
+    log(audited.error);
+    return 2;
   }
 
   // Validated BEFORE anything is launched and before a token could be minted.
@@ -252,5 +266,6 @@ function serveArgvFor(args: RunArgs, self: string): string[] {
     ...(args.repo !== undefined ? ["--repo", args.repo] : []),
     ...(args.level !== undefined ? ["--level", args.level] : []),
     ...(args.trace !== undefined ? ["--trace", resolve(args.trace)] : []),
+    ...(args.auditLog !== undefined ? ["--audit-log", resolve(args.auditLog)] : []),
   ];
 }

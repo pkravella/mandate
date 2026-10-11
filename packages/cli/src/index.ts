@@ -8,6 +8,7 @@ import { runServe } from "./commands/serve.js";
 import { runRun, MCP_CONFIG_PLACEHOLDER } from "./commands/run.js";
 import { githubAppDeps, type MintDeps } from "@mandate-dev/compiler";
 import { runWiden } from "./commands/widen.js";
+import { runAuditKeygen, runAuditVerify } from "./commands/audit.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
@@ -18,6 +19,9 @@ export {
   runRun, MCP_CONFIG_PLACEHOLDER, type RunArgs, type RunDeps,
 } from "./commands/run.js";
 export { prepareMandate, type PrepareArgs, type Prepared } from "./prepare.js";
+export {
+  auditInputs, runAuditKeygen, runAuditVerify, type AuditKeygenArgs, type AuditVerifyArgs,
+} from "./commands/audit.js";
 export {
   githubResolver, resolveAuthority, USER_LEVELS,
   type AuthorityDeps, type AuthoritySource, type ResolveAuthority, type ResolvedAuthority,
@@ -67,6 +71,9 @@ const appDeps = (): MintDeps | undefined => {
   }
   return githubAppDeps({ appId, installationId: Number(installationId), privateKeyPath });
 };
+
+const AUDIT_LOG_HELP = "write a signed log of the session here as it happens (R16), signed with "
+  + "MANDATE_AUDIT_KEY_PATH; never over an existing file";
 
 /** Only runs when this file is the entry point, so importing it is side-effect free. */
 export function main(argv: readonly string[]): void {
@@ -185,10 +192,11 @@ export function main(argv: readonly string[]): void {
       "serve one sandboxed agent over TCP instead of stdio; the relay presents MANDATE_RELAY_SECRET",
     )
     .option("--ready-file <path>", "with --listen: write {host, port} here once listening")
+    .option("--audit-log <path>", AUDIT_LOG_HELP)
     .action(async (opts: {
       mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
       as: string; level?: string; repo?: string; trace?: string;
-      listen?: string; readyFile?: string;
+      listen?: string; readyFile?: string; auditLog?: string;
     }) => {
       // stdout is the JSON-RPC stream. Every diagnostic goes to stderr, or the
       // agent sees a parse error instead of a tool list.
@@ -211,11 +219,13 @@ export function main(argv: readonly string[]): void {
         ...(opts.trace === undefined ? {} : { trace: opts.trace }),
         ...(opts.listen === undefined ? {} : { listen: opts.listen }),
         ...(opts.readyFile === undefined ? {} : { readyFile: opts.readyFile }),
+        ...(opts.auditLog === undefined ? {} : { auditLog: opts.auditLog }),
       }, log, {
         github,
         ...(resolve === undefined ? {} : { resolve }),
         // From the environment, never a flag: argv is readable by every process.
         relaySecret: process.env["MANDATE_RELAY_SECRET"],
+        auditKeyPath: process.env["MANDATE_AUDIT_KEY_PATH"],
       });
     });
 
@@ -228,6 +238,7 @@ export function main(argv: readonly string[]): void {
   )
     .option("--trace <path>", "write the action graph here when the session ends (R8)")
     .option("--diff", "print the permission diff before launching")
+    .option("--audit-log <path>", AUDIT_LOG_HELP)
     .option(
       "--sandbox",
       "run the agent in the sandbox container, with serve on the host (macOS, Docker Desktop)",
@@ -247,6 +258,7 @@ export function main(argv: readonly string[]): void {
       mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
       as: string; level?: string; repo?: string; trace?: string; diff?: boolean;
       sandbox?: boolean; image?: string; agentEgress?: string[]; passEnv?: string[];
+      auditLog?: string;
     }) => {
       const resolve = githubResolver();
       process.exitCode = await runRun({
@@ -260,7 +272,31 @@ export function main(argv: readonly string[]): void {
         ...(opts.image === undefined ? {} : { image: opts.image }),
         ...(opts.agentEgress === undefined ? {} : { agentEgress: opts.agentEgress }),
         ...(opts.passEnv === undefined ? {} : { passEnv: opts.passEnv }),
+        ...(opts.auditLog === undefined ? {} : { auditLog: opts.auditLog }),
       }, (m) => { console.log(m); }, resolve === undefined ? {} : { resolve });
+    });
+
+  const audit = program
+    .command("audit")
+    .description("make the key that signs audit logs, and check a log (R16)");
+  audit
+    .command("keygen")
+    .description("write a new Ed25519 audit signing key (mode 600) and its public key")
+    .requiredOption("--out <path>", "the private key; never written over an existing file")
+    .option("--public-out <path>", "the public key, for whoever checks logs (default: <out>.pub)")
+    .action((opts: { out: string; publicOut?: string }) => {
+      process.exitCode = runAuditKeygen(
+        { out: opts.out, publicOut: opts.publicOut ?? `${opts.out}.pub` },
+        (m) => { console.log(m); },
+      );
+    });
+  audit
+    .command("verify")
+    .description("check a log's signatures and chain; exit 0 only if it is intact and sealed")
+    .argument("<log>", "the audit log")
+    .requiredOption("--public-key <path>", "the public key of the key that signed it")
+    .action((log: string, opts: { publicKey: string }) => {
+      process.exitCode = runAuditVerify({ file: log, publicKey: opts.publicKey }, (m) => { console.log(m); });
     });
 
   // exitOverride makes commander throw where it would have called

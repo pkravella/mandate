@@ -178,11 +178,14 @@ function stableStringify(value: unknown): string {
 
 export class Recorder {
   readonly #meta: RecorderMeta;
+  readonly #sink: GraphSink | undefined;
   readonly #nodes: ActionNode[] = [];
   #seq = 0;
+  #calls = 0;
 
-  constructor(meta: RecorderMeta) {
+  constructor(meta: RecorderMeta, sink?: GraphSink) {
     this.#meta = meta;
+    this.#sink = sink;
   }
 
   /**
@@ -191,11 +194,18 @@ export class Recorder {
    */
   recordCall(input: CallInput): RecordHandle {
     const start = startOf(input);
+    // The proxy records an allowed call immediately before it forwards it, so
+    // this is the moment it is sent. A call that never comes back -- the
+    // process killed, the session closed under it -- otherwise leaves no trace
+    // at all, and it is the one whose effect on GitHub is unknown.
+    const call = ++this.#calls;
+    this.#tell((sink) => { sink.forwarded(call, start.fields); });
     let written = false;
     const once = (node: ActionNode): void => {
       if (written) return;
       written = true;
       this.#nodes.push(node);
+      this.#tell((sink) => { sink.completed(node, call); });
     };
     return {
       completed: (result: unknown): void => {
@@ -229,14 +239,16 @@ export class Recorder {
    */
   recordDenial(input: DenialInput): void {
     const start = startOf(input);
-    this.#nodes.push({
+    const node: ActionNode = {
       ...start.base(this.#next(false)),
       decision: "deny",
       clause: input.decision.clause,
       reason: input.decision.reason,
       outputBytes: 0,
       durationMs: start.elapsed(),
-    });
+    };
+    this.#nodes.push(node);
+    this.#tell((sink) => { sink.completed(node); });
   }
 
   /** A snapshot. Later calls to `record*` do not change a graph already taken. */
@@ -270,6 +282,21 @@ export class Recorder {
     ].join("\n") + "\n";
   }
 
+  /**
+   * Hands an event to the sink, if there is one. A sink that throws is
+   * ignored: audit is not authorisation, and a call the mandate allowed must
+   * not fail because its log line could not be written. The sink owns
+   * reporting its own failure.
+   */
+  #tell(event: (sink: GraphSink) => void): void {
+    if (this.#sink === undefined) return;
+    try {
+      event(this.#sink);
+    } catch {
+      // See above.
+    }
+  }
+
   /** Reserves the next sequence number, unless this handle already wrote one. */
   #next(written: boolean): number {
     return written ? this.#seq : ++this.#seq;
@@ -278,11 +305,8 @@ export class Recorder {
 
 /** The fields a node carries whatever happened to it, fixed at the call's start. */
 function startOf(input: CallInput | DenialInput): {
-    base: (seq: number) => Pick<
-      ActionNode,
-      "seq" | "at" | "tool" | "action" | "resource" | "branch" | "paths" | "base" | "destinations"
-      | "unreadableDestinations" | "method"
-    >;
+    base: (seq: number) => Pick<ActionNode, "seq"> & ForwardedCall;
+    fields: ForwardedCall;
     elapsed: () => number;
   } {
   // Wall clock for `at`, monotonic for the duration: Date.now() can step
@@ -290,21 +314,22 @@ function startOf(input: CallInput | DenialInput): {
   const at = new Date().toISOString();
   const started = performance.now();
   const e = extractArgs(input.tool, input.args);
+  const fields: ForwardedCall = {
+    at,
+    tool: input.tool,
+    ...(input.action !== undefined ? { action: input.action } : {}),
+    ...(e.repo !== undefined ? { resource: e.repo } : {}),
+    ...(e.branch !== undefined ? { branch: e.branch } : {}),
+    paths: e.paths,
+    ...(e.base !== undefined ? { base: e.base } : {}),
+    destinations: e.destinations,
+    ...(e.unreadableDestinations !== undefined
+      ? { unreadableDestinations: e.unreadableDestinations } : {}),
+    ...(e.method !== undefined ? { method: e.method } : {}),
+  };
   return {
-    base: (seq) => ({
-      seq,
-      at,
-      tool: input.tool,
-      ...(input.action !== undefined ? { action: input.action } : {}),
-      ...(e.repo !== undefined ? { resource: e.repo } : {}),
-      ...(e.branch !== undefined ? { branch: e.branch } : {}),
-      paths: e.paths,
-      ...(e.base !== undefined ? { base: e.base } : {}),
-      destinations: e.destinations,
-      ...(e.unreadableDestinations !== undefined
-        ? { unreadableDestinations: e.unreadableDestinations } : {}),
-      ...(e.method !== undefined ? { method: e.method } : {}),
-    }),
+    base: (seq) => ({ seq, ...fields }),
+    fields,
     elapsed: () => Math.round(performance.now() - started),
   };
 }
@@ -471,30 +496,57 @@ export function parseJsonl(src: string): ActionGraph {
   };
 }
 
+/** What a node carries before its outcome is known: everything but `seq` and the result. */
+export type ForwardedCall = Pick<
+  ActionNode,
+  "at" | "tool" | "action" | "resource" | "branch" | "paths" | "base" | "destinations"
+  | "unreadableDestinations" | "method"
+>;
+
 /**
- * The seam R16's signed append-only log replaces the in-memory array through.
- * **Interface only in v0.1.**
+ * Where a recorder sends each event as it happens -- R16's audit log
+ * (`AuditLog` in audit.ts) is the implementation.
  *
- * R16 is P1: "signed, append-only log of mandates, approvals and decisions,
- * exportable as compliance evidence". `Recorder` currently holds its nodes in
- * memory and serialises them at the end, which is fine for a run that finishes
- * and useless for one that is killed — the evidence dies with the process.
+ * `Recorder` holds its nodes in memory and serialises them at the end, which
+ * is fine for a run that finishes and useless for one that is killed: the
+ * evidence dies with the process. A sink is told as each thing happens.
  *
- * A sink receives each node as it completes, so an implementation can append
- * and sign incrementally. Two properties any implementation must keep:
+ * Two events, not one. The v0.1 seam had only "a node completed", and an
+ * allowed call's node completes when GitHub answers -- so a call in flight when
+ * the process died, or when the session closed under it, was sent and never
+ * recorded. That is the call whose effect is unknown, which makes it the one an
+ * auditor most needs. `forwarded` is told when the call is sent upstream, and
+ * `completed` carries the same `call` number when it comes back.
  *
- *   - **It must not be able to change a decision.** `append` returns
- *     `Promise<void>`, so a sink has no way to signal "do not allow this". A
- *     sink that could veto would be a second enforcement point whose rules
- *     nothing validated, and R15's "a model may flag, never allow" exists for
- *     the same reason.
- *   - **A failing sink must not fail the call.** Audit is not authorisation:
- *     losing a log line is bad, and refusing a granted call because the logger
- *     was unreachable turns an audit outage into a denial of service.
+ * Properties any implementation must keep:
  *
- * `seq` is completion order, so a sink receives nodes in the order
- * `parseJsonl` will demand to read them back.
+ *   - **It cannot change a decision.** Both methods return nothing, so a sink
+ *     has no way to say "do not allow this". A sink that could veto would be a
+ *     second enforcement point whose rules nothing validated, and R15's "a
+ *     model may flag, never allow" exists for the same reason.
+ *   - **A failing sink does not fail the call.** The recorder discards
+ *     anything a sink throws. Audit is not authorisation: losing a log line is
+ *     bad, and refusing a granted call because the logger was unreachable
+ *     turns an audit outage into a denial of service. A sink reports its own
+ *     failure.
+ *   - **Synchronous, so in order.** The v0.1 seam returned a promise nothing
+ *     awaited; two appends in flight could land out of order, and `seq` is
+ *     completion order, which `parseJsonl` demands back.
  */
 export interface GraphSink {
-  append(node: ActionNode): Promise<void>;
+  /** An allowed call, as it is sent upstream. Calls are numbered from 1. */
+  forwarded(call: number, start: ForwardedCall): void;
+  /** A node, as it completes. `call` is the forwarded call it finishes; absent on a denial. */
+  completed(node: ActionNode, call?: number): void;
+}
+
+/**
+ * One node, validated as `parseJsonl` validates a node line. For a reader of
+ * another format that carries nodes -- the audit log -- so a node there is held
+ * to exactly the rules a trace's is.
+ */
+export function parseNode(raw: unknown): ActionNode {
+  const r = NodeLineSchema.safeParse({ type: "node", ...(raw as object) });
+  if (!r.success) throw new TraceParseError(`not a usable node — ${issues(r.error)}`);
+  return toNode(r.data);
 }

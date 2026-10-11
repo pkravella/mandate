@@ -8,7 +8,11 @@ export {
   pauseRecord, widenRefusal, type PauseRecord, type WidenRequest,
 } from "./pause.js";
 export {
-  Recorder, TraceParseError, parseJsonl,
-  type ActionGraph, type ActionNode, type CallInput, type DenialInput, type TraceCeiling,
-  type RecordHandle, type RecorderMeta, type TraceMode,
+  Recorder, TraceParseError, parseJsonl, parseNode,
+  type ActionGraph, type ActionNode, type CallInput, type DenialInput, type ForwardedCall,
+  type GraphSink, type TraceCeiling, type RecordHandle, type RecorderMeta, type TraceMode,
 } from "./graph.js";
+export {
+  AUDIT_FORMAT, AuditKeyError, AuditLog, AuditLogError, auditKeyId, loadAuditKey,
+  verifyAuditLog, type AuditKey, type AuditLogOptions, type AuditVerdict, type SealReason, type UnfinishedCall,
+} from "./audit.js";

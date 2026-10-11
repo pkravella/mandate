@@ -7,7 +7,7 @@ import {
   type MintDeps, type MintedToken, type ProxyRules,
 } from "@mandate-dev/compiler";
 import {
-  createProxyServer, makeArgumentEnforcer, Recorder, type Decision,
+  createProxyServer, makeArgumentEnforcer, Recorder, type Decision, type GraphSink,
 } from "@mandate-dev/proxy";
 
 /**
@@ -47,6 +47,13 @@ export interface SessionOptions {
    * way to build a session, so the benchmark measures this enforcement.
    */
   readonly toolVisibility?: "granted" | "all";
+  /**
+   * Told of every call as it is forwarded and every decision as it completes
+   * -- R16's audit log. The caller owns its lifecycle: `serve` opens it before
+   * the mint, so a session that fails to open is on record too, and seals it
+   * after `close`, so a call still in flight comes back before the seal.
+   */
+  readonly sink?: GraphSink;
 }
 
 export interface Session {
@@ -110,7 +117,7 @@ export async function openSession(opts: SessionOptions): Promise<Session> {
     const recorder = new Recorder({
       mode: "enforced", mandateId: rules.mandateId, mandateHash: rules.mandateHash,
       ceiling: { label: proof.ceilingId, sha256: proof.ceilingSha256 },
-    });
+    }, opts.sink);
     const proxy = createProxyServer({
       rules,
       upstream,

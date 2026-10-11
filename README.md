@@ -197,6 +197,19 @@ refused at `repo.read.resources`, and the only egress was two tunnels to the
 model's API. macOS with Docker Desktop only; `--sandbox` refuses elsewhere,
 which includes the Action's Linux runners.
 
+### An audit log
+
+`--audit-log <path>` on `run` or `serve` writes a signed, append-only record of
+the session as it happens: the mandate, every call sent to GitHub, every
+decision, and a seal saying whether the session served or never opened. Each line is signed with
+an Ed25519 key of its own (`MANDATE_AUDIT_KEY_PATH`, made by
+`mandate audit keygen`), never the App's, and chained to the line before it.
+`mandate audit verify <log> --public-key <pub>` checks it with the public half
+alone and names any call that was sent and never answered. With `--sandbox` the
+key never reaches the agent; without it, the agent could read the key and
+rewrite the log. [docs/audit-log.md](docs/audit-log.md) has the format and what
+the signature does and does not prove.
+
 There is also an [Action](action.yml) and an
 [example workflow](.github/workflows/mandate.yml). The workflow sets
 `permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
@@ -236,6 +249,7 @@ what to do about it.
 | [Writing a ceiling](docs/ceiling-authoring.md) | The constrained Cedar profile, as a contract |
 | [Enforced where](docs/enforced-where.md) | Which control bounds what, and what defeats each |
 | [Threat model](docs/threat-model.md) | What holds, what is out of scope, what breaks it |
+| [Audit log](docs/audit-log.md) | The signed session log: turning it on, checking it, its format, what it proves |
 | [Architecture](docs/architecture.md) | The package graph and why it is shaped that way |
 | [Benchmark report](docs/benchmark-report.md) | Measured completion, authority cut, over-grant, and the denials an under-grant produces, rendered from [its results](docs/benchmark-results.json) |
 
@@ -396,9 +410,9 @@ upstream of it is untrusted; everything downstream takes only a
 | `@mandate-dev/validator` | Glob-set containment by DFA inclusion, the constrained Cedar ceiling profile, the two-layer subset proof, and the R4 lints. |
 | `@mandate-dev/writer` | The one model-driven component, and untrusted. Covers from the catalog, prunes, and emits a `ProposedMandate` that only `validate()` accepts. Runs both calls at effort `medium`, by measurement. |
 | `@mandate-dev/compiler` | Mints a repository-scoped GitHub App token and revokes it, and compiles the mandate into proxy rules — capped to end before the token does — plus the token-versus-proxy enforcement report. |
-| `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list` (or, in the benchmark's measurement mode only, offers every tool and refuses on call), checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. |
+| `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list` (or, in the benchmark's measurement mode only, offers every tool and refuses on call), checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. Writes and verifies the signed audit log. |
 | `@mandate-dev/replay` | Scores a mandate by replaying a recorded action graph through the production argument enforcer, reporting over-grant, under-grant, and which operations a task needed that the mandate lacked. |
-| `@mandate-dev/cli` | `mandate validate`, `widen`, `serve` and `run` (with `--sandbox`: the workspace clone, the container launch and the relay listener), the permission diff, the rejection report, and the enforced session the CLI and the benchmark share. |
+| `@mandate-dev/cli` | `mandate validate`, `widen`, `serve`, `run` (with `--sandbox`: the workspace clone, the container launch and the relay listener) and `audit keygen`/`verify`, the permission diff, the rejection report, and the enforced session the CLI and the benchmark share. |
 | `@mandate-dev/bench` | Private. The benchmark corpus loader, the seeder, the harness (each mandate run with tools filtered and with every tool offered; acceptance in a locked-down container), the writer-effort sweep, and the report renderer. |
 
 **The egress sandbox is the layer that actually holds.** An MCP proxy sees MCP
@@ -448,11 +462,16 @@ has no source for an app principal's authority, and borrowing the operator's
 would attribute the request to the automation while a person's level bounded
 it. `requestedBy` must name the user checked with `--as`.
 
-**R12's other backends and R16's audit log are interfaces only.** `Backend` in
-`compiler/src/rules.ts` and `GraphSink` in `proxy/src/graph.ts` are the seams
-the Docker MCP Gateway, Cedar/AgentCore, OPA and gh-aw exports and a signed
-append-only log slot into. Shipping four half-implemented backends would be four
-things that look supported and are not.
+**R12's other backends are an interface only.** `Backend` in
+`compiler/src/rules.ts` is the seam the Docker MCP Gateway, Cedar/AgentCore,
+OPA and gh-aw exports slot into. Shipping four half-implemented backends would
+be four things that look supported and are not.
+
+**The audit log has no outside witness, and the Action does not write one.** A
+log with no seal was killed or truncated, and nothing in the file can tell
+which. Without `--sandbox` the agent can read the audit key, so the signature
+proves nothing against it, and that includes the Action. See
+[docs/audit-log.md](docs/audit-log.md).
 
 **Thirteen catalog operations no MCP tool reaches**, so the proxy is not in the
 way of them at all. Most are classed `forbidden` and the lints reject them,
