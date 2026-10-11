@@ -289,9 +289,13 @@ specifically, and opened a pull request. Six turns, $0.23. The merge attempt
 came back refused with `clause: mandate.grants`. Ten proxy decisions, one
 denial, and that denial was the merge.
 
-Writing a mandate costs about **$0.03** and takes **12 seconds** at the median,
-which misses the PRD's under-ten-second target. Two sequential model calls at
-effort `high` is why, and effort is the lever.
+Writing a mandate costs about **$0.03** and misses the PRD's under-ten-second
+target. Phase 6 measured the lever: six tasks written again at effort `medium`
+gave mandates identical to `high`'s, facet by facet, and were faster on every
+task -- a median of **10.2 seconds** against 11.7 -- so `medium` is now the
+default. Lowering only the second call changed three mandates in five. The
+remaining cost is two sequential model calls
+([writer-effort-results.json](docs/writer-effort-results.json)).
 
 Phase 4 added the attack corpus and the commands. The adversarial suite was 34
 cases (42 since Phase 5 added eight destination cases) across four families — injected issue text, hostile MCP tool

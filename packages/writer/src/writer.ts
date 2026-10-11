@@ -30,16 +30,26 @@ export interface WriteRequest {
    */
   readonly expiresInMinutes?: number | undefined;
   /**
-   * Thinking effort for each of the two calls, `high` where unnamed (Task 6.2).
-   * Effort is the latency lever, and the calls carry different risk: cover
-   * decides what can be granted, prune only chooses from cover's list.
-   * Operator-set, like everything else here; the model cannot reach it.
+   * Thinking effort for each of the two calls, `DEFAULT_EFFORT` where unnamed
+   * (Task 6.2). Effort is the latency lever, and the calls carry different
+   * risk: cover decides what can be granted, prune only chooses from cover's
+   * list. Operator-set, like everything else here; the model cannot reach it.
    */
   readonly effort?: { readonly cover?: WriterEffort; readonly prune?: WriterEffort } | undefined;
 }
 
 export type WriterEffort = "low" | "medium" | "high";
 const EFFORTS: readonly string[] = ["low", "medium", "high"];
+
+/**
+ * Measured, not assumed (Task 6.2, 2026-10-11). Six corpus tasks written again
+ * at `medium` for both calls produced mandates identical to the ones `high`
+ * wrote, grant by grant and facet by facet, and every write was faster -- by
+ * 0.4 to 5.3 s, median 10.2 s against 11.7 s. Lowering prune alone (`high`
+ * cover, `low` prune) changed or broke three of five mandates, so the two
+ * calls move together. Still over the 10 s target.
+ */
+export const DEFAULT_EFFORT: WriterEffort = "medium";
 
 export interface WriteResult {
   readonly proposed: ProposedMandate;
@@ -81,7 +91,7 @@ export interface AnthropicLike {
 const MODEL = "claude-opus-5-5";
 
 /**
- * Generous, and streamed. Adaptive thinking is on and effort is `high`, so a
+ * Generous, and streamed. Adaptive thinking is on and effort can be `high`, so a
  * short ceiling here does not fail loudly — it returns a *truncated* tool
  * input, which can still parse into a smaller, wrong mandate.
  */
@@ -233,9 +243,9 @@ async function callTool<T>(
     model: MODEL,
     max_tokens: MAX_TOKENS,
     thinking: { type: "adaptive" },
-    // Always explicit: Opus 5.5 defaults to `medium`, one level below the rest
-    // of the family, and mandate writing is correctness-sensitive -- so a lower
-    // effort is a measured choice (Task 6.2), never an omission.
+    // Always explicit, never the model's own default: the effort mandate writing
+    // runs at is a measured choice (Task 6.2, see DEFAULT_EFFORT), and an
+    // omission would silently follow whatever the model's default becomes.
     output_config: { effort },
     tools: [tool],
     tool_choice: { type: "auto" },
@@ -293,7 +303,9 @@ export async function writeMandate(client: AnthropicLike, req: WriteRequest): Pr
     );
   }
 
-  const effort = { cover: req.effort?.cover ?? "high", prune: req.effort?.prune ?? "high" };
+  const effort = {
+    cover: req.effort?.cover ?? DEFAULT_EFFORT, prune: req.effort?.prune ?? DEFAULT_EFFORT,
+  };
   for (const [call, level] of Object.entries(effort)) {
     if (!EFFORTS.includes(level)) {
       throw new WriterError(

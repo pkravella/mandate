@@ -21,6 +21,15 @@ Ground truth: six unconstrained runs recorded 2026-10-06 against the live github
 > `add_issue_comment` and was refused. The cost section counts the runs
 > reported here; the discarded triage pair cost $0.22 more, for $2.06 in all.
 
+> **Write latency since this sweep (Task 6.2, 2026-10-11).** The latency rows
+> below were measured with the writer at effort `high` for both calls. The six
+> tasks' mandates were then written again from the same task text at several
+> settings and compared with this sweep's, facet by facet. At `medium` for both
+> calls all six were identical and every write was faster: median 10.2 s
+> against 11.7 s for `high` in the same session -- still over the 10 s target.
+> Lowering only the prune call changed or broke three of five. The writer now
+> defaults to `medium`; the measurements are in `docs/writer-effort-results.json`.
+
 ## Metrics
 
 Baseline for the authority cut (D7): a token holding the permissions the GitHub MCP server's default toolsets require (contents: write, issues: write, pull_requests: write, actions: read, metadata: read), counted as reachable (operation × repository) pairs, and reported against two repository counts. **One repository** is the conservative figure: it is reproducible and credits Mandate with nothing for choosing the repository. **63 repositories** is the PRD's baseline, the agent's usual static token: the repositories pkravella's own GitHub token reaches as owner, collaborator or organization member (`gh api /user/repos`, 2026-10-10). Neither is the authority cut; each is labelled.

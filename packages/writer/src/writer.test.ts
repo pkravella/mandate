@@ -214,8 +214,10 @@ describe("writeMandate", () => {
     expect(rec.sent).toHaveLength(2);
     for (const params of rec.sent) {
       expect(params.model).toBe("claude-opus-5-5");
-      // Opus 5.5 defaults to `medium`; mandate writing is correctness-sensitive.
-      expect(params.output_config?.effort).toBe("high");
+      // Explicit, never the model's default. `medium` by measurement (Task
+      // 6.2): six tasks wrote mandates identical to `high`'s, faster on every
+      // task; `high/low` changed three of five, so prune is not lowered alone.
+      expect(params.output_config?.effort).toBe("medium");
       expect(params.thinking).toEqual({ type: "adaptive" });
       // Forced tool_choice is a 400 on this model.
       expect(params.tool_choice).toEqual({ type: "auto" });
@@ -231,10 +233,10 @@ describe("writeMandate", () => {
     expect(rec.sent.map((p) => p.output_config?.effort)).toEqual(["high", "low"]);
   });
 
-  it("keeps high for a call the request does not name", async () => {
+  it("uses medium for a call the request does not name", async () => {
     const rec = stub(FIX_42);
-    await writeMandate(rec.client, { ...req, effort: { prune: "medium" } });
-    expect(rec.sent.map((p) => p.output_config?.effort)).toEqual(["high", "medium"]);
+    await writeMandate(rec.client, { ...req, effort: { prune: "high" } });
+    expect(rec.sent.map((p) => p.output_config?.effort)).toEqual(["medium", "high"]);
   });
 
   it("refuses an effort it does not know, before calling the model", async () => {
