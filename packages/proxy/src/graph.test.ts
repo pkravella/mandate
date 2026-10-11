@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { Recorder, TraceParseError, parseJsonl, type ActionNode } from "./graph.js";
+import {
+  Recorder, TraceParseError, parseJsonl, type ActionNode, type GraphSink,
+} from "./graph.js";
 
 const enforced = () => new Recorder({
   mode: "enforced", mandateId: "fix-issue-42", mandateHash: "a".repeat(64),
@@ -522,5 +524,73 @@ describe("the recorded node shape", () => {
       },
     });
     expect(r.toJsonl()).not.toContain("ghp_SUPERSECRETTOKEN");
+  });
+});
+
+describe("Recorder, with a sink", () => {
+  const sinkLog = () => {
+    const events: string[] = [];
+    const sink: GraphSink = {
+      forwarded: (call, start) => { events.push(`forwarded ${call} ${start.tool}`); },
+      completed: (node, call) => {
+        events.push(`node ${node.seq} ${node.decision}${call === undefined ? "" : ` call ${call}`}`);
+      },
+    };
+    return { events, sink };
+  };
+  const meta = { mode: "enforced" as const, mandateId: "m", mandateHash: "a".repeat(64) };
+  const denial = {
+    tool: "merge_pull_request", args: {},
+    decision: { kind: "deny" as const, tool: "merge_pull_request", clause: "mandate.grants", reason: "no" },
+  };
+
+  // The call whose effect is unknown: sent, and never answered.
+  it("tells the sink a call was forwarded before the call completes", () => {
+    const { events, sink } = sinkLog();
+    const r = new Recorder(meta, sink);
+    const h = r.recordCall({ tool: "get_file_contents", action: "contents.read", args: {} });
+    expect(events).toEqual(["forwarded 1 get_file_contents"]);
+    h.completed(ok(""));
+    expect(events).toEqual(["forwarded 1 get_file_contents", "node 1 allow call 1"]);
+  });
+
+  it("numbers forwarded calls apart from nodes, and gives a denial no call", () => {
+    const { events, sink } = sinkLog();
+    const r = new Recorder(meta, sink);
+    r.recordDenial(denial);
+    const a = r.recordCall({ tool: "get_file_contents", action: "contents.read", args: {} });
+    const b = r.recordCall({ tool: "get_file_contents", action: "contents.read", args: {} });
+    b.completed(ok(""));
+    a.upstreamFailed("gone");
+    expect(events).toEqual([
+      "node 1 deny",
+      "forwarded 1 get_file_contents",
+      "forwarded 2 get_file_contents",
+      "node 2 allow call 2",
+      "node 3 allow call 1",
+    ]);
+  });
+
+  it("tells the sink once when a handle is completed twice", () => {
+    const { events, sink } = sinkLog();
+    const h = new Recorder(meta, sink)
+      .recordCall({ tool: "get_file_contents", action: "contents.read", args: {} });
+    h.completed(ok(""));
+    h.upstreamFailed("late");
+    expect(events.filter((e) => e.startsWith("node"))).toHaveLength(1);
+  });
+
+  // Audit is not authorisation.
+  it("records and carries on when the sink throws", () => {
+    const boom: GraphSink = {
+      forwarded: () => { throw new Error("disk gone"); },
+      completed: () => { throw new Error("disk gone"); },
+    };
+    const r = new Recorder(meta, boom);
+    expect(() => {
+      r.recordCall({ tool: "get_file_contents", action: "contents.read", args: {} }).completed(ok(""));
+      r.recordDenial(denial);
+    }).not.toThrow();
+    expect(r.graph().nodes.map((n) => n.decision)).toEqual(["allow", "deny"]);
   });
 });
