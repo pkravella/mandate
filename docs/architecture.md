@@ -69,10 +69,12 @@ validator, so a future contributor cannot quietly add a second consumer.
 
 Two consequences worth stating:
 
-- A new enforcement backend (R12's OPA, AgentCore, Docker MCP Gateway, gh-aw)
-  implements `Backend`, whose `compile` takes a `ValidatedMandate`. It therefore
-  cannot become a second path by which model output reaches an enforcement
-  surface. The interface is in `compiler/src/rules.ts`, interface-only in v0.1.
+- An enforcement backend (R12) implements `Backend`, whose `compile` takes a
+  `ValidatedMandate`, so it cannot become a second path by which model output
+  reaches an enforcement surface. The gh-aw export (`compiler/src/ghaw.ts`) is
+  the first; building it showed a backend must be able to refuse, so its
+  result is the configuration or the reasons, never a best effort. See
+  [gh-aw.md](gh-aw.md).
 - The audit log (R16, `proxy/src/audit.ts`) implements `GraphSink`, whose
   methods return nothing, and the recorder discards anything a sink throws. It
   has no way to signal "do not allow this" and no way to fail a call, so it

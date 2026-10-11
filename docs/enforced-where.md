@@ -17,6 +17,7 @@ today.
 | Sandbox egress allowlist | All network egress from the `agent` user: the proxy is the only route out, and it tunnels only to an allowed host on 443 | Data sent to an **allowed** destination | Running the agent outside the sandbox, or starting it without `--cap-add=NET_ADMIN` (which the entrypoint refuses to do) | **built** |
 | Mandate expiry | Call acceptance after `expiresAt` | Work already done | Nothing | **built** |
 | GitHub rulesets (backstop) | Pushes to protected branches, required reviews | Anything outside branch rules | An admin token | planned |
+| gh-aw, via `mandate export gh-aw` | The workflow's repository, read tools, the pull request's count, branch, base and files, comment count and targets, the run's length | Reads by path or branch (refused, not exported); per-task limits (it is a template); destinations (`network` is the agent's own egress) | gh-aw's own boundary: `allowed-branches` is checked only in its MCP server. Editing the committed workflow | **built**: the export. gh-aw enforces it ([gh-aw.md](gh-aw.md)) |
 
 ## The asymmetry that matters
 

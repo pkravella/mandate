@@ -106,6 +106,12 @@ describe("compileGhAw: a fix-issue mandate", () => {
     expect(r.frontmatter["network"]).toBe("defaults");
   });
 
+  // gh-aw's own egress for the agent and its model API: the operator's
+  // choice, like --agent-egress, and not a destination the mandate grants.
+  it("says what it adds that is not from the mandate", () => {
+    expect(r.beyondMandate.join("\n")).toMatch(/network: defaults.*not a destination/s);
+  });
+
   it("says where it is narrower than the mandate", () => {
     expect(r.narrowings.join("\n")).toMatch(/protected-files/);
     expect(r.narrowings.join("\n")).toMatch(/excluded-files/);

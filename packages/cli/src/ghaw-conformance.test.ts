@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -170,5 +171,43 @@ describe("what gh-aw does that Mandate's matcher does not", () => {
     for (const [p, v] of [["src/*", "src/a/b"], ["src/**", "src/a/b"], ["**.env**", "a/.env.x"], ["src/*.js", "src/.js"]] as const) {
       expect(globPatternToRegex(p).test(v), `${p} vs ${v}`).toBe(globMatches([p], v));
     }
+  });
+});
+
+// The conformance test is only as good as the copies being gh-aw's code. A
+// git blob hash is what `git hash-object` and GitHub's contents API report.
+describe("the vendored gh-aw code is gh-aw's, unmodified", () => {
+  const blob = (f: string): string => {
+    const body = readFileSync(vendor(f));
+    return createHash("sha1").update(`blob ${body.length}\0`).update(body).digest("hex");
+  };
+  it.each([
+    ["glob_pattern_helpers.cjs", "7f8f41db39abc0d1fdecc5a04fda79123fd7f9e1"],
+    ["normalize_branch_name.cjs", "6d20e27dbcbdd01f52fd7c5f5dfd5edb775e9355"],
+  ])("%s is blob %s at v0.89.21", (file, sha) => {
+    expect(blob(file)).toBe(sha);
+  });
+
+  // is_allowed_branch.cjs is an extract: its function body must be the
+  // upstream text, which README.md records the source blob of.
+  it("is_allowed_branch.cjs carries gh-aw's isAllowedBranch verbatim", () => {
+    const text = readFileSync(vendor("is_allowed_branch.cjs"), "utf8");
+    expect(text).toContain([
+      "function isAllowedBranch(branch, allowedPatterns) {",
+      "  for (const pattern of allowedPatterns) {",
+      "    if (branch === pattern) {",
+      "      return true;",
+      "    }",
+      '    if (pattern === "*") {',
+      "      // Add this fast-path",
+      "      return true;",
+      "    }",
+      '    if (pattern.includes("*") && globPatternToRegex(pattern, { pathMode: true, caseSensitive: true }).test(branch)) {',
+      "      return true;",
+      "    }",
+      "  }",
+      "  return false;",
+      "}",
+    ].join("\n"));
   });
 });

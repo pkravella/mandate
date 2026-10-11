@@ -83,6 +83,9 @@ importers:
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
     devDependencies:
       '@anthropic-ai/sdk':
         specifier: ^0.132.1
@@ -90,9 +93,6 @@ importers:
       '@mandate-dev/writer':
         specifier: workspace:*
         version: link:../writer
-      yaml:
-        specifier: ^2.9.1
-        version: 2.9.1
 
   packages/compiler:
     dependencies:

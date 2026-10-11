@@ -18,3 +18,10 @@ Check a copy with `git hash-object <file>` against the blob, or
 
 These run only in tests. Moving to a newer gh-aw means re-copying them,
 re-reading the handlers they come from, and re-running the conformance test.
+
+`frontmatter-keys.json` lists the property names gh-aw's workflow schema
+accepts at each place the export writes, so a test can fail on a key gh-aw
+would reject. It is generated, not written: from
+`pkg/parser/schemas/main_workflow_schema.json` at the same tag (blob
+`bd9981bcf238598b137e783502a09af3f83d5921`), taking for each path the keys of the object form's
+`properties`. Regenerate it rather than edit it.

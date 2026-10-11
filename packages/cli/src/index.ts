@@ -9,6 +9,7 @@ import { runRun, MCP_CONFIG_PLACEHOLDER } from "./commands/run.js";
 import { githubAppDeps, type MintDeps } from "@mandate-dev/compiler";
 import { runWiden } from "./commands/widen.js";
 import { runAuditKeygen, runAuditVerify } from "./commands/audit.js";
+import { runExportGhAw } from "./commands/export.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
@@ -19,6 +20,7 @@ export {
   runRun, MCP_CONFIG_PLACEHOLDER, type RunArgs, type RunDeps,
 } from "./commands/run.js";
 export { prepareMandate, type PrepareArgs, type Prepared } from "./prepare.js";
+export { runExportGhAw } from "./commands/export.js";
 export {
   auditInputs, runAuditKeygen, runAuditVerify, type AuditKeygenArgs, type AuditVerifyArgs,
 } from "./commands/audit.js";
@@ -274,6 +276,33 @@ export function main(argv: readonly string[]): void {
         ...(opts.passEnv === undefined ? {} : { passEnv: opts.passEnv }),
         ...(opts.auditLog === undefined ? {} : { auditLog: opts.auditLog }),
       }, (m) => { console.log(m); }, resolve === undefined ? {} : { resolve });
+    });
+
+  const exporter = program
+    .command("export")
+    .description("compile a validated mandate into another enforcement backend's configuration (R12)");
+  mandateOptions(
+    exporter
+      .command("gh-aw")
+      .description(
+        "print the frontmatter of a GitHub Agentic Workflows workflow holding the mandate's limits; "
+        + "refuses what gh-aw cannot hold",
+      )
+      .requiredOption("--mandate <file>", "the mandate YAML"),
+  )
+    .action(async (opts: {
+      mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
+      as: string; level?: string; repo?: string;
+    }) => {
+      const resolve = githubResolver();
+      // stdout is the workflow, so it can be redirected into a file.
+      process.exitCode = await runExportGhAw({
+        file: opts.mandate, ceiling: opts.ceiling, schema: opts.schema,
+        destinations: opts.ceilingDestinations, as: opts.as,
+        ...(opts.level === undefined ? {} : { level: opts.level }),
+        ...(opts.repo === undefined ? {} : { repo: opts.repo }),
+      }, (m) => { process.stdout.write(`${m}\n`); }, (m) => { process.stderr.write(`${m}\n`); },
+      resolve === undefined ? {} : { resolve });
     });
 
   const audit = program

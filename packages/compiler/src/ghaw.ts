@@ -55,6 +55,8 @@ export type GhAwResult =
     readonly frontmatter: Readonly<Record<string, unknown>>;
     /** Where the workflow is narrower than the mandate. */
     readonly narrowings: readonly string[];
+    /** What the workflow carries that the mandate does not grant: the operator's choices. */
+    readonly beyondMandate: readonly string[];
   }
   | { readonly ok: false; readonly refusals: readonly GhAwRefusal[] };
 
@@ -287,6 +289,11 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
     ok: true,
     repo,
     narrowings,
+    beyondMandate: [
+      "network: defaults is gh-aw's infrastructure egress for the agent (with its engine's API "
+      + "host, which gh-aw adds): the operator's choice, like --agent-egress, and not a destination "
+      + "the mandate grants",
+    ],
     frontmatter: {
       permissions,
       "timeout-minutes": mandate.expiresInMinutes,
