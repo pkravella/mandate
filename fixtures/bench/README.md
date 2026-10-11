@@ -62,7 +62,7 @@ that failed contradicted its own issue text by claiming the suite passed.
 
 In a sweep the command runs over the agent's own files — the source and test it
 pushed — so it is untrusted code. `packages/bench/src/acceptance.ts` runs it in
-`node:22-bookworm-slim` with no network, no capabilities, a read-only root, no
+`node:24-bookworm-slim` with no network, no capabilities, a read-only root, no
 host environment and only the scratch directory mounted, read-only.
 (`corpus.test.ts` still runs the seed and the reference fix on the host: both
 are this repository's own files.)

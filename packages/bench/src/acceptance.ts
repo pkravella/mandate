@@ -15,7 +15,7 @@ export interface AcceptanceRun { readonly passed: boolean; readonly detail: stri
 export type AcceptanceRunner = (dir: string, command: string) => AcceptanceRun;
 
 /** The sandbox image's own base, so acceptance runs on the agent's Node. */
-export const ACCEPTANCE_IMAGE = "node:22-bookworm-slim";
+export const ACCEPTANCE_IMAGE = "node:24-bookworm-slim";
 export const ACCEPTANCE_TIMEOUT_S = 120;
 
 /**

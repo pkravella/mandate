@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ACCEPTANCE_IMAGE, ACCEPTANCE_TIMEOUT_S, acceptanceArgv, interpretAcceptanceExit } from "./acceptance.js";
 
@@ -65,5 +67,19 @@ describe("interpretAcceptanceExit", () => {
 
   it("treats no exit status at all as not passed", () => {
     expect(interpretAcceptanceExit(null).passed).toBe(false);
+  });
+});
+
+// Acceptance runs on the agent sandbox's own Node, and Dependabot bumps only the
+// Dockerfile: #71 moved the sandbox to Node 24 while this stayed on 22, and
+// nothing failed. Now the bump fails here until both move.
+describe("ACCEPTANCE_IMAGE", () => {
+  it("is the agent sandbox's base image", () => {
+    const dockerfile = readFileSync(
+      fileURLToPath(new URL("../../../sandbox/Dockerfile", import.meta.url)), "utf8",
+    );
+    const from = /^FROM\s+(\S+)/m.exec(dockerfile)?.[1];
+    expect(from).toBeDefined();
+    expect(ACCEPTANCE_IMAGE).toBe(from);
   });
 });
