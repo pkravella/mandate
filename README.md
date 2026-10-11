@@ -457,7 +457,7 @@ pnpm test
 pnpm build
 ```
 
-Requires Node 22 or newer. **969 tests run offline with no credentials**, and
+Requires Node 22.12 or newer. **969 tests run offline with no credentials**, and
 that is what CI runs. Rebuild with the root `pnpm build`: the packages have no
 build script of their own, so `pnpm --filter <pkg> build` exits 0 having done
 nothing.

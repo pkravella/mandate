@@ -22,5 +22,8 @@
     "@mandate-dev/catalog": "workspace:*",
     "@mandate-dev/schema": "workspace:*",
     "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
