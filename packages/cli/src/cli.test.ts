@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { generateKeyPairSync } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AuditLog, loadAuditKey } from "@mandate-dev/proxy";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -73,5 +77,68 @@ describe("the mandate binary's exit codes", () => {
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/^Usage: mandate/);
     expect(r.stderr).not.toMatch(STACK_FRAME);
+  });
+});
+
+describe("mandate audit, through the binary", () => {
+  it.each(["audit --help", "audit verify --help", "audit keygen --help"])(
+    "prints help and exits 0: mandate %s", (line) => {
+      const r = mandate(...line.split(" "));
+      expect(r.status).toBe(0);
+      expect(r.stdout).toMatch(/^Usage: mandate audit/);
+    },
+  );
+
+  it.each(["serve --help", "run --help"])("offers --audit-log: mandate %s", (line) => {
+    expect(mandate(...line.split(" ")).stdout).toContain("--audit-log <path>");
+  });
+
+  // The key reaches serve from MANDATE_AUDIT_KEY_PATH and is checked before
+  // anything else needs the network: an RSA key (the App's kind) is refused.
+  it("serve reads the audit key from MANDATE_AUDIT_KEY_PATH and refuses an RSA one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-audit-env-"));
+    const rsa = join(dir, "app.pem");
+    writeFileSync(rsa, generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
+      .export({ type: "pkcs1", format: "pem" }).toString(), { mode: 0o600 });
+    const r = spawnSync(process.execPath, [
+      BIN, "serve", "--mandate", "m.yaml", "--ceiling", "c", "--schema", "s",
+      "--ceiling-destinations", "d", "--as", "alice", "--level", "push",
+      "--audit-log", join(dir, "audit.jsonl"),
+    ], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env["PATH"] ?? "", MANDATE_APP_ID: "1", MANDATE_INSTALLATION_ID: "1",
+        MANDATE_APP_KEY_PATH: rsa, MANDATE_AUDIT_KEY_PATH: rsa,
+      },
+    });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/is an rsa key/);
+  });
+
+  // The whole outside-the-repository path: make a key, sign a log with it the
+  // way serve does, check the log with only the public half.
+  it("makes a key, and verifies a log signed with it using only the public key", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "mandate-audit-bin-"));
+    const key = join(dir, "audit.pem");
+    const made = mandate("audit", "keygen", "--out", key);
+    expect(made.status).toBe(0);
+    expect(made.stdout).toContain(`${key}.pub`);
+
+    const log = join(dir, "audit.jsonl");
+    const sink = AuditLog.create(log, loadAuditKey(key));
+    sink.open({
+      mandate: "m", task: "t", requestedBy: "user:alice", expiresInMinutes: 5, ceiling: "c",
+      grants: [{ action: "contents.read", enforcedBy: "token", resources: ["acme/api"] }],
+      destinations: { allow: [] },
+    });
+    sink.seal();
+
+    const ok = mandate("audit", "verify", log, "--public-key", `${key}.pub`);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(/^Intact/);
+
+    const missing = mandate("audit", "verify", log);
+    expect(missing.status).toBe(2);
+    expect(missing.stderr).toMatch(/required option '--public-key <path>'/);
   });
 });

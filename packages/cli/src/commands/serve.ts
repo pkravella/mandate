@@ -2,7 +2,9 @@ import { EventEmitter } from "node:events";
 import { renameSync, writeFileSync } from "node:fs";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { MintDeps } from "@mandate-dev/compiler";
-import type { Decision } from "@mandate-dev/proxy";
+import { proofOf } from "@mandate-dev/schema";
+import { AuditLog, AuditLogError, type AuditKey, type Decision } from "@mandate-dev/proxy";
+import { auditInputs } from "./audit.js";
 import { renderRejections } from "../diff.js";
 import { prepareMandate, type PrepareArgs } from "../prepare.js";
 import { openSession, type Session, type SessionOptions } from "../session.js";
@@ -40,6 +42,11 @@ export interface ServeArgs extends PrepareArgs {
   readonly listen?: string | undefined;
   /** Written with `{host, port}` once listening, so the launcher can read the port. */
   readonly readyFile?: string | undefined;
+  /**
+   * R16: write a signed log of the session here, as it happens. Signed with
+   * `deps.auditKeyPath`; never over an existing file.
+   */
+  readonly auditLog?: string | undefined;
 }
 
 export interface ServeDeps extends AuthorityDeps {
@@ -62,6 +69,8 @@ export interface ServeDeps extends AuthorityDeps {
   readonly stdin?: NodeJS.EventEmitter;
   /** Where SIGINT and SIGTERM arrive. Defaults to the process. */
   readonly signals?: NodeJS.EventEmitter;
+  /** The audit signing key, for `auditLog`. From MANDATE_AUDIT_KEY_PATH. */
+  readonly auditKeyPath?: string | undefined;
 }
 
 /**
@@ -110,6 +119,15 @@ export async function runServe(
     }
   }
 
+  // The audit key and the log's path, before anything is minted -- an
+  // operator who asked for an audit log gets one or nothing runs.
+  const audited = auditInputs(args.auditLog, deps.auditKeyPath);
+  if ("error" in audited) {
+    log(audited.error);
+    return 2;
+  }
+  const auditKey: AuditKey | undefined = audited.key;
+
   // Listening for SIGINT and SIGTERM from here, before anything is minted.
   // Found reviewing Phase 5: the listeners used to go on only once serve was
   // serving, so a signal during the mint -- the launcher's start-up timeout,
@@ -135,6 +153,30 @@ export async function runServe(
     return 2;
   }
 
+  // Opened before the mint, so the log records a session that failed to open
+  // as well as one that ran.
+  let audit: AuditLog | undefined;
+  if (args.auditLog !== undefined && auditKey !== undefined) {
+    const path = args.auditLog;
+    try {
+      audit = AuditLog.create(path, auditKey, {
+        onError: (m) => { log(`Audit log ${path}: ${m}.`); },
+      });
+    } catch (e) {
+      if (!(e instanceof AuditLogError)) throw e;
+      log(`${e.message} Nothing was minted.`);
+      return 2;
+    }
+    const proof = proofOf(prepared.mandate);
+    audit.open(prepared.mandate, { label: proof.ceilingId, sha256: proof.ceilingSha256 });
+  }
+  const sealAudit = (): void => {
+    if (audit === undefined) return;
+    log(audit.seal()
+      ? `Sealed the audit log at ${args.auditLog ?? ""}.`
+      : `The audit log at ${args.auditLog ?? ""} is not sealed; see the error above.`);
+  };
+
   const decisions: Decision[] = [];
   let session: Session;
   let listener: AgentListener | undefined;
@@ -144,9 +186,11 @@ export async function runServe(
       github: deps.github,
       ...(deps.upstream === undefined ? {} : { upstream: deps.upstream }),
       onDecision: (d) => decisions.push(d),
+      ...(audit === undefined ? {} : { sink: audit }),
     });
   } catch (e) {
     log(`Could not open an enforced session: ${e instanceof Error ? e.message : String(e)}`);
+    sealAudit();
     return 2;
   }
 
@@ -233,6 +277,9 @@ export async function runServe(
     }
     await session.close();
     log("Session closed and the token revoked.");
+    // After close: a call still in flight comes back as the upstream closes,
+    // and the seal is the claim that nothing follows it.
+    sealAudit();
   }
 
   const denied = decisions.filter((d) => d.kind === "deny").length;

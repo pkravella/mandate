@@ -144,9 +144,16 @@ node packages/cli/dist/index.js run ... -- node -e \
 ### The trace
 
 `--trace run.jsonl` writes the action graph: every call, its decision, and the
-clause behind every refusal. It is the audit record for the run, and
-`parseJsonl` reads it back strictly — an unknown line type, a denial with no
-clause, or a gap in the sequence is a rejection rather than a dropped row.
+clause behind every refusal. It is what replay reads, and `parseJsonl` reads it
+back strictly — an unknown line type, a denial with no clause, or a gap in the
+sequence is a rejection rather than a dropped row. It is written when the
+session ends, so a killed session leaves none.
+
+For evidence that survives a kill and can be checked by someone else, add
+`--audit-log session.audit.jsonl` with `MANDATE_AUDIT_KEY_PATH` set to a key
+from `mandate audit keygen --out <path>`, and check it with
+`mandate audit verify session.audit.jsonl --public-key <path>.pub`. Run it with
+`--sandbox`, or the agent can read the key. See [audit-log.md](audit-log.md).
 
 ## 4. Widen, when a mandate was too small
 

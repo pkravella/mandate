@@ -115,7 +115,10 @@ then spawns `mandate serve` from its MCP config — so the agent's environment
 names `MANDATE_APP_KEY_PATH`, and the agent runs as the user who can read that
 key. An agent that reads it can mint a token for the App's whole installation.
 With `--sandbox`, serve is started on the host by `mandate run`, never by the
-agent, and neither the key nor its path enters the container.
+agent, and neither the key nor its path enters the container. The same holds
+for the audit log's signing key: without `--sandbox` the agent can read it and
+rewrite the log it signs, so the signature is evidence against the agent only
+in the sandbox. [audit-log.md](audit-log.md) says what it proves in each mode.
 
 **What the sandbox opens on purpose.** The agent needs its model, so
 `--agent-egress` opens the model's API host and `--pass-env` passes the model's
@@ -252,7 +255,11 @@ the tool schemas actually sent to the model and fails if one appears.
 6. **Keep the App's permission set minimal.** The token can never be narrower
    than the installation; `actions` is deliberately absent from the
    development App, which is what makes the 422 path a test fixture.
-7. **Never splice untrusted text into the agent's prompt.** An issue title or
+7. **Write an audit log, and keep its key away from the agent.** Use
+   `--audit-log` with `--sandbox`, store the logs somewhere the key is not, and
+   give auditors the public key. A log with no seal was killed or cut off;
+   nothing in it can tell which.
+8. **Never splice untrusted text into the agent's prompt.** An issue title or
    body passed through the Action's `agent` input reaches the model as
    instructions. Mandate bounds what an injected agent can *do*, which is the
    whole premise — but that is a different guarantee from the text not being

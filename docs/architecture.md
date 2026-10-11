@@ -73,10 +73,12 @@ Two consequences worth stating:
   implements `Backend`, whose `compile` takes a `ValidatedMandate`. It therefore
   cannot become a second path by which model output reaches an enforcement
   surface. The interface is in `compiler/src/rules.ts`, interface-only in v0.1.
-- A future audit sink (R16) implements `GraphSink`, whose `append` returns
-  `Promise<void>`. It has no way to signal "do not allow this", so it cannot
-  become a second enforcement point whose rules nothing validated. Interface in
-  `proxy/src/graph.ts`, also interface-only.
+- The audit log (R16, `proxy/src/audit.ts`) implements `GraphSink`, whose
+  methods return nothing, and the recorder discards anything a sink throws. It
+  has no way to signal "do not allow this" and no way to fail a call, so it
+  cannot become a second enforcement point whose rules nothing validated. It is
+  told when an allowed call is sent as well as when it completes, so a call in
+  flight at a kill is still on record. See [audit-log.md](audit-log.md).
 
 ---
 

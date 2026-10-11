@@ -203,12 +203,17 @@ export class AuditLog implements GraphSink {
     this.#event({ type: "node", ...(call === undefined ? {} : { call }), node });
   }
 
-  /** The claim that the log is complete. Nothing is written after it. */
-  seal(): void {
-    if (this.#state !== "open") return;
+  /**
+   * The claim that the log is complete. Nothing is written after it. Returns
+   * whether the log is sealed: false if it failed earlier or the seal itself
+   * could not be written.
+   */
+  seal(): boolean {
+    if (this.#state !== "open") return this.#state === "sealed";
     this.#emit({ type: "seal", at: this.#now().toISOString() });
     if (this.#state === "open") this.#state = "sealed";
     this.#safeClose();
+    return this.#state === "sealed";
   }
 
   #event(event: Record<string, unknown>): void {

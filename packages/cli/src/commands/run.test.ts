@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
-import { randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import net from "node:net";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -11,7 +11,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import type { MintDeps } from "@mandate-dev/compiler";
-import { parseJsonl } from "@mandate-dev/proxy";
+import { parseJsonl, verifyAuditLog } from "@mandate-dev/proxy";
 import { runRun, MCP_CONFIG_PLACEHOLDER, type RunArgs } from "./run.js";
 import { runServe, untilSignalled, type ServeArgs, type ServeDeps } from "./serve.js";
 import { HANDSHAKE_PREFIX } from "../listen.js";
@@ -135,6 +135,47 @@ const runWith = async (
 };
 
 describe("mandate run", () => {
+  it("passes --audit-log to serve as an absolute path", async () => {
+    let config = "";
+    const code = await runRun(baseArgs({ auditLog: "rel/audit.jsonl" }), () => undefined, {
+      launch: async (_c, _a, env) => {
+        config = readFileSync(env["MANDATE_MCP_CONFIG"] ?? "", "utf8");
+        return 0;
+      },
+      selfPath: SELF,
+      env: { MANDATE_AUDIT_KEY_PATH: auditKey().path },
+    });
+    expect(code).toBe(0);
+    const args = (JSON.parse(config) as { mcpServers: { github: { args: string[] } } })
+      .mcpServers.github.args;
+    expect(args[args.indexOf("--audit-log") + 1]).toBe(resolve("rel/audit.jsonl"));
+  });
+
+  it("refuses an --audit-log that already exists before launching anything", async () => {
+    let launched = false;
+    const existing = write(`${randomBytes(4).toString("hex")}-old.jsonl`, "earlier evidence\n");
+    const code = await runRun(baseArgs({ auditLog: existing }), () => undefined, {
+      launch: async () => { launched = true; return 0; },
+      selfPath: SELF,
+      env: { MANDATE_AUDIT_KEY_PATH: auditKey().path },
+    });
+    expect(code).toBe(2);
+    expect(launched).toBe(false);
+  });
+
+  it("refuses --audit-log without MANDATE_AUDIT_KEY_PATH before launching anything", async () => {
+    const chunks: string[] = [];
+    let launched = false;
+    const code = await runRun(baseArgs({ auditLog: freshPath("audit.jsonl") }), (s) => chunks.push(s), {
+      launch: async () => { launched = true; return 0; },
+      selfPath: SELF,
+      env: {},
+    });
+    expect(code).toBe(2);
+    expect(launched).toBe(false);
+    expect(chunks.join("\n")).toContain("MANDATE_AUDIT_KEY_PATH");
+  });
+
   it("validates before it launches anything", async () => {
     const { code, out, launched } = await runWith({
       file: fixture("overgrants/merge-granted.yaml"),
@@ -384,6 +425,136 @@ describe("mandate serve", () => {
     );
     expect(source).not.toMatch(/console\.(log|info|debug)\(/);
     expect(source).not.toMatch(/process\.stdout\.write/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mandate serve --audit-log: R16
+// ---------------------------------------------------------------------------
+
+/** An Ed25519 audit key at 0600, and the public half an auditor would be given. */
+const auditKey = (): { path: string; publicPem: string } => {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+  const path = join(tmp, `audit-${randomBytes(4).toString("hex")}.pem`);
+  writeFileSync(path, privateKey.export({ type: "pkcs8", format: "pem" }).toString(), { mode: 0o600 });
+  return { path, publicPem: publicKey.export({ type: "spki", format: "pem" }).toString() };
+};
+const freshPath = (name: string): string => join(tmp, `${randomBytes(4).toString("hex")}-${name}`);
+
+describe("mandate serve --audit-log", () => {
+  const serveCounting = async (
+    over: Partial<ServeArgs>, deps: Partial<ServeDeps>,
+    drive?: (agent: Client) => Promise<void>,
+  ): Promise<{ code: number; out: string; mints: number }> => {
+    const chunks: string[] = [];
+    const gh = fakeGithub();
+    let connected: Client | undefined;
+    const code = await runServe(serveArgs(over), (s) => chunks.push(s), {
+      github: gh.deps,
+      upstream: fakeUpstream,
+      connect: async (session: Session) => {
+        const [a, b] = InMemoryTransport.createLinkedPair();
+        const agent = new Client({ name: "agent", version: "0" });
+        await Promise.all([session.proxy.connect(a), agent.connect(b)]);
+        connected = agent;
+      },
+      until: async () => { if (drive !== undefined && connected !== undefined) await drive(connected); },
+      ...deps,
+    });
+    return { code, out: chunks.join("\n"), mints: gh.mints() };
+  };
+
+  it("refuses to start without MANDATE_AUDIT_KEY_PATH, before anything is minted", async () => {
+    const auditLog = freshPath("audit.jsonl");
+    const { code, out, mints } = await serveCounting({ auditLog }, {});
+    expect(code).toBe(2);
+    expect(out).toContain("MANDATE_AUDIT_KEY_PATH");
+    expect(mints).toBe(0);
+    expect(existsSync(auditLog)).toBe(false);
+  });
+
+  it("refuses the App's RSA key as the audit key, before anything is minted", async () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const appKey = join(tmp, "app.pem");
+    writeFileSync(appKey, privateKey.export({ type: "pkcs1", format: "pem" }).toString(), { mode: 0o600 });
+    const { code, out, mints } = await serveCounting(
+      { auditLog: freshPath("audit.jsonl") }, { auditKeyPath: appKey },
+    );
+    expect(code).toBe(2);
+    expect(out).toMatch(/rsa key/);
+    expect(mints).toBe(0);
+  });
+
+  it("refuses to overwrite an existing log, before anything is minted", async () => {
+    const auditLog = write(`${randomBytes(4).toString("hex")}-old.jsonl`, "earlier evidence\n");
+    const { code, out, mints } = await serveCounting({ auditLog }, { auditKeyPath: auditKey().path });
+    expect(code).toBe(2);
+    expect(out).toMatch(/already exists/);
+    expect(mints).toBe(0);
+    expect(readFileSync(auditLog, "utf8")).toBe("earlier evidence\n");
+  });
+
+  it("writes a sealed log that verifies and holds the same decisions as the trace", async () => {
+    const key = auditKey();
+    const auditLog = freshPath("audit.jsonl");
+    const trace = freshPath("trace.jsonl");
+    const { code, out } = await serveCounting({ auditLog, trace }, { auditKeyPath: key.path }, async (agent) => {
+      await agent.callTool({ name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "src/a.ts" } });
+      await agent.callTool({ name: "merge_pull_request", arguments: { owner: "acme", repo: "api", pullNumber: 1 } });
+    });
+    expect(code).toBe(0);
+    expect(out).toContain(`Sealed the audit log at ${auditLog}`);
+    const v = verifyAuditLog(readFileSync(auditLog, "utf8"), key.publicPem);
+    expect(v).toMatchObject({ ok: true, sealed: true, mandateId: "fix-issue-42", unfinished: [] });
+    if (!v.ok) return;
+    expect(v.graph).toEqual(parseJsonl(readFileSync(trace, "utf8")));
+    expect(v.graph.nodes.map((n) => n.decision)).toEqual(["allow", "deny"]);
+  });
+
+  // The case completion-only recording lost: the session ends while a call is
+  // with GitHub. Its forwarded event is in the log whatever happens next.
+  it("records a call still in flight when the session ends", async () => {
+    const key = auditKey();
+    const auditLog = freshPath("audit.jsonl");
+    const hanging = async (): Promise<Client> => {
+      const server = new Server({ name: "fake", version: "0" }, { capabilities: { tools: {} } });
+      server.setRequestHandler(ListToolsRequestSchema, async () => ({
+        tools: [{ name: "get_file_contents", description: "reads", inputSchema: { type: "object" } }],
+      }));
+      server.setRequestHandler(CallToolRequestSchema, () => new Promise<never>(() => undefined));
+      const [a, b] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "up", version: "0" });
+      await Promise.all([server.connect(a), client.connect(b)]);
+      return client;
+    };
+    const { code } = await serveCounting({ auditLog }, { auditKeyPath: key.path, upstream: hanging }, async (agent) => {
+      void agent.callTool({ name: "get_file_contents", arguments: { owner: "acme", repo: "api", path: "src/a.ts" } })
+        .catch(() => undefined);
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(code).toBe(0);
+    const v = verifyAuditLog(readFileSync(auditLog, "utf8"), key.publicPem);
+    expect(v).toMatchObject({ ok: true, sealed: true });
+    if (!v.ok) return;
+    // Closing the upstream fails the pending call, and the seal comes after
+    // the close, so the call ends as an upstream failure rather than unfinished.
+    // (The --trace file, written before the close, does not have it.) A kill
+    // leaves it unfinished instead; the verifier's own tests cover that.
+    expect(v.unfinished).toEqual([]);
+    expect(v.graph.nodes.map((n) => [n.outcome, n.paths])).toEqual([["upstream-failure", ["src/a.ts"]]]);
+  });
+
+  it("seals the log when the session cannot open, so the attempt is on record", async () => {
+    const key = auditKey();
+    const auditLog = freshPath("audit.jsonl");
+    const { code } = await serveCounting({ auditLog }, {
+      auditKeyPath: key.path,
+      upstream: async () => { throw new Error("docker is not running"); },
+    });
+    expect(code).toBe(2);
+    const v = verifyAuditLog(readFileSync(auditLog, "utf8"), key.publicPem);
+    expect(v).toMatchObject({ ok: true, sealed: true, unfinished: [] });
+    if (v.ok) expect(v.graph.nodes).toEqual([]);
   });
 });
 
