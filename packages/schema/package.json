@@ -20,5 +20,8 @@
     "@mandate-dev/catalog": "workspace:*",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

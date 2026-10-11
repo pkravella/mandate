@@ -15,5 +15,8 @@
     "test": "vitest run",
     "typecheck": "tsc --build"
   },
-  "files": ["dist"]
+  "files": ["dist"],
+  "engines": {
+    "node": ">=22.12.0"
+  }
 }
