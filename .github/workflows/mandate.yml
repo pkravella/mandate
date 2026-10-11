@@ -31,7 +31,7 @@ jobs:
           # Do not leave a credential in .git/config for the agent to use.
           persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24
 
