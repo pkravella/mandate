@@ -99,6 +99,8 @@ MANDATE_LIVE=1 pnpm --filter @mandate-dev/compiler test     # free, mints tokens
 MANDATE_LIVE=1 pnpm --filter @mandate-dev/cli test          # ~$0.30, writes a PR
 MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test   # free, needs Docker
 MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/cli test        # free, Docker, macOS: relay + run --sandbox
+MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/bench exec vitest run src/acceptance.docker
+                                                              # free, Docker: the acceptance container
 ```
 
 The benchmark's gates are separate from each other on purpose, and each one is
@@ -110,8 +112,18 @@ MANDATE_SEED=1 pnpm --filter @mandate-dev/bench test \
 MANDATE_GROUND_TRUTH=1 pnpm --filter @mandate-dev/bench test \
   src/unconstrained             # ~$3; OVERWRITES the committed ground truth
 MANDATE_BENCH=1 pnpm --filter @mandate-dev/bench test \
-  src/bench.live                # ~$1.15; the mandated sweep and the report
+  src/bench.live                # ~$1.80; the mandated sweep and the report
+MANDATE_WRITER_SWEEP=1 pnpm --filter @mandate-dev/bench test \
+  src/writer-sweep.live         # ~$0.03 a write; writer effort settings compared
 ```
+
+The sweep runs each task's mandate in both tool-visibility modes unless
+`MANDATE_BENCH_MODES` says otherwise; `MANDATE_BENCH_TASKS` runs a subset and
+writes its report to `bench/out/` rather than `docs/`; `MANDATE_BENCH_PRIOR`
+reuses an earlier sweep's `results.json` for the tasks it covers in every mode.
+Set `MANDATE_BENCH_BUDGET` (and `MANDATE_WRITER_BUDGET`): both stops are
+predictive. A published report is regenerated from `docs/benchmark-results.json`
+by `packages/bench/src/published.test.ts`, so commit the results with it.
 
 **Why those three are not one gate.** They were briefly two, and the
 unconstrained pass shared `MANDATE_BENCH` with the mandated sweep — so running

@@ -176,7 +176,10 @@ whichever is first.
 five steps — mint, compile, connect upstream, build the proxy, give the token
 back — and both `mandate serve` and the benchmark harness call it. If they had
 separate copies, the published numbers would describe something other than what
-the command enforces.
+the command enforces. The benchmark's one difference is a proxy option,
+`toolVisibility: "all"`, that offers every upstream tool and refuses on call so
+an under-grant shows up as a denial; enforcement is identical, the default is
+`granted`, and no command exposes it.
 
 ---
 
@@ -199,6 +202,16 @@ Ground-truth traces are recorded once and committed, because a trace does not
 change when a mandate changes — so scoring is offline and free forever. A
 sweep's own traces go to a gitignored directory: reproducible input is a
 fixture, sweep output is not.
+
+The published report is not edited by hand. A sweep writes `results.json` —
+every run, with the validated mandate it was enforced under — and the report is
+rendered from it; the file is committed as `docs/benchmark-results.json`, and a
+test re-renders the report from it and fails on any difference outside the
+hand-written notes. Each task's mandate is written once and run in both
+tool-visibility modes, so a difference between them is the mode. The harness
+grades a run only on what that run created, with a token of its own, and runs
+the task's acceptance command — the agent's own code — in a container with no
+network, no host environment and only the scratch directory mounted.
 
 What the numbers mean, and what they do not, is in
 [benchmark-report.md](benchmark-report.md), which states its own shortfalls
