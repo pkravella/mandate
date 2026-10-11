@@ -27,7 +27,7 @@
     "@mandate-dev/proxy": "workspace:*"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.132.0",
+    "@anthropic-ai/sdk": "^0.132.1",
     "@modelcontextprotocol/sdk": "^1.32.1"
   }
 }
