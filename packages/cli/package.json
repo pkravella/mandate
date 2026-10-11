@@ -27,7 +27,7 @@
     "@mandate-dev/proxy": "workspace:*",
     "@mandate-dev/schema": "workspace:*",
     "@mandate-dev/validator": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "commander": "^14.0.2"
   },
   "devDependencies": {
