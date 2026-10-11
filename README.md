@@ -375,12 +375,12 @@ upstream of it is untrusted; everything downstream takes only a
 | `@mandate-dev/catalog` | 46 GitHub operations, each tying together Mandate's action atom, the REST route, the `github-mcp-server` tool name, and the GitHub App permission a token needs. Pure data. |
 | `@mandate-dev/schema` | The mandate contract, canonical hashing, the ceiling digest, and the `ValidatedMandate` brand. |
 | `@mandate-dev/validator` | Glob-set containment by DFA inclusion, the constrained Cedar ceiling profile, the two-layer subset proof, and the R4 lints. |
-| `@mandate-dev/writer` | The one model-driven component, and untrusted. Covers from the catalog, prunes, and emits a `ProposedMandate` that only `validate()` accepts. |
+| `@mandate-dev/writer` | The one model-driven component, and untrusted. Covers from the catalog, prunes, and emits a `ProposedMandate` that only `validate()` accepts. Runs both calls at effort `medium`, by measurement. |
 | `@mandate-dev/compiler` | Mints a repository-scoped GitHub App token and revokes it, and compiles the mandate into proxy rules — capped to end before the token does — plus the token-versus-proxy enforcement report. |
 | `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list`, checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. |
 | `@mandate-dev/replay` | Scores a mandate by replaying a recorded action graph through the production argument enforcer, reporting over-grant, under-grant, and which operations a task needed that the mandate lacked. |
 | `@mandate-dev/cli` | `mandate validate`, `widen`, `serve` and `run` (with `--sandbox`: the workspace clone, the container launch and the relay listener), the permission diff, the rejection report, and the enforced session the CLI and the benchmark share. |
-| `@mandate-dev/bench` | Private. The benchmark corpus loader, the seeder, the two-pass harness and the report renderer. |
+| `@mandate-dev/bench` | Private. The benchmark corpus loader, the seeder, the harness (each mandate run with tools filtered and with every tool offered; acceptance in a locked-down container), the writer-effort sweep, and the report renderer. |
 
 **The egress sandbox is the layer that actually holds.** An MCP proxy sees MCP
 traffic and nothing else, so an agent with a shell, a `git push` to a remote it
@@ -458,8 +458,10 @@ has the exact rule.
 **A zero false-pause count is not evidence.** The proxy filters `tools/list`, so
 an ungranted tool is never offered and therefore never attempted — measured,
 zero denials across six mandated runs while replay predicted seven under-granted
-calls. [docs/threat-model.md](docs/threat-model.md) §3.3 explains why this
-matters more than it sounds.
+calls. The benchmark's measurement mode, which offers every tool and refuses on
+call, surfaced the real one: the triage agent's refused `add_issue_comment`.
+[docs/threat-model.md](docs/threat-model.md) §3.3 explains why this matters more
+than it sounds.
 
 ## Development
 
@@ -471,22 +473,23 @@ pnpm test
 pnpm build
 ```
 
-Requires Node 22.12 or newer. **969 tests run offline with no credentials**, and
+Requires Node 22.12 or newer. **1,079 tests run offline with no credentials**, and
 that is what CI runs. Rebuild with the root `pnpm build`: the packages have no
 build script of their own, so `pnpm --filter <pkg> build` exits 0 having done
 nothing.
 
-Forty-six more are gated, each behind its own variable, because they spend
+Fifty-two more are gated, each behind its own variable, because they spend
 money, mint real credentials, write to a real repository, or need Docker. CI
 never runs any of them and needs no secrets.
 
 | Gate | What it does | Cost |
 | --- | --- | --- |
 | `MANDATE_LIVE=1` | The writer against the live model, token minting against a real GitHub App, and the whole loop end to end | ~$0.03 to ~$0.30 |
-| `MANDATE_SANDBOX=1` | Builds the sandbox and verifies its egress, the relay to `mandate serve`, and `mandate run --sandbox` end to end, each with negative controls (the last two on macOS) | free, needs Docker |
+| `MANDATE_SANDBOX=1` | Builds the sandbox and verifies its egress, the relay to `mandate serve`, and `mandate run --sandbox` end to end (the last two on macOS), and the benchmark's acceptance container, each with negative controls | free, needs Docker |
 | `MANDATE_SEED=1` | Seeds the benchmark corpus into the bench repository — **writes to its default branch and opens issues** | free |
 | `MANDATE_GROUND_TRUTH=1` | Re-records the benchmark's ground-truth traces, **overwriting the committed ones** | ~$3 |
-| `MANDATE_BENCH=1` | The mandated sweep and the report | ~$1.15 |
+| `MANDATE_BENCH=1` | The mandated sweep and the report: each task's mandate run with tools filtered and with every tool offered | ~$1.80 for six tasks |
+| `MANDATE_WRITER_SWEEP=1` | Writes each task's mandate again at several effort settings and compares it with the published one | ~$0.03 a write |
 
 The credential-backed gates also need `ANTHROPIC_API_KEY`, `MANDATE_APP_ID`,
 `MANDATE_INSTALLATION_ID`, `MANDATE_APP_KEY_PATH` and `MANDATE_TEST_REPO`. See

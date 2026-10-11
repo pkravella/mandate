@@ -220,6 +220,15 @@ loud. Under-grant, scored by replaying the run against a trace of the same task
 run unconstrained, is the measurement that sees this — and it needs that trace,
 which is why `fixtures/bench/traces/` is committed.
 
+**Measured the other way round (Phase 6).** The benchmark can also offer every
+tool and refuse on call — a measurement mode the product does not use. Run under
+the same mandates, that surfaced five denials. Four were `issue_read`, three of
+them on tasks that finished anyway, because the agent already had the issue
+text: most predicted under-grants were redundant calls. The fifth was triage's
+`add_issue_comment`, refused, which is why that task fails. None could be fixed
+by a widen, because a widen may not add an operation. See
+[benchmark-report.md](benchmark-report.md).
+
 ## Widening, and what cannot be widened
 
 R10 requires every pause to name the clause it hit and to offer a reviewable
