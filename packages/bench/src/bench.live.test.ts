@@ -6,11 +6,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { githubAppDeps } from "@mandate-dev/compiler";
 import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
 import { seededIssues } from "./seed.js";
-import { loadCorpus, compositionOf } from "./tasks.js";
+import { loadCorpus } from "./tasks.js";
 import {
-  applyPrior, inCorpusOrder, loadGroundTruth, parseModes, runBench, selectTasks,
+  applyPrior, inCorpusOrder, loadGroundTruth, parseModes, runBench, selectTasks, sweepMeta,
 } from "./harness.js";
-import { renderReport, type BenchResult, type CorpusMeta } from "./report.js";
+import { renderReport, type BenchResult } from "./report.js";
 
 /**
  * The mandated sweep, and the v0.1 report. **This is Phase 3's exit
@@ -113,25 +113,7 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
     const results = inCorpusOrder(corpus, [...kept, ...fresh], modes);
     writeFileSync(join(OUT, "results.json"), `${JSON.stringify(results, null, 2)}\n`, "utf8");
 
-    const meta: CorpusMeta = {
-      repo: corpus.repo,
-      composition: compositionOf(corpus.tasks),
-      shortfall: corpus.shortfall,
-      provenance: {
-        synthetic: corpus.tasks.filter((t) => t.provenance.kind === "synthetic").length,
-        derived: corpus.tasks.filter((t) => t.provenance.kind === "derived").length,
-      },
-      groundTruthFrom: "six unconstrained runs recorded 2026-10-06 against the live "
-        + "github-mcp-server",
-      // Task 6.4. Not the installation's count: the dev App is installed on
-      // the sandbox repository alone, so that would reproduce the
-      // one-repository figure. The PRD's baseline is the developer's own token.
-      baselineRepositories: {
-        count: 63,
-        source: "the repositories pkravella's own GitHub token reaches as owner, "
-          + "collaborator or organization member (`gh api /user/repos`, 2026-10-10)",
-      },
-    };
+    const meta = sweepMeta(corpus);
 
     const report = renderReport(results, meta);
     // A subset's report is a probe, not the published result.

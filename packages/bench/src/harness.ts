@@ -17,8 +17,8 @@ import { scoreMandate, type Score } from "@mandate-dev/replay";
 import type { ValidatedMandate } from "@mandate-dev/schema";
 import { openSession } from "@mandate-dev/cli";
 import { branchFor, taskPrompt } from "./prompt.js";
-import type { BenchResult, ToolVisibility } from "./report.js";
-import type { Corpus, LoadedTask } from "./tasks.js";
+import type { BenchResult, CorpusMeta, ToolVisibility } from "./report.js";
+import { compositionOf, type Corpus, type LoadedTask } from "./tasks.js";
 
 /**
  * The mandated pass: the whole loop, per task, measured.
@@ -669,6 +669,33 @@ export function inCorpusOrder(
   const at = (r: BenchResult): number =>
     corpus.tasks.findIndex((t) => t.id === r.taskId) * modes.length + modes.indexOf(r.visibility);
   return [...results].sort((a, b) => at(a) - at(b));
+}
+
+/**
+ * What the published report says about its corpus. One function, called by
+ * the live sweep that writes the report and by the test that re-renders it from
+ * the committed results, so the two cannot describe the corpus differently.
+ */
+export function sweepMeta(corpus: Corpus): CorpusMeta {
+  return {
+    repo: corpus.repo,
+    composition: compositionOf(corpus.tasks),
+    shortfall: corpus.shortfall,
+    provenance: {
+      synthetic: corpus.tasks.filter((t) => t.provenance.kind === "synthetic").length,
+      derived: corpus.tasks.filter((t) => t.provenance.kind === "derived").length,
+    },
+    groundTruthFrom: "six unconstrained runs recorded 2026-10-06 against the live "
+      + "github-mcp-server",
+    // Task 6.4. Not the installation's count: the dev App is installed on the
+    // sandbox repository alone, so that would reproduce the one-repository
+    // figure. The PRD's baseline is the developer's own token.
+    baselineRepositories: {
+      count: 63,
+      source: "the repositories pkravella's own GitHub token reaches as owner, "
+        + "collaborator or organization member (`gh api /user/repos`, 2026-10-10)",
+    },
+  };
 }
 
 /** Reads the committed ground-truth traces for a corpus. */
