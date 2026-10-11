@@ -10,9 +10,10 @@ validator proves the mandate grants nothing beyond what the user and the
 organization already allow. Mandate then compiles it into controls GitHub and
 MCP gateways already enforce, and watches the run against it.
 
-> **Status: v0.1 plus Phase 5 of the post-MVP plan. The loop runs end to end
-> from one command, and is measured — but three of the seven headline metrics
-> miss their target and the corpus is six tasks rather than fifty.** A model
+> **Status: v0.1 plus Phases 5 and 6 of the post-MVP plan. The loop runs end
+> to end from one command, and is measured — but completion, write latency and
+> the token-layer authority cut against one repository miss their targets, and
+> the corpus is six tasks rather than fifty.** A model
 > writes a mandate, the validator proves it against a Cedar ceiling and a
 > destination allowlist, a repo-scoped GitHub App token is minted, and
 > `mandate run` launches an agent whose GitHub tools all go through the enforced
@@ -25,7 +26,8 @@ MCP gateways already enforce, and watches the run against it.
 >
 > What is measured and what is missed: the
 > [benchmark report](docs/benchmark-report.md), which states its own shortfalls
-> before any metric. What is not built: [below](#not-built).
+> before any metric and is rendered from the committed results it reports. What
+> is not built: [below](#not-built).
 
 ## What a mandate looks like
 
@@ -235,7 +237,7 @@ what to do about it.
 | [Enforced where](docs/enforced-where.md) | Which control bounds what, and what defeats each |
 | [Threat model](docs/threat-model.md) | What holds, what is out of scope, what breaks it |
 | [Architecture](docs/architecture.md) | The package graph and why it is shaped that way |
-| [Benchmark report](docs/benchmark-report.md) | Measured completion, authority cut, over-grant |
+| [Benchmark report](docs/benchmark-report.md) | Measured completion, authority cut, over-grant, and the denials an under-grant produces, rendered from [its results](docs/benchmark-results.json) |
 
 ## Three things worth knowing up front
 
@@ -268,6 +270,7 @@ The v0.1 plan ran in four phases; the post-MVP plan continues from Phase 5.
 | 3 | Runtime and measurement: action graph, destination rules, egress sandbox, widen flow, replay evaluator, benchmark | built; exit criterion **not met as written** — it asks for 50 tasks and the corpus has 6 |
 | 4 | Adversarial testing and launch: the attack corpus, `mandate run`, packaging, docs | exit criterion **met** — zero ceiling breaches across 34 adversarial cases |
 | 5 | Make the trust story true: the agent in the sandbox, destination extraction, requester and ceiling identity, the token clock, `max` | exit criterion **met** — every security property the docs assert is exercised by a test, threat-model §3 is shorter, and no module is tested but unreachable |
+| 6 | Make the numbers mean something: the authority cut against a real baseline, under-granting made observable, write latency | exit criterion **met** — every figure in the report is measured on the corpus it names or labelled, and a test re-renders the report from its committed results; the derived 50-task corpus is not started (budget) |
 
 Phase 5 closed the distance between what the docs claimed and what the shipped
 path did, and most of what it fixed was found by probing rather than planned:
@@ -280,14 +283,18 @@ three issues through when updates were also granted. It also ran a real agent
 in the sandbox for the first time, which found that no agent image could be
 built on the base image at all.
 
-Phase 2's exit criterion was *"an agent fixes a real issue end to end under a
-mandate, and an attempted merge is blocked."* Run against a throwaway
-repository seeded with a `retry()` that swallowed its last error: the agent read
-the file, branched to `agent/issue-1-rethrow-last-error`, replaced the swallow
-with `throw lastError`, added a regression test asserting the last error
-specifically, and opened a pull request. Six turns, $0.23. The merge attempt
-came back refused with `clause: mandate.grants`. Ten proxy decisions, one
-denial, and that denial was the merge.
+Phase 6 made the published numbers checkable. The first sweep had kept neither
+its mandates nor its results, and called a one-repository figure an org-wide
+baseline; a sweep now commits `results.json` beside the report, and a test
+re-renders the report from it. The authority cut is reported against one
+repository and against the 63 a developer's own token reaches. Each mandate is
+run twice — with tools filtered, as the product runs, and with every tool
+offered and refused on call — which is what finally made an under-grant show
+up as a denial. Grading had been crediting an earlier sweep's pull request and
+borrowing the mandate's own token; a task's acceptance command, which runs the
+agent's own code, ran on the host with the App key readable, and now runs in a
+container with neither. Two fresh reviewers then checked the phase and found no
+Critical issue.
 
 Writing a mandate costs about **$0.03** and misses the PRD's under-ten-second
 target. Phase 6 measured the lever: six tasks written again at effort `medium`
@@ -297,6 +304,15 @@ seconds** against 11.7 (10.2 across all six) -- so `medium` is now the
 default. Lowering only the second call changed three mandates in five. The
 remaining cost is two sequential model calls
 ([writer-effort-results.json](docs/writer-effort-results.json)).
+
+Phase 2's exit criterion was *"an agent fixes a real issue end to end under a
+mandate, and an attempted merge is blocked."* Run against a throwaway
+repository seeded with a `retry()` that swallowed its last error: the agent read
+the file, branched to `agent/issue-1-rethrow-last-error`, replaced the swallow
+with `throw lastError`, added a regression test asserting the last error
+specifically, and opened a pull request. Six turns, $0.23. The merge attempt
+came back refused with `clause: mandate.grants`. Ten proxy decisions, one
+denial, and that denial was the merge.
 
 Phase 4 added the attack corpus and the commands. The adversarial suite was 34
 cases (42 since Phase 5 added eight destination cases) across four families — injected issue text, hostile MCP tool
@@ -322,18 +338,21 @@ run can mean the mandate was right or that nothing ever tested it, and the two
 look identical from the outside — so the suite calls the forbidden tool by name
 rather than waiting for a model to try.
 
-Phase 3 added the runtime half and measured it. The full
+Phase 3 added the runtime half and measured it; Phase 6 re-ran the sweep with
+each mandate in both tool-visibility modes. The full
 [benchmark report](docs/benchmark-report.md) is committed; the headline is:
 
 | Metric | Result | v0.1 target |
 | --- | --- | --- |
-| Task completion | 83.3% | at least 90% |
+| Task completion (either mode) | 83.3% | at least 90% |
 | Authority cut, token layer, against 1 repository | 32.3% | at least 80% |
 | Authority cut, proxy layer, against 1 repository | **87.1%** | at least 80% |
 | Authority cut, token layer, against 63 repositories | 98.9% | at least 80% |
 | Authority cut, proxy layer, against 63 repositories | 99.8% | at least 80% |
 | Over-grant | **0.0%** | under 10% |
-| Write latency | 13,010 ms | under 10 s |
+| False pauses, tools filtered | 0.0% — nothing was attempted, so nothing paused | under 5% |
+| False pauses, every tool offered | 66.7% — 4 of 6 runs, 3 of which still completed | under 5% |
+| Write latency | 13,010 ms at effort `high`; ~10.2 s at `medium`, now the default | under 10 s |
 
 Two caveats the report states at length and this table cannot: the corpus is
 **6 tasks, not the 50** Phase 3's exit criterion asks for, and those tasks are
@@ -377,7 +396,7 @@ upstream of it is untrusted; everything downstream takes only a
 | `@mandate-dev/validator` | Glob-set containment by DFA inclusion, the constrained Cedar ceiling profile, the two-layer subset proof, and the R4 lints. |
 | `@mandate-dev/writer` | The one model-driven component, and untrusted. Covers from the catalog, prunes, and emits a `ProposedMandate` that only `validate()` accepts. Runs both calls at effort `medium`, by measurement. |
 | `@mandate-dev/compiler` | Mints a repository-scoped GitHub App token and revokes it, and compiles the mandate into proxy rules — capped to end before the token does — plus the token-versus-proxy enforcement report. |
-| `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list`, checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. |
+| `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list` (or, in the benchmark's measurement mode only, offers every tool and refuses on call), checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. |
 | `@mandate-dev/replay` | Scores a mandate by replaying a recorded action graph through the production argument enforcer, reporting over-grant, under-grant, and which operations a task needed that the mandate lacked. |
 | `@mandate-dev/cli` | `mandate validate`, `widen`, `serve` and `run` (with `--sandbox`: the workspace clone, the container launch and the relay listener), the permission diff, the rejection report, and the enforced session the CLI and the benchmark share. |
 | `@mandate-dev/bench` | Private. The benchmark corpus loader, the seeder, the harness (each mandate run with tools filtered and with every tool offered; acceptance in a locked-down container), the writer-effort sweep, and the report renderer. |
@@ -440,7 +459,9 @@ way of them at all. Most are classed `forbidden` and the lints reject them,
 which is the real mitigation. `branch.delete` is the sharp one.
 
 **The corpus is six synthetic tasks, not fifty derived ones.** A 50-task sweep
-costs about $45 and this project's whole budget was $10. The corpus schema
+in both modes is now estimated at about $14 — the agent loop caches its prompt —
+plus recording ground truth for each new task, against a whole budget of $10
+that Phase 6's measurements nearly used up. The corpus schema
 records `synthetic` as a provenance that cannot imply attribution it lacks, and
 `loadCorpus` reports the shortfall as a number so nothing can present six as
 fifty.
