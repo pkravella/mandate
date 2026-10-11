@@ -12,7 +12,7 @@ import {
   pauseRecord, parseJsonl,
   type ActionGraph, type Decision,
 } from "@mandate-dev/proxy";
-import { writeMandate } from "@mandate-dev/writer";
+import { WriterError, writeMandate } from "@mandate-dev/writer";
 import { scoreMandate, type Score } from "@mandate-dev/replay";
 import type { ValidatedMandate } from "@mandate-dev/schema";
 import { openSession } from "@mandate-dev/cli";
@@ -251,6 +251,9 @@ async function harnessToken(deps: BenchDeps, repo: string): Promise<string | und
   return res.status === 201 && typeof token === "string" ? token : undefined;
 }
 
+/** A reset that did not happen. The run it was for is not run. */
+class ResetError extends Error {}
+
 /**
  * Puts a task's branch back where the seed left it, and says what already
  * existed so it is not credited to the run about to start.
@@ -269,21 +272,31 @@ async function resetTask(
     "GET /repos/{owner}/{repo}/pulls", token,
     { owner, repo: name, state: "all", head: `${owner}:${branch}`, per_page: 100 },
   );
+  if (listed.status !== 200) throw new ResetError(`listing its pull requests answered ${listed.status}`);
   for (const raw of Array.isArray(listed.data) ? listed.data : []) {
     const pr = raw as { number?: unknown; state?: unknown; head?: { ref?: unknown } };
     if (pr.head?.ref !== branch || typeof pr.number !== "number") continue;
     pullsBefore.add(pr.number);
     if (pr.state === "closed") continue;
-    await deps.github.asInstallation(
+    const closed = await deps.github.asInstallation(
       "PATCH /repos/{owner}/{repo}/pulls/{pull_number}", token,
       { owner, repo: name, pull_number: pr.number, state: "closed" },
     );
+    if (closed.status !== 200) {
+      throw new ResetError(`closing pull request #${pr.number} answered ${closed.status}`);
+    }
   }
-  // A 404 is a branch that is already gone, which is the point.
-  await deps.github.asInstallation(
+  // Checked, because a branch left in place keeps the last run's commits, and
+  // the next run would be graded on them. Already gone is the point: 404, or
+  // GitHub's 422 "Reference does not exist" -- and no other 422.
+  const deleted = await deps.github.asInstallation(
     "DELETE /repos/{owner}/{repo}/git/refs/{ref}", token,
     { owner, repo: name, ref: `heads/${branch}` },
   );
+  const message = (deleted.data as { message?: unknown } | null)?.message;
+  const gone = deleted.status === 204 || deleted.status === 404
+    || (deleted.status === 422 && message === "Reference does not exist");
+  if (!gone) throw new ResetError(`deleting ${branch} answered ${deleted.status}`);
 
   const commentsBefore = new Set<number>();
   const issue = deps.issues[task.id];
@@ -532,16 +545,37 @@ export async function runBench(
     // ---- write, once for every mode ---------------------------------
     // One mandate per task, so a difference between the modes is the mode.
     const writerUsage: Anthropic.Usage[] = [];
-    const written = await writeMandate(recordingUsage(deps.anthropic, writerUsage), {
-      // The identity whose authority validates it below. This was hard-coded to
-      // `user:bench` while the live sweep validated as pkravella, so every
-      // published benchmark mandate named a requester nobody checked.
-      task: taskText, repo: corpus.repo, requestedBy: `user:${deps.authority.login}`,
-      ceiling: deps.ceiling, issueNumber,
-    });
-    const writerCost = writerUsage.reduce((a, u) => a + costOf(u), 0);
+    const writerCost = (): number => writerUsage.reduce((a, u) => a + costOf(u), 0);
     // The writer ran once; its cost is charged to the first mode's result.
-    const charge = (i: number, agentCost: number): number => agentCost + (i === 0 ? writerCost : 0);
+    const charge = (i: number, agentCost: number): number => agentCost + (i === 0 ? writerCost() : 0);
+    const noScore: Score = {
+      granted: 0, exercised: 0, overGrantRate: 0, unusedActions: [],
+      underGrants: [], underGrantRate: 0, consideredCalls: 0, missingActions: [],
+    };
+    let written;
+    try {
+      written = await writeMandate(recordingUsage(deps.anthropic, writerUsage), {
+        // The identity whose authority validates it below. This was hard-coded
+        // to `user:bench` while the live sweep validated as pkravella, so every
+        // published benchmark mandate named a requester nobody checked.
+        task: taskText, repo: corpus.repo, requestedBy: `user:${deps.authority.login}`,
+        ceiling: deps.ceiling, issueNumber,
+      });
+    } catch (e) {
+      // A writer that produced no mandate is a failed task, not a failed sweep:
+      // it used to propagate, losing the task's result, its spend and the
+      // report. Recorded once per mode, like a refused proposal.
+      if (!(e instanceof WriterError)) throw e;
+      log(`${task.id}: writer FAILED — ${e.message}`);
+      modes.forEach((visibility, i) => record({
+        taskId: task.id, category: task.category, visibility, completed: false,
+        completionEvidence: `the writer produced no mandate: ${e.message}`,
+        pullRequestOpened: false, deniedCalls: 0,
+        widenRequests: 0, widenRefusals: 0, falsePauses: 0, proposalRejected: false,
+        score: noScore, writeLatencyMs: 0, cost: charge(i, 0),
+      }));
+      continue;
+    }
 
     const decision = validate(written.proposed, {
       ceiling: deps.ceiling, authority: deps.authority,
@@ -563,10 +597,7 @@ export async function runBench(
         widenRefusals: 0,
         falsePauses: 0,
         proposalRejected: true,
-        score: {
-          granted: 0, exercised: 0, overGrantRate: 0, unusedActions: [],
-          underGrants: [], underGrantRate: 0, consideredCalls: 0, missingActions: [],
-        },
+        score: noScore,
         writeLatencyMs: written.latencyMs,
         cost: charge(i, 0),
       }));
@@ -591,7 +622,22 @@ export async function runBench(
           });
           continue;
         }
-        const before = await resetTask(deps, harness, corpus.repo, task, branch);
+        let before;
+        try {
+          before = await resetTask(deps, harness, corpus.repo, task, branch);
+        } catch (e) {
+          if (!(e instanceof ResetError)) throw e;
+          log(`${task.id} [${visibility}]: reset FAILED — ${e.message}`);
+          record({
+            taskId: task.id, category: task.category, visibility, completed: false,
+            completionEvidence: `not run: the reset before it failed (${e.message}), so the `
+              + `branch could still hold an earlier run's work`,
+            pullRequestOpened: false, deniedCalls: 0,
+            widenRequests: 0, widenRefusals: 0, falsePauses: 0, proposalRejected: false,
+            score, writeLatencyMs: written.latencyMs, mandate, cost: charge(i, 0),
+          });
+          continue;
+        }
         const r = await runOnce(deps, {
           corpus, task, visibility, mandate, score, groundTruth, taskText, branch,
           harness, before, writeLatencyMs: written.latencyMs,

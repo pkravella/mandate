@@ -138,7 +138,9 @@ export function renderReport(
     + `This corpus is ${have}, leaving a shortfall of `
     + `${CATEGORIES.filter((c) => meta.shortfall[c] > 0)
       .map((c) => `${meta.shortfall[c]} ${c}`).join(", ") || "none"}. `
-    + `Every figure below is over ${n} completed run${n === 1 ? "" : "s"} and is not the `
+    + `Every figure below is over ${n} run${n === 1 ? "" : "s"} `
+    + `(${perTask.length} task${perTask.length === 1 ? "" : "s"} × ${modesRun.length} `
+    + `mode${modesRun.length === 1 ? "" : "s"}) and is not the `
     + `${target}-task result D8 asks for.`);
   say();
 
@@ -214,8 +216,15 @@ export function renderReport(
       }
     }
 
-    const over = median(rs.map((r) => r.score.overGrantRate));
-    row("Over-grant", pct(over), "under 10%", over < 0.1);
+    // A run with no mandate -- refused by validate(), or the writer produced
+    // none -- has no over-grant; counting it as 0% flatters the median.
+    const scored = rs.filter((r) => r.mandate !== undefined);
+    const over = median(scored.map((r) => r.score.overGrantRate));
+    const unscored = k - scored.length;
+    row("Over-grant",
+      scored.length === 0 ? "—" : `${pct(over)}${unscored === 0 ? ""
+        : ` (${unscored} run${unscored === 1 ? "" : "s"} without a mandate not counted)`}`,
+      "under 10%", scored.length === 0 ? undefined : over < 0.1);
 
     const widen = mean(rs.map((r) => r.widenRequests));
     row("Widen requests", widen.toFixed(2), "under 0.3 per task", widen < 0.3);

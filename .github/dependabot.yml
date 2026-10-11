@@ -25,6 +25,8 @@ updates:
     schedule: { interval: weekly }
     # Odd-numbered Node releases are never LTS. CI does not build this image
     # (it is behind MANDATE_SANDBOX), so a green check says nothing about one.
+    # Comparator ranges, not "23.x": Dependabot's Docker requirement is a plain
+    # Gem::Requirement, where "23.x" matches only the literal string "23.x".
     ignore:
       - dependency-name: node
-        versions: ["23.x", "25.x", "27.x", "29.x", "31.x"]
+        versions: [">= 23, < 24", ">= 25, < 26", ">= 27, < 28", ">= 29, < 30", ">= 31, < 32"]

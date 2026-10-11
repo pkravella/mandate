@@ -2,7 +2,7 @@
 
 ## What this measures, and what it does not
 
-**6 of a target 50 tasks.** Decision D8 fixes the corpus at 50 tasks (30 single-file-fix, 10 multi-file-fix, 5 dependency-bump, 5 triage). This corpus is 6, leaving a shortfall of 27 single-file-fix, 9 multi-file-fix, 4 dependency-bump, 4 triage. Every figure below is over 12 completed runs and is not the 50-task result D8 asks for.
+**6 of a target 50 tasks.** Decision D8 fixes the corpus at 50 tasks (30 single-file-fix, 10 multi-file-fix, 5 dependency-bump, 5 triage). This corpus is 6, leaving a shortfall of 27 single-file-fix, 9 multi-file-fix, 4 dependency-bump, 4 triage. Every figure below is over 12 runs (6 tasks × 2 modes) and is not the 50-task result D8 asks for.
 
 **6 of the tasks are synthetic.** A synthetic bug is easier than one found in the wild, and each seeded suite already contains a failing test, so the agent is told what is wrong rather than having to find it. Completion rate here is therefore **optimistic**, and it does not inherit the credibility of a corpus drawn from real repositories.
 
@@ -25,8 +25,10 @@ Ground truth: six unconstrained runs recorded 2026-10-06 against the live github
 > below were measured with the writer at effort `high` for both calls. The six
 > tasks' mandates were then written again from the same task text at several
 > settings and compared with this sweep's, facet by facet. At `medium` for both
-> calls all six were identical and every write was faster: median 10.2 s
-> against 11.7 s for `high` in the same session -- still over the 10 s target.
+> calls all six were identical. On the five tasks written at both settings in
+> the same session, every `medium` write was faster (by 0.4 to 5.3 s): median
+> 10.4 s against 11.7 s for `high`, and 10.2 s across all six at `medium` --
+> still over the 10 s target.
 > Lowering only the prune call changed or broke three of five. The writer now
 > defaults to `medium`; the measurements are in `docs/writer-effort-results.json`.
 
