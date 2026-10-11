@@ -34,5 +34,8 @@
     "@anthropic-ai/sdk": "^0.131.0",
     "@mandate-dev/writer": "workspace:*",
     "yaml": "^2.9.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

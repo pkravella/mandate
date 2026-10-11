@@ -21,5 +21,8 @@
     "@mandate-dev/compiler": "workspace:*",
     "@mandate-dev/proxy": "workspace:*",
     "@mandate-dev/schema": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
