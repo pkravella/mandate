@@ -431,6 +431,19 @@ describe("runBench, in both tool-visibility modes", () => {
     expect(JSON.stringify(first[0])).not.toMatch(/only have the tools listed/);
   });
 
+  // The first sweep's instruction said a tool carrying "Mandate limits" was
+  // granted and any other refused -- which told the agent how to rule out an
+  // ungranted tool without calling it. The offer-all triage run then never
+  // attempted the comment its task needed. The instruction may say that a
+  // call outside the mandate is refused; it must not say how to tell which.
+  it("does not tell the agent how to recognise a granted tool", async () => {
+    const agentRequests: Anthropic.MessageStreamParams[] = [];
+    await runBench(oneTask(), depsFor({ anthropic: fakeAnthropic({ agentRequests }), modes: ["all"] }));
+    const prompt = JSON.stringify(agentRequests[0]?.messages[0]);
+    expect(prompt).toMatch(/refused/);
+    expect(prompt).not.toMatch(/Mandate limits|granted within|description/i);
+  });
+
   it("keeps each mode's trace, rather than the second overwriting the first", async () => {
     const deps = depsFor({ modes: ["granted", "all"] });
     await runBench(oneTask(), deps);

@@ -301,13 +301,18 @@ async function resetTask(
 }
 
 /**
- * Said to the agent in every mode, and true in each: with tools filtered every
- * listed tool carries its limits, and with every tool offered only the granted
- * ones do. "You only have the tools listed" was false in the second, and a
- * prompt that differed between the modes would be what the comparison measured.
+ * Said to the agent in every mode, and true in each. "You only have the tools
+ * listed" was false with every tool offered, and a prompt that differed between
+ * the modes would be what the comparison measured.
+ *
+ * It says that a call outside the mandate is refused, and deliberately not how
+ * to tell which calls those are. The first sweep's version said a tool carrying
+ * "Mandate limits" was granted and any other refused, which let the agent rule
+ * out an ungranted tool without calling it -- the offer-all triage run never
+ * attempted the comment its task needed, and filtering came back through the
+ * prompt.
  */
-const MANDATE_NOTE = "You are working under a Mandate. A tool whose description carries "
-  + "\"Mandate limits\" is granted within those limits; any other call is refused, and the "
+const MANDATE_NOTE = "You are working under a Mandate: a call outside it is refused, and the "
   + "refusal names the clause it broke.";
 
 interface RunInput {
