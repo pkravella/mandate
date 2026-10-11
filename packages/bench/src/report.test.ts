@@ -1,6 +1,32 @@
 import { describe, expect, it } from "vitest";
+import { MandateSchema, type Mandate } from "@mandate-dev/schema";
 import { TARGET_COMPOSITION } from "./tasks.js";
 import { renderReport, type BenchResult, type CorpusMeta } from "./report.js";
+
+const REPO = "pkravella/mandate-sandbox";
+
+/**
+ * The token reaches 21 of the baseline's 31 operations (contents: write,
+ * pull_requests: write, metadata: read), the proxy `ops` of them, in one
+ * repository.
+ */
+const mandateWith = (ops = 3): Mandate => MandateSchema.parse({
+  mandate: "fix-issue-12", task: "Fix issue #12 and open a PR",
+  requestedBy: "user:pkravella", expiresInMinutes: 30, ceiling: "org-policy@v12",
+  grants: [
+    { action: "repo.read", enforcedBy: "token", resources: [REPO] },
+    {
+      action: "contents.write", enforcedBy: "proxy", resources: [REPO],
+      branches: ["agent/12-*"], paths: ["**"], denyPaths: [".github/workflows/**"],
+    },
+    {
+      action: "pull_request.create", enforcedBy: "proxy", resources: [REPO],
+      branches: ["agent/12-*"], base: "main", max: 1,
+    },
+    { action: "pull_request.read", enforcedBy: "token", resources: [REPO] },
+  ].slice(0, ops),
+  destinations: { allow: [`github.com/${REPO}`] },
+});
 
 const result = (over: Partial<BenchResult> = {}): BenchResult => ({
   taskId: "t1",
@@ -18,7 +44,7 @@ const result = (over: Partial<BenchResult> = {}): BenchResult => ({
     underGrants: [], underGrantRate: 0, consideredCalls: 6, missingActions: [],
   },
   writeLatencyMs: 4200,
-  authorityCut: { token: 0.72, proxy: 0.94 },
+  mandate: mandateWith(),
   cost: 0.27,
   ...over,
 });
@@ -29,6 +55,7 @@ const meta = (over: Partial<CorpusMeta> = {}): CorpusMeta => ({
   shortfall: { "single-file-fix": 27, "multi-file-fix": 9, "dependency-bump": 4, triage: 4 },
   provenance: { synthetic: 6, derived: 0 },
   groundTruthFrom: "unconstrained runs recorded 2026-10-06",
+  baselineRepositories: { count: 63, source: "what the developer's own token reaches" },
   ...over,
 });
 
@@ -152,6 +179,84 @@ describe("renderReport refuses to overstate", () => {
     expect(out).toContain("## Completion and under-grant disagree");
     expect(out).toMatch(/1 task completed while the replay scored an under-grant/);
     expect(out).toMatch(/- `t1` completed, blocked on 1 call\(s\); needed issue\.read/);
+  });
+});
+
+// Task 6.4. The cut against one repository was published under a sentence
+// describing an org-wide baseline. The PRD's baseline is the agent's usual
+// static token, which reaches every repository its developer can see; one
+// repository is the conservative, reproducible figure. Both are printed, each
+// labelled, and neither is the figure.
+describe("renderReport authority cut", () => {
+  const out = renderReport([result()], meta());
+
+  it("prints a row per layer for each baseline, labelled by its repository count", () => {
+    // token 21 of 31; proxy 3 of 31; at 63 repositories 21 and 3 of 1953.
+    expect(out).toMatch(/\| Authority cut, token layer, against 1 repository \| 32\.3% \|/);
+    expect(out).toMatch(/\| Authority cut, proxy layer, against 1 repository \| 90\.3% \|/);
+    expect(out).toMatch(/\| Authority cut, token layer, against 63 repositories \| 98\.9% \|/);
+    expect(out).toMatch(/\| Authority cut, proxy layer, against 63 repositories \| 99\.8% \|/);
+  });
+
+  // cutPercent is rounded to a whole percent, which reads 99.8% as 100.0%.
+  it("computes from the counts, not from a rounded percentage", () => {
+    expect(out).not.toMatch(/\| Authority cut[^|]*\| 100\.0% \|/);
+  });
+
+  it("says where the larger repository count came from", () => {
+    expect(out).toContain("what the developer's own token reaches");
+  });
+
+  it("does not describe the one-repository figure as an org-wide baseline", () => {
+    expect(out).not.toMatch(/installed org-wide/);
+  });
+
+  it("says only one baseline was measured when no repository count was given", () => {
+    const { baselineRepositories: _wide, ...narrow } = meta();
+    const one = renderReport([result()], narrow);
+    expect(one).toMatch(/against 1 repository/);
+    expect(one).not.toMatch(/against 63 repositories/);
+    expect(one).toMatch(/no repository count was given/i);
+  });
+
+  // Most of the cut against 63 repositories is repository scoping, which any
+  // installation token limited to one repository gets without Mandate.
+  it("breaks the larger cut into repository scoping, permission and operation narrowing", () => {
+    expect(out).toContain("## Where the authority cut comes from");
+    expect(out).toMatch(/31 operations × 63 repositories = 1953/);
+    expect(out).toMatch(/63 repositories to 1/);
+    expect(out).toMatch(/31 to 21 operations/);
+    expect(out).toMatch(/21 to 3 operations/);
+    expect(out).toMatch(/without Mandate/);
+  });
+
+  it("says the gap between layers cannot see branch and path limits", () => {
+    expect(out).toMatch(/counts operations[^\n]*branch and path/);
+  });
+
+  it("says the baseline omits the administration a personal access token carries", () => {
+    expect(out).toMatch(/administration/);
+  });
+
+  // A rejected proposal minted nothing, so there is no authority to cut. It
+  // used to enter the median as a 0% cut.
+  it("leaves rejected proposals out of the cut", () => {
+    const { mandate: _none, ...rejected } =
+      result({ taskId: "t2", proposalRejected: true, completed: false });
+    const mixed = renderReport([
+      result(),
+      rejected,
+    ], meta());
+    expect(mixed).toMatch(/\| Authority cut, proxy layer, against 1 repository \| 90\.3% \|/);
+  });
+
+  it("takes the median across tasks", () => {
+    const three = renderReport([
+      result({ mandate: mandateWith(2) }),
+      result({ taskId: "t2", mandate: mandateWith(3) }),
+      result({ taskId: "t3", mandate: mandateWith(4) }),
+    ], meta());
+    expect(three).toMatch(/\| Authority cut, proxy layer, against 1 repository \| 90\.3% \|/);
   });
 });
 

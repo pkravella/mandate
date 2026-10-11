@@ -1,5 +1,6 @@
-import { BASELINE_TOKEN } from "@mandate-dev/cli";
+import { authorityCut, BASELINE_TOKEN } from "@mandate-dev/cli";
 import type { Score } from "@mandate-dev/replay";
+import type { Mandate } from "@mandate-dev/schema";
 import { CATEGORIES, TARGET_COMPOSITION, type Category } from "./tasks.js";
 
 /**
@@ -53,7 +54,13 @@ export interface BenchResult {
   readonly proposalRejected: boolean;
   readonly score: Score;
   readonly writeLatencyMs: number;
-  readonly authorityCut: { readonly token: number; readonly proxy: number };
+  /**
+   * The validated mandate the run was enforced under; absent when validate()
+   * refused the proposal and nothing was minted. Kept rather than a cut
+   * computed at one baseline, so the report can compute the cut against any
+   * baseline and a published figure can be recomputed from the sweep's output.
+   */
+  readonly mandate?: Mandate;
   readonly cost: number;
 }
 
@@ -63,6 +70,12 @@ export interface CorpusMeta {
   readonly shortfall: Readonly<Record<Category, number>>;
   readonly provenance: { readonly synthetic: number; readonly derived: number };
   readonly groundTruthFrom: string;
+  /**
+   * The PRD's baseline: how many repositories the agent's usual static token
+   * reaches, and where that count came from. Omitted, the cut is reported
+   * against one repository only, and the report says so.
+   */
+  readonly baselineRepositories?: { readonly count: number; readonly source: string };
 }
 
 const median = (xs: readonly number[]): number => {
@@ -88,6 +101,8 @@ export function renderReport(
   const target = sum(TARGET_COMPOSITION);
   const lines: string[] = [];
   const say = (s = ""): void => { lines.push(s); };
+  // A rejected proposal minted nothing, so it has no authority to cut.
+  const minted = results.flatMap((r) => (r.mandate === undefined ? [] : [r.mandate]));
 
   say("# Mandate v0.1 benchmark report");
   say();
@@ -124,10 +139,20 @@ export function renderReport(
   // ---- the headline table --------------------------------------------
   say("## Metrics");
   say();
-  say(`Baseline for the authority cut (D7): a GitHub App installed org-wide with the `
-    + `permissions the GitHub MCP server's default toolsets require `
+  const wide = meta.baselineRepositories;
+  const baselines = [1, ...(wide === undefined || wide.count <= 1 ? [] : [wide.count])];
+  const repos = (r: number): string => `${r} repositor${r === 1 ? "y" : "ies"}`;
+  say(`Baseline for the authority cut (D7): a token holding the permissions the GitHub `
+    + `MCP server's default toolsets require `
     + `(${Object.entries(BASELINE_TOKEN).map(([k, v]) => `${k}: ${v}`).join(", ")}), `
-    + `counted as reachable (operation × repository) pairs.`);
+    + `counted as reachable (operation × repository) pairs, and reported against two `
+    + `repository counts. **One repository** is the conservative figure: it is reproducible `
+    + `and credits Mandate with nothing for choosing the repository. `
+    + (wide === undefined || wide.count <= 1
+      ? `No repository count was given for the PRD's baseline, the agent's usual static `
+        + `token, so only the one-repository figure is reported.`
+      : `**${repos(wide.count)}** is the PRD's baseline, the agent's usual static token: `
+        + `${wide.source}. Neither is the authority cut; each is labelled.`));
   say();
   say("| Metric | Result | v0.1 target | Met |");
   say("| --- | --- | --- | --- |");
@@ -142,10 +167,16 @@ export function renderReport(
     const completion = results.filter((r) => r.completed).length / n;
     row("Task completion", pct(completion), "at least 90%", completion >= 0.9);
 
-    const cutToken = median(results.map((r) => r.authorityCut.token));
-    const cutProxy = median(results.map((r) => r.authorityCut.proxy));
-    row("Authority cut, token layer", pct(cutToken), "at least 80%", cutToken >= 0.8);
-    row("Authority cut, proxy layer", pct(cutProxy), "at least 80%", cutProxy >= 0.8);
+    // From the counts, not cutPercent: a whole percent reads 99.8% as 100%.
+    for (const b of baselines) {
+      const cuts = minted.map((m) => authorityCut(m, { repositories: b }));
+      for (const layer of ["token", "proxy"] as const) {
+        const c = median(cuts.map((x) => 1 - x[layer].reachable / x.baseline));
+        row(`Authority cut, ${layer} layer, against ${repos(b)}`,
+          cuts.length === 0 ? "—" : pct(c), "at least 80%",
+          cuts.length === 0 ? undefined : c >= 0.8);
+      }
+    }
 
     const over = median(results.map((r) => r.score.overGrantRate));
     row("Over-grant", pct(over), "under 10%", over < 0.1);
@@ -195,6 +226,43 @@ export function renderReport(
     + "the proxy-layer figure is what holds while it does not. See "
     + "`docs/enforced-where.md`.");
   say();
+
+  if (minted.length > 0) {
+    const b = baselines.at(-1) ?? 1;
+    const cuts = minted.map((m) => authorityCut(m, { repositories: b }));
+    const base = cuts[0]?.baselineOperations ?? 0;
+    const mRepos = median(cuts.map((c) => c.mandateRepositories));
+    const tokenOps = median(cuts.map((c) => c.token.operations));
+    const proxyOps = median(cuts.map((c) => c.proxy.operations));
+    say("## Where the authority cut comes from");
+    say();
+    say(`The baseline reaches ${base} operations × ${repos(b)} = ${base * b} pairs. `
+      + `Medians across the ${minted.length} minted mandate${minted.length === 1 ? "" : "s"}, `
+      + `three things narrow it:`);
+    say();
+    if (b > 1) {
+      say(`1. **Repository scoping**, ${repos(b)} to ${mRepos}. Any installation token `
+        + `limited to the task's repository gets this without Mandate; what Mandate adds is `
+        + `choosing that repository per task. It is most of the cut against ${repos(b)}.`);
+    } else {
+      say(`1. **Repository scoping** is not measured against a one-repository baseline.`);
+    }
+    say(`2. **Permission narrowing**, the token layer: ${base} to ${tokenOps} operations per `
+      + `repository, from the permissions the mandate's grants need.`);
+    say(`3. **Operation narrowing**, the proxy layer: ${tokenOps} to ${proxyOps} operations per `
+      + `repository, the ones the mandate actually granted.`);
+    say();
+    say("The gap between the layers is not all of what GitHub cannot enforce: it counts "
+      + "operations, and branch and path limits, which a token cannot express either, are "
+      + "invisible to an (operation × repository) count. It understates what only the proxy "
+      + "holds.");
+    say();
+    say("The baseline's permission set understates a personal access token's. A classic token "
+      + "with `repo` scope also carries `administration` on every repository its owner "
+      + "administers, which this baseline leaves out, so against such a token both layers' "
+      + "cuts are larger than reported here.");
+    say();
+  }
 
   // ---- the disagreement that a single headline would hide -------------
   const completedWithUnderGrant = results.filter(

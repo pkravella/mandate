@@ -104,6 +104,14 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       },
       groundTruthFrom: "six unconstrained runs recorded 2026-10-06 against the live "
         + "github-mcp-server",
+      // Task 6.4. Not the installation's count: the dev App is installed on
+      // the sandbox repository alone, so that would reproduce the
+      // one-repository figure. The PRD's baseline is the developer's own token.
+      baselineRepositories: {
+        count: 63,
+        source: "the repositories pkravella's own GitHub token reaches as owner, "
+          + "collaborator or organization member (`gh api /user/repos`, 2026-10-10)",
+      },
     };
 
     const report = renderReport(results, meta);

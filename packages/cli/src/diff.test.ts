@@ -115,6 +115,45 @@ describe("authorityCut", () => {
     const out = renderPermissionDiff(m, { color: false });
     expect(out).toContain("one repository");
   });
+
+  // Task 6.4. The report recomputes the cut against more than one baseline and
+  // explains where it comes from, which needs the per-repository operation
+  // counts, not only the (operation, repository) products.
+  it("exposes the per-repository operation counts behind each figure", () => {
+    const cut = authorityCut(m, { repositories: 20 });
+    // contents: write (10) + pull_requests: write (7) + metadata: read (4).
+    expect(cut.token.operations).toBe(21);
+    expect(cut.proxy.operations).toBe(3);
+    expect(cut.baselineOperations).toBe(31);
+    expect(cut.mandateRepositories).toBe(1);
+    expect(cut.baseline).toBe(31 * 20);
+  });
+
+  // `acme/*` passes the lints (an owner bounds it) and was counted as one
+  // repository, so a pattern looked as narrow as a single repo. A pattern can
+  // reach every repository the baseline does.
+  it("counts a resource pattern as every baseline repository", () => {
+    const wide = MandateSchema.parse({
+      ...m, grants: m.grants.map((g) => ({ ...g, resources: ["acme/*"] })),
+    });
+    const cut = authorityCut(wide, { repositories: 20 });
+    expect(cut.mandateRepositories).toBe(20);
+    expect(cut.token.reachable).toBe(21 * 20);
+    expect(cut.proxy.reachable).toBe(3 * 20);
+  });
+
+  // With the one-repository default, a mandate naming two repositories reached
+  // more pairs than the baseline held and the cut went negative.
+  it("never counts the baseline as narrower than the mandate", () => {
+    const two = MandateSchema.parse({
+      ...m, grants: m.grants.map((g) => ({ ...g, resources: ["acme/api", "acme/web"] })),
+    });
+    const cut = authorityCut(two);
+    expect(cut.repositories).toBe(2);
+    expect(cut.baseline).toBe(31 * 2);
+    expect(cut.token.cutPercent).toBeGreaterThanOrEqual(0);
+    expect(cut.proxy.cutPercent).toBeGreaterThanOrEqual(0);
+  });
 });
 
 describe("derivedNotGrantedNotable", () => {
