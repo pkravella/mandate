@@ -6,9 +6,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { githubAppDeps } from "@mandate-dev/compiler";
 import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
 import { seededIssues } from "./seed.js";
-import { loadCorpus, compositionOf } from "./tasks.js";
-import { loadGroundTruth, runBench } from "./harness.js";
-import { renderReport, type CorpusMeta } from "./report.js";
+import { loadCorpus } from "./tasks.js";
+import {
+  applyPrior, inCorpusOrder, loadGroundTruth, parseModes, runBench, selectTasks, sweepMeta,
+} from "./harness.js";
+import { renderReport, type BenchResult } from "./report.js";
 
 /**
  * The mandated sweep, and the v0.1 report. **This is Phase 3's exit
@@ -19,6 +21,13 @@ import { renderReport, type CorpusMeta } from "./report.js";
  *
  *   MANDATE_BENCH=1 MANDATE_BENCH_BUDGET=2.50 \
  *     pnpm --filter @mandate-dev/bench exec vitest run src/bench.live
+ *
+ * MANDATE_BENCH_MODES=granted,all (the default) runs each task's agent once
+ * per tool-visibility mode under one mandate (Task 6.1). MANDATE_BENCH_TASKS
+ * runs only the named tasks, and then writes its report to bench/out/ rather
+ * than replacing the published one. MANDATE_BENCH_PRIOR names an earlier
+ * sweep's results.json: tasks it covers in every mode are not run again, and
+ * the report and results.json cover both.
  */
 const env = (n: string): string | undefined => process.env[n];
 const enabled = env("MANDATE_BENCH") === "1"
@@ -40,7 +49,9 @@ const read = (p: string): string => readFileSync(p, "utf8");
 
 describe.skipIf(!enabled)("the mandated sweep", () => {
   it("runs the corpus under mandates and writes the report", async () => {
-    const corpus = loadCorpus(CORPUS);
+    const modes = parseModes(env("MANDATE_BENCH_MODES"));
+    const selected = selectTasks(loadCorpus(CORPUS), env("MANDATE_BENCH_TASKS"));
+    const corpus = selected.corpus;
     const groundTruth = loadGroundTruth(CORPUS, corpus);
     expect(Object.keys(groundTruth).length, "no ground truth recorded").toBeGreaterThan(0);
 
@@ -81,7 +92,11 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       expect(issues[task.id], `${task.id} has no seeded issue`).toBeDefined();
     }
 
-    const results = await runBench(corpus, {
+    const priorPath = env("MANDATE_BENCH_PRIOR");
+    const prior = priorPath === undefined ? [] : JSON.parse(read(priorPath)) as BenchResult[];
+    const { corpus: toRun, kept } = applyPrior(corpus, prior, modes);
+
+    const fresh = await runBench(toRun, {
       anthropic: new Anthropic(),
       github,
       installationId,
@@ -90,34 +105,22 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       groundTruth,
       issues,
       outDir: OUT,
+      modes,
       budget: Number(env("MANDATE_BENCH_BUDGET") ?? "2.50"),
       log: (s) => { console.log(`    ${s}`); },
     });
+    // One file holds every result the report is computed from.
+    const results = inCorpusOrder(corpus, [...kept, ...fresh], modes);
+    writeFileSync(join(OUT, "results.json"), `${JSON.stringify(results, null, 2)}\n`, "utf8");
 
-    const meta: CorpusMeta = {
-      repo: corpus.repo,
-      composition: compositionOf(corpus.tasks),
-      shortfall: corpus.shortfall,
-      provenance: {
-        synthetic: corpus.tasks.filter((t) => t.provenance.kind === "synthetic").length,
-        derived: corpus.tasks.filter((t) => t.provenance.kind === "derived").length,
-      },
-      groundTruthFrom: "six unconstrained runs recorded 2026-10-06 against the live "
-        + "github-mcp-server",
-      // Task 6.4. Not the installation's count: the dev App is installed on
-      // the sandbox repository alone, so that would reproduce the
-      // one-repository figure. The PRD's baseline is the developer's own token.
-      baselineRepositories: {
-        count: 63,
-        source: "the repositories pkravella's own GitHub token reaches as owner, "
-          + "collaborator or organization member (`gh api /user/repos`, 2026-10-10)",
-      },
-    };
+    const meta = sweepMeta(corpus);
 
     const report = renderReport(results, meta);
-    mkdirSync(dirname(REPORT), { recursive: true });
-    writeFileSync(REPORT, `${report}\n`, "utf8");
-    console.log(`\n--- report written to ${REPORT}\n`);
+    // A subset's report is a probe, not the published result.
+    const target = selected.subset ? join(OUT, "report.md") : REPORT;
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, `${report}\n`, "utf8");
+    console.log(`\n--- report written to ${target}\n`);
     console.log(report);
 
     expect(results.length).toBeGreaterThan(0);

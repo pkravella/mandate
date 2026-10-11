@@ -33,6 +33,14 @@ export interface ProxyDeps {
    * including an allowed call the upstream server then refused or failed.
    */
   readonly recorder?: Recorder;
+  /**
+   * Which tools `tools/list` offers. `granted`, the default and the product,
+   * hides every tool no grant reaches: fewer schema tokens and nothing the
+   * agent can waste a turn on. `all` offers every upstream tool and refuses on
+   * call -- a measurement mode, because a hidden tool is never attempted and an
+   * under-grant then never shows up as a denial. Enforcement is identical.
+   */
+  readonly toolVisibility?: "granted" | "all";
 }
 
 export function denial(tool: string, clause: string, reason: string): CallToolResult {
@@ -136,7 +144,7 @@ export function createProxyServer(deps: ProxyDeps): Server {
     const upstream = await listAllUpstreamTools(deps.upstream);
     return {
       tools: upstream
-        .filter((t) => allowed.has(t.name))
+        .filter((t) => deps.toolVisibility === "all" || allowed.has(t.name))
         .map((t) => annotate(t, deps.rules.rules)),
     };
   });

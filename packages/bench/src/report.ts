@@ -16,9 +16,19 @@ import { CATEGORIES, TARGET_COMPOSITION, type Category } from "./tasks.js";
  * measurement" — and it applies to more than the authority cut.
  */
 
+/**
+ * Which tools the proxy offered the agent (Task 6.1). `granted` is the
+ * product: an ungranted tool is never offered, so it is never attempted and an
+ * under-grant never becomes a denial. `all` offers every tool and refuses on
+ * call, which is what makes denials, false pauses and widen requests
+ * measurable. Enforcement is the same in both.
+ */
+export type ToolVisibility = "granted" | "all";
+
 export interface BenchResult {
   readonly taskId: string;
   readonly category: Category;
+  readonly visibility: ToolVisibility;
   readonly completed: boolean;
   /** What decided completion, so a disputed result can be rechecked. */
   readonly completionEvidence: string;
@@ -90,6 +100,13 @@ const mean = (xs: readonly number[]): number =>
 
 const pct = (x: number): string => `${(x * 100).toFixed(1)}%`;
 
+const MODES: readonly ToolVisibility[] = ["granted", "all"];
+const MODE_HEADING: Readonly<Record<ToolVisibility, string>> = {
+  granted: "Tools filtered (the product: a tool no grant reaches is not offered)",
+  all: "Every tool offered (measurement: an ungranted tool is offered, and refused on call)",
+};
+const MODE_SHORT: Readonly<Record<ToolVisibility, string>> = { granted: "filtered", all: "offered" };
+
 const sum = (r: Readonly<Record<Category, number>>): number =>
   CATEGORIES.reduce((a, c) => a + r[c], 0);
 
@@ -101,8 +118,14 @@ export function renderReport(
   const target = sum(TARGET_COMPOSITION);
   const lines: string[] = [];
   const say = (s = ""): void => { lines.push(s); };
+  // Each task's agent may run in several modes under one mandate. A figure
+  // that is a property of the mandate -- its score, its authority -- is read
+  // from one result per task, or a task that ran twice counts twice.
+  const perTask = results.filter((r, i) => results.findIndex((x) => x.taskId === r.taskId) === i);
   // A rejected proposal minted nothing, so it has no authority to cut.
-  const minted = results.flatMap((r) => (r.mandate === undefined ? [] : [r.mandate]));
+  const minted = perTask.flatMap((r) => (r.mandate === undefined ? [] : [r.mandate]));
+  const modesRun = MODES.filter((m) => results.some((r) => r.visibility === m));
+  const multi = modesRun.length > 1;
 
   say("# Mandate v0.1 benchmark report");
   say();
@@ -154,22 +177,35 @@ export function renderReport(
       : `**${repos(wide.count)}** is the PRD's baseline, the agent's usual static token: `
         + `${wide.source}. Neither is the authority cut; each is labelled.`));
   say();
-  say("| Metric | Result | v0.1 target | Met |");
-  say("| --- | --- | --- | --- |");
-
   const row = (name: string, value: string, targetText: string, met: boolean | undefined): void => {
     say(`| ${name} | ${value} | ${targetText} | ${met === undefined ? "—" : met ? "yes" : "**NO**"} |`);
   };
 
   if (n === 0) {
+    say("| Metric | Result | v0.1 target | Met |");
+    say("| --- | --- | --- | --- |");
     say("| (no tasks ran) | — | — | — |");
-  } else {
-    const completion = results.filter((r) => r.completed).length / n;
+    say();
+  }
+
+  // One table per mode, each named: the plan's instruction that the report say
+  // which mode produced which figure, and the denial figures mean different
+  // things in each.
+  for (const mode of modesRun) {
+    const rs = results.filter((r) => r.visibility === mode);
+    const k = rs.length;
+    say(`### ${MODE_HEADING[mode]}`);
+    say();
+    say("| Metric | Result | v0.1 target | Met |");
+    say("| --- | --- | --- | --- |");
+
+    const completion = rs.filter((r) => r.completed).length / k;
     row("Task completion", pct(completion), "at least 90%", completion >= 0.9);
 
     // From the counts, not cutPercent: a whole percent reads 99.8% as 100%.
+    const modeMinted = rs.flatMap((r) => (r.mandate === undefined ? [] : [r.mandate]));
     for (const b of baselines) {
-      const cuts = minted.map((m) => authorityCut(m, { repositories: b }));
+      const cuts = modeMinted.map((m) => authorityCut(m, { repositories: b }));
       for (const layer of ["token", "proxy"] as const) {
         const c = median(cuts.map((x) => 1 - x[layer].reachable / x.baseline));
         row(`Authority cut, ${layer} layer, against ${repos(b)}`,
@@ -178,35 +214,37 @@ export function renderReport(
       }
     }
 
-    const over = median(results.map((r) => r.score.overGrantRate));
+    const over = median(rs.map((r) => r.score.overGrantRate));
     row("Over-grant", pct(over), "under 10%", over < 0.1);
 
-    const widen = mean(results.map((r) => r.widenRequests));
+    const widen = mean(rs.map((r) => r.widenRequests));
     row("Widen requests", widen.toFixed(2), "under 0.3 per task", widen < 0.3);
 
-    const falsePause = results.filter((r) => r.falsePauses > 0).length / n;
+    const falsePause = rs.filter((r) => r.falsePauses > 0).length / k;
     row("False pauses", pct(falsePause), "under 5%", falsePause < 0.05);
 
-    const latency = median(results.map((r) => r.writeLatencyMs));
+    const denied = rs.reduce((a, r) => a + r.deniedCalls, 0);
+    const widenable = rs.reduce((a, r) => a + r.widenRequests, 0);
+    row("Denials", `${denied} (${widenable} a widen could satisfy)`, "—", undefined);
+
+    const latency = median(rs.map((r) => r.writeLatencyMs));
     row("Write latency", `${latency} ms`, "under 10 s", latency < 10_000);
 
     // Not a measurement. A grant outside the ceiling cannot reach the compiler,
     // because only validate() mints a ValidatedMandate and the brand's
     // constructor is private to it. Printing a measured 0 would claim a test
     // that was not run.
-    const rejected = results.filter((r) => r.proposalRejected).length;
+    const rejected = rs.filter((r) => r.proposalRejected).length;
     row("Ceiling breaches", "0 by construction", "0", undefined);
     row("Proposals rejected by validate()", String(rejected), "—", undefined);
-  }
-  say();
-  // The finding the first sweep produced, and the reason a 0 in the false-pause
-  // row must not be read as a pass.
-  if (n > 0) {
-    const denied = results.reduce((a, r) => a + r.deniedCalls, 0);
-    const predicted = results.reduce((a, r) => a + r.score.underGrants.length, 0);
-    if (denied === 0 && predicted > 0) {
+    say();
+
+    const predicted = rs.reduce((a, r) => a + r.score.underGrants.length, 0);
+    if (mode === "granted" && denied === 0 && predicted > 0) {
+      // The finding the first sweep produced, and the reason a 0 in the
+      // false-pause row must not be read as a pass.
       say(`**The false-pause figure is 0 because nothing paused, not because the mandates `
-        + `were the right size.** Across ${n} run${n === 1 ? "" : "s"} the proxy issued `
+        + `were the right size.** Across ${k} run${k === 1 ? "" : "s"} the proxy issued `
         + `**${denied} denials**, while replay predicts **${predicted} under-granted calls**. `
         + `The proxy filters \`tools/list\`, so a tool no grant reaches is never offered and `
         + `therefore never attempted: the agent works around it or quietly fails. R10's promise `
@@ -214,7 +252,26 @@ export function renderReport(
         + `pause. Under-grant, not false pauses, is the metric that sees this.`);
       say();
     }
+    if (mode === "all") {
+      const needNew = rs.reduce((a, r) => a + r.widenRefusals, 0);
+      const paused = rs.filter((r) => r.falsePauses > 0);
+      const stillDone = paused.filter((r) => r.completed).length;
+      say(`With every tool offered, the proxy issued **${denied} denials** across ${k} `
+        + `run${k === 1 ? "" : "s"}, against **${predicted}** under-granted calls replay predicts. `
+        + `${widenable} a widen could satisfy; ${needNew} need a new mandate, because a widen `
+        + `may not add an operation, nor touch a deny path, an expiry or a destination. `
+        + (paused.length === 0
+          ? "No run had a false pause."
+          : `${paused.length} run${paused.length === 1 ? "" : "s"} had a false pause, and `
+            + `${stillDone} of them still completed: a refused call the ground truth made is `
+            + `not always one the task needed, since both passes are given the issue text.`));
+      say();
+    }
   }
+
+  say("Over-grant counts granted operations; the authority cut counts (operation × repository) "
+    + "pairs. Each is right for its own definition, and the two do not compare.");
+  say();
 
   say("Ceiling breaches are 0 **by construction**, not by measurement: nothing but "
     + "`validate()` can produce a `ValidatedMandate`, and nothing downstream accepts "
@@ -264,6 +321,27 @@ export function renderReport(
     say();
   }
 
+  if (multi) {
+    say("## What filtering hides");
+    say();
+    say("Each task ran under one mandate in each mode, so a difference between the columns is "
+      + "the mode, not the mandate. It is one run per mode per task, and an agent does not do "
+      + "the same thing twice, so a difference of one task is noise until it repeats.");
+    say();
+    say("| Task | Completed, filtered | Completed, offered | Denials, filtered | Denials, offered "
+      + "| False pauses, offered |");
+    say("| --- | --- | --- | --- | --- | --- |");
+    for (const t of perTask) {
+      const g = results.find((r) => r.taskId === t.taskId && r.visibility === "granted");
+      const o = results.find((r) => r.taskId === t.taskId && r.visibility === "all");
+      if (g === undefined || o === undefined) continue;
+      const yes = (r: BenchResult): string => (r.completed ? "yes" : "**no**");
+      say(`| ${t.taskId} | ${yes(g)} | ${yes(o)} | ${g.deniedCalls} | ${o.deniedCalls} `
+        + `| ${o.falsePauses} |`);
+    }
+    say();
+  }
+
   // ---- the disagreement that a single headline would hide -------------
   const completedWithUnderGrant = results.filter(
     (r) => r.completed && r.score.underGrants.length > 0,
@@ -271,7 +349,8 @@ export function renderReport(
   if (completedWithUnderGrant.length > 0) {
     say("## Completion and under-grant disagree");
     say();
-    say(`${completedWithUnderGrant.length} task${completedWithUnderGrant.length === 1 ? "" : "s"} `
+    const unit = multi ? "run" : "task";
+    say(`${completedWithUnderGrant.length} ${unit}${completedWithUnderGrant.length === 1 ? "" : "s"} `
       + `completed while the replay scored an under-grant. That is not a contradiction: a `
       + `blocked call can be one the task could finish without — the agent worked around it, `
       + `or the task text already carried what the call would have fetched. It does mean a `
@@ -280,7 +359,7 @@ export function renderReport(
     say();
     for (const r of completedWithUnderGrant) {
       const missing = r.score.missingActions.join(", ");
-      say(`- \`${r.taskId}\` completed, blocked on `
+      say(`- \`${r.taskId}\` completed${multi ? ` with ${MODE_SHORT[r.visibility]} tools` : ""}, blocked on `
         + `${r.score.underGrants.length} call(s)`
         + `${missing.length > 0 ? `; needed ${missing}` : ""}`);
     }
@@ -291,10 +370,10 @@ export function renderReport(
   if (n > 0) {
     say("## Per task");
     say();
-    say("| Task | Category | Completed | PR | Denials | Under-grants | Over-grant | Latency | Cost |");
-    say("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    say("| Task | Tools | Category | Completed | PR | Denials | Under-grants | Over-grant | Latency | Cost |");
+    say("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
     for (const r of results) {
-      say(`| ${r.taskId} | ${r.category} | ${r.completed ? "yes" : "**no**"} `
+      say(`| ${r.taskId} | ${MODE_SHORT[r.visibility]} | ${r.category} | ${r.completed ? "yes" : "**no**"} `
         + `| ${r.category === "triage" ? "n/a" : r.pullRequestOpened ? "yes" : "**no**"} `
         + `| ${r.deniedCalls} | ${r.score.underGrants.length} | ${pct(r.score.overGrantRate)} `
         + `| ${r.writeLatencyMs} ms | $${r.cost.toFixed(4)} |`);
@@ -303,13 +382,15 @@ export function renderReport(
 
     say("## By category");
     say();
-    say("| Category | Tasks | Completed | In D8's target |");
-    say("| --- | --- | --- | --- |");
+    say("| Category | Tools | Tasks | Completed | In D8's target |");
+    say("| --- | --- | --- | --- | --- |");
     for (const c of CATEGORIES) {
-      const mine = results.filter((r) => r.category === c);
-      if (mine.length === 0) continue;
-      say(`| ${c} | ${mine.length} | ${mine.filter((r) => r.completed).length} `
-        + `| ${TARGET_COMPOSITION[c]} |`);
+      for (const mode of modesRun) {
+        const mine = results.filter((r) => r.category === c && r.visibility === mode);
+        if (mine.length === 0) continue;
+        say(`| ${c} | ${MODE_SHORT[mode]} | ${mine.length} | ${mine.filter((r) => r.completed).length} `
+          + `| ${TARGET_COMPOSITION[c]} |`);
+      }
     }
     say();
   }
@@ -317,7 +398,7 @@ export function renderReport(
   say("## Under-grants by clause");
   say();
   const byClause = new Map<string, number>();
-  for (const r of results) {
+  for (const r of perTask) {
     for (const u of r.score.underGrants) {
       byClause.set(u.clause, (byClause.get(u.clause) ?? 0) + 1);
     }
@@ -331,13 +412,13 @@ export function renderReport(
   }
   say();
 
-  const missing = [...new Set(results.flatMap((r) => r.score.missingActions))].sort();
+  const missing = [...new Set(perTask.flatMap((r) => r.score.missingActions))].sort();
   say("## Operations the corpus needed and mandates lacked");
   say();
   say(missing.length === 0 ? "None." : missing.map((a) => `- \`${a}\``).join("\n"));
   say();
 
-  const unused = [...new Set(results.flatMap((r) => r.score.unusedActions))].sort();
+  const unused = [...new Set(perTask.flatMap((r) => r.score.unusedActions))].sort();
   say("## Granted operations no task exercised");
   say();
   say(unused.length === 0 ? "None." : unused.map((a) => `- \`${a}\``).join("\n"));
@@ -346,7 +427,8 @@ export function renderReport(
   say("## Cost");
   say();
   say(`$${results.reduce((a, r) => a + r.cost, 0).toFixed(4)} across ${n} `
-    + `mandated run${n === 1 ? "" : "s"}, excluding the one-time ground-truth pass.`);
+    + `mandated run${n === 1 ? "" : "s"}, excluding the one-time ground-truth pass.`
+    + (multi ? " The writer ran once per task; its cost is in the first mode's run." : ""));
   say();
 
   return lines.join("\n");

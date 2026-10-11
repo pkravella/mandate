@@ -158,6 +158,17 @@ failure — because the mandate granted no `issue.comment` and the agent had no
 way to report what it found. **A false-pause count of zero is not evidence a
 mandate was the right size.**
 
+Phase 6 measured it the other way round: the benchmark now also runs each
+mandate with every tool offered and refused on call, a measurement mode the
+product does not use. That surfaced five denials. Four were `issue_read`, three
+on tasks that finished anyway, because the agent already had the issue text —
+so most of the seven predicted under-grants were redundant calls. The fifth was
+the triage agent's `add_issue_comment`, refused, and the task failed: the
+under-grant, finally observed as a pause. None of the five was widenable, since
+a widen may not add an operation. In the offer-all mode, an agent told how to
+recognise a granted tool stopped attempting the others, so the instruction the
+benchmark gives it now says only that an out-of-mandate call is refused.
+
 ### 3.4 Operations no MCP tool reaches
 
 Thirteen catalog operations have no tool on `github-mcp-server`. A mandate
