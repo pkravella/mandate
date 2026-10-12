@@ -1,8 +1,8 @@
-name: Mandate
+name: LeastPilot
 description: >-
   Validate a task-scoped mandate against your organization's ceiling, then run
   an agent whose only GitHub authority is that mandate.
-author: Mandate contributors
+author: LeastPilot contributors
 
 # TWO NOTES ON WHAT THIS FILE CANNOT DO
 #
@@ -12,7 +12,7 @@ author: Mandate contributors
 #    description, author, inputs, outputs, runs and branding. GitHub ignores
 #    anything else here. So the requirement belongs to the caller, the example
 #    workflow sets it, and the first step below fails if a GITHUB_TOKEN reached
-#    this job anyway — a token the agent could reach is authority Mandate did
+#    this job anyway — a token the agent could reach is authority LeastPilot did
 #    not decide, which is the one property this project exists to provide.
 #
 # 2. SHELL INJECTION. Every value below is read from the environment inside the
@@ -38,8 +38,8 @@ inputs:
     required: false
   approved-digest:
     description: >-
-      Run the mandate `mandate review` posted with this digest instead of a file:
-      the 64 hex characters from a `/mandate approve` comment. Needs `approval`,
+      Run the mandate `leastpilot review` posted with this digest instead of a file:
+      the 64 hex characters from a `/leastpilot approve` comment. Needs `approval`,
       which serve checks before anything is minted (R5).
     required: false
   approval:
@@ -118,7 +118,7 @@ runs:
         # mandate bounds, so this fails rather than enforcing a mandate it
         # cannot actually hold.
         if [ -n "${GITHUB_TOKEN:-}" ]; then
-          echo "::error::GITHUB_TOKEN is set in this job. Mandate cannot bound an" \
+          echo "::error::GITHUB_TOKEN is set in this job. LeastPilot cannot bound an" \
                "agent that holds another credential. Set 'permissions: {}' on the" \
                "job and do not pass GITHUB_TOKEN to this action."
           exit 1
@@ -130,7 +130,7 @@ runs:
       with:
         node-version: 24
 
-    - name: Build Mandate
+    - name: Build LeastPilot
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -153,9 +153,9 @@ runs:
       shell: bash
       env:
         # Everything the script reads arrives here, as data. See note 2 above.
-        MANDATE_APP_ID: ${{ inputs.app-id }}
-        MANDATE_INSTALLATION_ID: ${{ inputs.installation-id }}
-        MANDATE_APP_KEY_PATH: ${{ steps.key.outputs.path }}
+        LEASTPILOT_APP_ID: ${{ inputs.app-id }}
+        LEASTPILOT_INSTALLATION_ID: ${{ inputs.installation-id }}
+        LEASTPILOT_APP_KEY_PATH: ${{ steps.key.outputs.path }}
         IN_MANDATE: ${{ inputs.mandate }}
         IN_CEILING: ${{ inputs.ceiling }}
         IN_SCHEMA: ${{ inputs.schema }}
@@ -199,7 +199,7 @@ runs:
           exit 2
         fi
 
-        # A file, or the mandate `mandate review` posted and the requester
+        # A file, or the mandate `leastpilot review` posted and the requester
         # approved. Taken from a comment safely: serve re-derives the digest
         # from this file, the ceiling and the requester, so an altered mandate
         # does not match the approval and nothing is minted.

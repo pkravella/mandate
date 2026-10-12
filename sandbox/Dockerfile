@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # firewall rules that bound it.
 RUN useradd --create-home --shell /bin/bash agent
 
-# The relay's own uid: the one route to `mandate serve` on the host is opened
+# The relay's own uid: the one route to `leastpilot serve` on the host is opened
 # for this uid and not the agent's. No home, no shell.
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin relay
 

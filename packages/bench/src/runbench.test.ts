@@ -8,10 +8,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { MintDeps } from "@mandate-dev/compiler";
-import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
-import { parseJsonl } from "@mandate-dev/proxy";
-import { mandateHash, MandateSchema } from "@mandate-dev/schema";
+import type { MintDeps } from "@leastpilot/compiler";
+import { loadCeiling, type UserAuthority } from "@leastpilot/validator";
+import { parseJsonl } from "@leastpilot/proxy";
+import { mandateHash, MandateSchema } from "@leastpilot/schema";
 import {
   applyPrior, costOf, inCorpusOrder, parseModes, runBench, loadGroundTruth, selectTasks,
   type BenchDeps,

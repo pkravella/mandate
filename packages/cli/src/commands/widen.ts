@@ -3,8 +3,8 @@ import {
   GrantSchema, MandateSchema, parseMandateYaml, widenRefusal, widenRequestOf,
   WidenInputSchema,
   type Grant, type Mandate, type ProposedMandate, type WidenRequest,
-} from "@mandate-dev/schema";
-import { loadCeiling, validate, type UserAuthority } from "@mandate-dev/validator";
+} from "@leastpilot/schema";
+import { loadCeiling, validate, type UserAuthority } from "@leastpilot/validator";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
 import { ceilingLabel, describeCeiling } from "../prepare.js";
 

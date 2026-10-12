@@ -1,9 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { Mandate } from "@mandate-dev/schema";
-import type { ActionGraph } from "@mandate-dev/proxy";
-import { scoreMandate, type Score } from "@mandate-dev/replay";
-import { validate, type Ceiling, type UserAuthority } from "@mandate-dev/validator";
-import { WriterError, writeMandate, type WriterEffort } from "@mandate-dev/writer";
+import type { Mandate } from "@leastpilot/schema";
+import type { ActionGraph } from "@leastpilot/proxy";
+import { scoreMandate, type Score } from "@leastpilot/replay";
+import { validate, type Ceiling, type UserAuthority } from "@leastpilot/validator";
+import { WriterError, writeMandate, type WriterEffort } from "@leastpilot/writer";
 import { costOf, recordingUsage } from "./harness.js";
 import type { BenchResult } from "./report.js";
 import type { Corpus } from "./tasks.js";
@@ -54,7 +54,7 @@ const ESTIMATED_COST_PER_WRITE = 0.05;
 
 const EFFORTS: readonly string[] = ["low", "medium", "high"];
 
-/** `MANDATE_WRITER_SETTINGS`, as `cover/prune` pairs. */
+/** `LEASTPILOT_WRITER_SETTINGS`, as `cover/prune` pairs. */
 export function parseSettings(raw: string | undefined): readonly WriterSetting[] {
   if (raw === undefined) {
     return [
@@ -63,7 +63,7 @@ export function parseSettings(raw: string | undefined): readonly WriterSetting[]
     ];
   }
   const parts = raw.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
-  if (parts.length === 0) throw new Error("MANDATE_WRITER_SETTINGS names no setting");
+  if (parts.length === 0) throw new Error("LEASTPILOT_WRITER_SETTINGS names no setting");
   return parts.map((p) => {
     const [cover, prune, rest] = p.split("/");
     if (rest !== undefined || cover === undefined || prune === undefined

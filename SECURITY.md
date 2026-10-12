@@ -1,6 +1,6 @@
 # Security policy
 
-Mandate is an authorization control. A defect that lets an agent act outside its
+LeastPilot is an authorization control. A defect that lets an agent act outside its
 mandate is the most serious kind of bug this project can have, and it is treated
 differently from an ordinary issue.
 
@@ -39,12 +39,12 @@ These are in scope, in rough order of severity:
 These are documented properties, not defects. Please read
 [docs/enforced-where.md](docs/enforced-where.md) first.
 
-- An agent escaping the MCP proxy using a credential Mandate did not mint. The
+- An agent escaping the MCP proxy using a credential LeastPilot did not mint. The
   sandbox is the control for that, and it is documented as such.
 - Branch or path limits not being enforced by the GitHub token itself. GitHub
   App tokens cannot express branch or path scope; those limits are enforced at
   the proxy, and the enforcement report says so for every grant.
-- Prompt injection that is not blocked. Mandate does not detect injection; it
+- Prompt injection that is not blocked. LeastPilot does not detect injection; it
   bounds what an injected agent can do. An injection that stays inside the
   mandate is out of scope.
 - Data sent to a destination the mandate explicitly allows.

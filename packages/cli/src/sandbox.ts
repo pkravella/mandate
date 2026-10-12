@@ -3,17 +3,17 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compileEgress, EgressCompileError } from "@mandate-dev/compiler";
-import type { ValidatedMandate } from "@mandate-dev/schema";
+import { compileEgress, EgressCompileError } from "@leastpilot/compiler";
+import type { ValidatedMandate } from "@leastpilot/schema";
 import { prepareWorkspace, WorkspaceError } from "./workspace.js";
 
 /**
- * `mandate run --sandbox`: the agent in the container, `mandate serve` on the
+ * `leastpilot run --sandbox`: the agent in the container, `leastpilot serve` on the
  * host (Task 5.1 b).
  *
  * Without the sandbox the agent spawns serve itself, from an MCP config, with
- * the environment `mandate run` gave it -- which names the App key, readable by
- * the agent's own uid. Here the agent cannot spawn serve: `mandate run` starts
+ * the environment `leastpilot run` gave it -- which names the App key, readable by
+ * the agent's own uid. Here the agent cannot spawn serve: `leastpilot run` starts
  * it on the host, listening for the container's relay, and the container is
  * built from an allowlist:
  *
@@ -45,7 +45,7 @@ export interface ServeHandle {
   stop(): Promise<number>;
 }
 
-/** Starts `mandate serve --listen` on the host. Injected so tests mint nothing. */
+/** Starts `leastpilot serve --listen` on the host. Injected so tests mint nothing. */
 export type StartServe = (
   argv: readonly string[], env: Readonly<Record<string, string>>, abort?: AbortSignal,
 ) => Promise<ServeHandle>;
@@ -59,7 +59,7 @@ export interface SandboxArgs {
 /**
  * Variables that must never be passed into the sandbox, whatever the operator
  * asks. Each is a credential the sandbox exists to keep from the agent, or
- * one of Mandate's own.
+ * one of LeastPilot's own.
  */
 const CREDENTIAL_NAMES: ReadonlySet<string> = new Set([
   "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT", "GH_ENTERPRISE_TOKEN",
@@ -78,8 +78,10 @@ export function refusedPassEnv(name: string): string | undefined {
   if (CREDENTIAL_NAMES.has(name) || /GITHUB/i.test(name) || /(^|_)GH_/i.test(name)) {
     return `--pass-env ${name} would hand the agent a credential the sandbox exists to keep from it`;
   }
-  if (name.startsWith("MANDATE_")) {
-    return `--pass-env ${name}: Mandate's own variables -- the App credentials, the relay `
+  // LEASTPILOT_ holds the App credentials; MANDATE_ is the sandbox's own
+  // internals (the relay secret) and the old name of the App's variables.
+  if (name.startsWith("LEASTPILOT_") || name.startsWith("MANDATE_")) {
+    return `--pass-env ${name}: LeastPilot's own variables -- the App credentials, the relay `
       + "secret -- never enter the sandbox";
   }
   return undefined;
@@ -93,7 +95,7 @@ export function checkSandboxInputs(args: SandboxArgs, platform: string): string 
   if (platform !== "darwin") {
     return "--sandbox runs on macOS (Docker Desktop) only for now. On Linux the relay needs "
       + "host-gateway and serve must bind the bridge address; that path is unprobed, and "
-      + "Mandate does not claim a sandbox nobody has run";
+      + "LeastPilot does not claim a sandbox nobody has run";
   }
   for (const name of args.passEnv ?? []) {
     const why = refusedPassEnv(name);
@@ -120,13 +122,13 @@ export const defaultStartServe: StartServe = (argv, env, abort) => new Promise((
   abort?.addEventListener("abort", () => {
     // serve listens for SIGTERM from before it mints, so this revokes.
     if (exitCode === undefined) child.kill("SIGTERM");
-    reject(new Error("interrupted while mandate serve was starting"));
+    reject(new Error("interrupted while leastpilot serve was starting"));
   });
 
   const deadline = Date.now() + 60_000;
   const poll = (): void => {
     if (exitCode !== undefined) {
-      reject(new Error(`mandate serve exited ${exitCode} before it was listening`));
+      reject(new Error(`leastpilot serve exited ${exitCode} before it was listening`));
       return;
     }
     if (existsSync(readyFile)) {
@@ -142,7 +144,7 @@ export const defaultStartServe: StartServe = (argv, env, abort) => new Promise((
     }
     if (Date.now() > deadline) {
       child.kill("SIGTERM");
-      reject(new Error("mandate serve did not start listening within 60 s"));
+      reject(new Error("leastpilot serve did not start listening within 60 s"));
       return;
     }
     setTimeout(poll, 50);
@@ -152,7 +154,7 @@ export const defaultStartServe: StartServe = (argv, env, abort) => new Promise((
 
 export interface SandboxRun {
   readonly mandate: ValidatedMandate;
-  /** `<entry> serve ...` as `mandate run` would have put in the agent's config. */
+  /** `<entry> serve ...` as `leastpilot run` would have put in the agent's config. */
   readonly serveArgv: readonly string[];
   readonly args: SandboxArgs;
   /** The agent command, `{mcpConfig}` already substituted with the container path. */
@@ -234,7 +236,7 @@ export async function runSandboxed(r: SandboxRun, log: (s: string) => void): Pro
           interrupted.signal,
         );
       } catch (e) {
-        log(`mandate serve did not start: ${e instanceof Error ? e.message : String(e)}`);
+        log(`leastpilot serve did not start: ${e instanceof Error ? e.message : String(e)}`);
         return undefined;
       }
     })();
@@ -249,7 +251,7 @@ export async function runSandboxed(r: SandboxRun, log: (s: string) => void): Pro
         MANDATE_SQUID_CONF: egress.squidConf,
         MANDATE_RELAY_TARGET: `${RELAY_HOST}:${serve.port}`,
         MANDATE_RELAY_SECRET: secret,
-        MANDATE_MCP_CONFIG: CONTAINER_MCP_CONFIG,
+        LEASTPILOT_MCP_CONFIG: CONTAINER_MCP_CONFIG,
         ...passed,
       };
       const argv = [
@@ -266,7 +268,7 @@ export async function runSandboxed(r: SandboxRun, log: (s: string) => void): Pro
       return await r.launch("docker", argv, containerEnv, interrupted.signal);
     } finally {
       const code = await serve.stop();
-      log(`mandate serve exited ${code}.`);
+      log(`leastpilot serve exited ${code}.`);
     }
   } finally {
     for (const s of INTERRUPTS) r.signals.off(s, onInterrupt);

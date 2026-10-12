@@ -1,9 +1,9 @@
-import { atLeast, requireOperation, UnknownOperationError } from "@mandate-dev/catalog";
+import { atLeast, requireOperation, UnknownOperationError } from "@leastpilot/catalog";
 import {
   destinationsWithin, markValidated,
   type ContainmentProof, type Grant, type GrantProof,
   type ProposedMandate, type ValidatedMandate,
-} from "@mandate-dev/schema";
+} from "@leastpilot/schema";
 import { globMatches, globSetContains } from "./glob/contains.js";
 import { charge, workBudget, type WorkBudget } from "./glob/budget.js";
 import { GlobParseError } from "./glob/parse.js";
@@ -384,7 +384,7 @@ function witnesses(
  *
  * `app:` principals are refused outright for now. Their authority has no
  * source: GitHub answers what a user may do on a repository, but what another
- * App may do is readable only with that App's own credentials, and Mandate's
+ * App may do is readable only with that App's own credentials, and LeastPilot's
  * App bounds every token it mints already. Refusing is the honest answer until
  * something that requests as an app exists to design against.
  */
@@ -395,7 +395,7 @@ function checkRequester(requestedBy: string, authority: UserAuthority): Rejectio
   if (kind === "app") {
     return {
       code: "requester-unsupported",
-      message: `requestedBy ${requestedBy} is an app principal, and Mandate has no source for an `
+      message: `requestedBy ${requestedBy} is an app principal, and LeastPilot has no source for an `
         + "app's authority yet; it is refused rather than bounded by whichever person ran the "
         + `check. Request it as the user whose authority applies (user:${authority.login}).`,
     };

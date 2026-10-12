@@ -71,7 +71,7 @@ const frontmatter = (out: string): Record<string, unknown> => {
   return parse(m[1] ?? "") as Record<string, unknown>;
 };
 
-describe("mandate export gh-aw", () => {
+describe("leastpilot export gh-aw", () => {
   it("prints a workflow frontmatter block that parses, and exits 0", async () => {
     const { code, out } = await run(FIX);
     expect(code).toBe(0);

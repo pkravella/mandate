@@ -10,8 +10,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { MintDeps } from "@mandate-dev/compiler";
-import { parseJsonl, verifyAuditLog } from "@mandate-dev/proxy";
+import type { MintDeps } from "@leastpilot/compiler";
+import { parseJsonl, verifyAuditLog } from "@leastpilot/proxy";
 import { runRun, MCP_CONFIG_PLACEHOLDER, type RunArgs } from "./run.js";
 import { runServe, untilSignalled, type ServeArgs, type ServeDeps } from "./serve.js";
 import { HANDSHAKE_PREFIX } from "../listen.js";
@@ -123,7 +123,7 @@ const runWith = async (
       launched.env = env;
       // Read the config while the agent is "running", which is the only moment
       // it exists.
-      const path = env["MANDATE_MCP_CONFIG"];
+      const path = env["LEASTPILOT_MCP_CONFIG"];
       if (path !== undefined && existsSync(path)) {
         launched.configAtLaunch = readFileSync(path, "utf8");
       }
@@ -134,16 +134,16 @@ const runWith = async (
   return { code, out: chunks.join("\n"), launched };
 };
 
-describe("mandate run", () => {
+describe("leastpilot run", () => {
   it("passes --audit-log to serve as an absolute path", async () => {
     let config = "";
     const code = await runRun(baseArgs({ auditLog: "rel/audit.jsonl" }), () => undefined, {
       launch: async (_c, _a, env) => {
-        config = readFileSync(env["MANDATE_MCP_CONFIG"] ?? "", "utf8");
+        config = readFileSync(env["LEASTPILOT_MCP_CONFIG"] ?? "", "utf8");
         return 0;
       },
       selfPath: SELF,
-      env: { MANDATE_AUDIT_KEY_PATH: auditKey().path },
+      env: { LEASTPILOT_AUDIT_KEY_PATH: auditKey().path },
     });
     expect(code).toBe(0);
     const args = (JSON.parse(config) as { mcpServers: { github: { args: string[] } } })
@@ -157,7 +157,7 @@ describe("mandate run", () => {
     const code = await runRun(baseArgs({ auditLog: existing }), () => undefined, {
       launch: async () => { launched = true; return 0; },
       selfPath: SELF,
-      env: { MANDATE_AUDIT_KEY_PATH: auditKey().path },
+      env: { LEASTPILOT_AUDIT_KEY_PATH: auditKey().path },
     });
     expect(code).toBe(2);
     expect(launched).toBe(false);
@@ -173,12 +173,12 @@ describe("mandate run", () => {
     });
     expect(code).toBe(1);
     expect(launched).toBe(false);
-    expect(chunks.join("\n")).toMatch(/\/mandate approve [0-9a-f]{64}/);
+    expect(chunks.join("\n")).toMatch(/\/leastpilot approve [0-9a-f]{64}/);
 
-    const line = /\/mandate approve [0-9a-f]{64}/.exec(chunks.join("\n"))?.[0] ?? "";
+    const line = /\/leastpilot approve [0-9a-f]{64}/.exec(chunks.join("\n"))?.[0] ?? "";
     let config = "";
     const ok = await runRun(baseArgs({ approval: "acme/api#42" }), () => undefined, {
-      launch: async (_c, _a, env) => { config = readFileSync(env["MANDATE_MCP_CONFIG"] ?? "", "utf8"); return 0; },
+      launch: async (_c, _a, env) => { config = readFileSync(env["LEASTPILOT_MCP_CONFIG"] ?? "", "utf8"); return 0; },
       selfPath: SELF,
       approvals: async () => [{ id: 1, author: "alice", body: line, createdAt: "t", updatedAt: "t" }],
     });
@@ -187,7 +187,7 @@ describe("mandate run", () => {
     expect(args[args.indexOf("--approval") + 1]).toBe("acme/api#42");
   });
 
-  it("refuses --audit-log without MANDATE_AUDIT_KEY_PATH before launching anything", async () => {
+  it("refuses --audit-log without LEASTPILOT_AUDIT_KEY_PATH before launching anything", async () => {
     const chunks: string[] = [];
     let launched = false;
     const code = await runRun(baseArgs({ auditLog: freshPath("audit.jsonl") }), (s) => chunks.push(s), {
@@ -197,7 +197,7 @@ describe("mandate run", () => {
     });
     expect(code).toBe(2);
     expect(launched).toBe(false);
-    expect(chunks.join("\n")).toContain("MANDATE_AUDIT_KEY_PATH");
+    expect(chunks.join("\n")).toContain("LEASTPILOT_AUDIT_KEY_PATH");
   });
 
   it("validates before it launches anything", async () => {
@@ -234,7 +234,7 @@ describe("mandate run", () => {
 
   it("also exports the path, for an agent that reads the environment", async () => {
     const { launched } = await runWith();
-    expect(launched.env?.["MANDATE_MCP_CONFIG"]).toMatch(/mcp\.json$/);
+    expect(launched.env?.["LEASTPILOT_MCP_CONFIG"]).toMatch(/mcp\.json$/);
   });
 
   it("says so when the agent command never mentions the placeholder", async () => {
@@ -243,7 +243,7 @@ describe("mandate run", () => {
     expect(out).toMatch(/only find the enforced server/);
   });
 
-  it("writes a config that starts `mandate serve` on the same inputs", async () => {
+  it("writes a config that starts `leastpilot serve` on the same inputs", async () => {
     const { launched } = await runWith();
     const config = JSON.parse(launched.configAtLaunch ?? "{}") as {
       mcpServers?: Record<string, { command?: string; args?: string[] }>;
@@ -260,7 +260,7 @@ describe("mandate run", () => {
   });
 
   /**
-   * The agent spawns `mandate serve` itself, from whatever working directory it
+   * The agent spawns `leastpilot serve` itself, from whatever working directory it
    * happens to have. A relative path in the config resolves against the agent's
    * cwd, not the operator's, so the ceiling either is not found or — far worse —
    * a different file with the same relative name is loaded and enforced.
@@ -285,7 +285,7 @@ describe("mandate run", () => {
     await runRun({ ...relative, file: GOOD, ceiling: CEILING, schema: SCHEMA, destinations: DESTINATIONS },
       () => undefined, {
         launch: async (_c, _a, env) => {
-          const path = env["MANDATE_MCP_CONFIG"];
+          const path = env["LEASTPILOT_MCP_CONFIG"];
           if (path !== undefined) launched.configAtLaunch = readFileSync(path, "utf8");
           return 0;
         },
@@ -307,7 +307,7 @@ describe("mandate run", () => {
 
   /**
    * The agent is handed the path to this file, so anything in it is readable by
-   * the process whose authority it exists to bound. `mandate serve` mints in its
+   * the process whose authority it exists to bound. `leastpilot serve` mints in its
    * own process precisely so there is nothing here worth reading.
    */
   it("puts no credential in the config the agent can read", async () => {
@@ -319,7 +319,7 @@ describe("mandate run", () => {
   });
 
   /**
-   * The config is consumed by a process Mandate does not control, so a path in
+   * The config is consumed by a process LeastPilot does not control, so a path in
    * it that does not resolve becomes two errors inside the agent — a
    * MODULE_NOT_FOUND and then "Connection closed" — neither of which names the
    * cause. Caught on the first live run, where the default resolved to
@@ -339,7 +339,7 @@ describe("mandate run", () => {
 
   it("removes the config once the agent exits", async () => {
     const { launched } = await runWith();
-    const path = launched.env?.["MANDATE_MCP_CONFIG"];
+    const path = launched.env?.["LEASTPILOT_MCP_CONFIG"];
     expect(path).toBeDefined();
     expect(launched.configAtLaunch, "it must exist while the agent runs").toBeDefined();
     expect(existsSync(path ?? ""), "and not after").toBe(false);
@@ -347,7 +347,7 @@ describe("mandate run", () => {
 });
 
 // ---------------------------------------------------------------------------
-// mandate serve
+// leastpilot serve
 // ---------------------------------------------------------------------------
 
 const serveArgs = (over: Partial<ServeArgs> = {}): ServeArgs => ({
@@ -377,7 +377,7 @@ const serveWith = async (
   return { code, out: chunks.join("\n"), revokes: gh.revokes() };
 };
 
-describe("mandate serve", () => {
+describe("leastpilot serve", () => {
   it("refuses a mandate outside the ceiling without minting or serving", async () => {
     const { code, out, revokes } = await serveWith({
       file: fixture("overgrants/merge-granted.yaml"),
@@ -440,7 +440,7 @@ describe("mandate serve", () => {
 
   /**
    * stdout is the JSON-RPC stream. One stray `console.log` and the agent sees a
-   * parse error instead of a tool list, which presents as "Mandate does not
+   * parse error instead of a tool list, which presents as "LeastPilot does not
    * work" with nothing pointing at the cause.
    */
   it("writes no diagnostics to stdout", async () => {
@@ -453,7 +453,7 @@ describe("mandate serve", () => {
 });
 
 // ---------------------------------------------------------------------------
-// mandate serve --audit-log: R16
+// leastpilot serve --audit-log: R16
 // ---------------------------------------------------------------------------
 
 /** An Ed25519 audit key at 0600, and the public half an auditor would be given. */
@@ -465,7 +465,7 @@ const auditKey = (): { path: string; publicPem: string } => {
 };
 const freshPath = (name: string): string => join(tmp, `${randomBytes(4).toString("hex")}-${name}`);
 
-describe("mandate serve --audit-log", () => {
+describe("leastpilot serve --audit-log", () => {
   const serveCounting = async (
     over: Partial<ServeArgs>, deps: Partial<ServeDeps>,
     drive?: (agent: Client) => Promise<void>,
@@ -488,11 +488,11 @@ describe("mandate serve --audit-log", () => {
     return { code, out: chunks.join("\n"), mints: gh.mints() };
   };
 
-  it("refuses to start without MANDATE_AUDIT_KEY_PATH, before anything is minted", async () => {
+  it("refuses to start without LEASTPILOT_AUDIT_KEY_PATH, before anything is minted", async () => {
     const auditLog = freshPath("audit.jsonl");
     const { code, out, mints } = await serveCounting({ auditLog }, {});
     expect(code).toBe(2);
-    expect(out).toContain("MANDATE_AUDIT_KEY_PATH");
+    expect(out).toContain("LEASTPILOT_AUDIT_KEY_PATH");
     expect(mints).toBe(0);
     expect(existsSync(auditLog)).toBe(false);
   });
@@ -588,7 +588,7 @@ describe("mandate serve --audit-log", () => {
 // --approval: R5, the mandate refused unless its requester approved it
 // ---------------------------------------------------------------------------
 
-describe("mandate serve --approval", () => {
+describe("leastpilot serve --approval", () => {
   type Comment = import("../approval.js").ApprovalComment;
   const at = "2026-10-12T10:00:00Z";
   const serveApproving = async (
@@ -612,7 +612,7 @@ describe("mandate serve --approval", () => {
   };
   /** The line the refusal tells the requester to post. */
   const lineFrom = (out: string): string => {
-    const m = /\/mandate approve [0-9a-f]{64}/.exec(out);
+    const m = /\/leastpilot approve [0-9a-f]{64}/.exec(out);
     if (m === null) throw new Error(`no approve line in:\n${out}`);
     return m[0];
   };
@@ -668,7 +668,7 @@ describe("mandate serve --approval", () => {
   it("refuses --approval when nothing can read GitHub comments", async () => {
     const { code, out, mints } = await serveApproving({ approval: "acme/api#42" }, undefined);
     expect(code).toBe(2);
-    expect(out).toMatch(/MANDATE_APP_ID/);
+    expect(out).toMatch(/LEASTPILOT_APP_ID/);
     expect(mints).toBe(0);
   });
 
@@ -699,7 +699,7 @@ describe("mandate serve --approval", () => {
 });
 
 // ---------------------------------------------------------------------------
-// mandate serve --listen: the sandboxed agent's transport
+// leastpilot serve --listen: the sandboxed agent's transport
 // ---------------------------------------------------------------------------
 
 /**
@@ -745,7 +745,7 @@ const readyPort = async (path: string): Promise<number> => {
   throw new Error(`serve never wrote ${path}`);
 };
 
-describe("mandate serve --listen", () => {
+describe("leastpilot serve --listen", () => {
   const relaySecret = randomBytes(32).toString("hex");
   const listenServe = (over: Partial<ServeArgs>, deps: Partial<ServeDeps> = {}) => {
     const gh = fakeGithub();
@@ -841,7 +841,7 @@ describe("mandate serve --listen", () => {
     expect(gh.mints()).toBe(0);
   });
 
-  // A serve started by `mandate run` has no agent on its stdin. If listen mode
+  // A serve started by `leastpilot run` has no agent on its stdin. If listen mode
   // waited on stdin ending, as stdio mode does, it would shut down at once.
   it("does not end the session because its stdin closed", async () => {
     const readyFile = join(mkdtempSync(join(tmpdir(), "mandate-listen-")), "ready.json");
@@ -863,7 +863,7 @@ describe("mandate serve --listen", () => {
  *
  * It is the path that runs in production and it revokes a live repo-scoped
  * token, so leaving it to a signal handler nobody has executed is the wrong
- * trade. Driving `mandate serve` by hand confirmed it works — stdin closing
+ * trade. Driving `leastpilot serve` by hand confirmed it works — stdin closing
  * when the client disconnected shut the session down and revoked — but a manual
  * check is not a regression test.
  *

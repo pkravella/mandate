@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MandateSchema, type Mandate } from "@mandate-dev/schema";
+import { MandateSchema, type Mandate } from "@leastpilot/schema";
 import {
   authorityCut, derivedNotGrantedNotable, renderPermissionDiff, renderRejections,
 } from "./diff.js";

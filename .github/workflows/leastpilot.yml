@@ -4,7 +4,7 @@
 # fires here — running an agent against a real repository is a decision each
 # organization makes for itself. Copy it, set the trigger, and read the three
 # notes below before you do.
-name: Mandate (example)
+name: LeastPilot (example)
 
 on:
   workflow_dispatch:
@@ -45,7 +45,7 @@ jobs:
       # an issue title or body placed here is attacker-controlled text going
       # straight into the model's instructions.
       #
-      # Mandate's answer to that is the mandate itself — an injected agent is
+      # LeastPilot's answer to that is the mandate itself — an injected agent is
       # bounded by what was granted, which is the entire premise — but do not
       # confuse the two. If you pass issue text to the agent, pass it as data
       # the agent fetches through its granted read tools, not as instructions
@@ -54,13 +54,13 @@ jobs:
       # NOTE 3 — WHO MAY ASK.
       #
       # `--as` names the requester whose authority bounds the mandate, and
-      # `repo` makes Mandate read that person's real permission from GitHub. On
+      # `repo` makes LeastPilot read that person's real permission from GitHub. On
       # a comment or issue trigger the person who wrote it is NOT automatically
       # entitled to ask: check that yourself before this step. R2 is that task
       # text and context arrive from an authorized source, and a drive-by
       # comment is not one.
       #
-      # The mandate's `requestedBy` must name that same person: Mandate refuses
+      # The mandate's `requestedBy` must name that same person: LeastPilot refuses
       # a mandate whose requester is not the user whose authority was checked,
       # because the record would name someone nobody checked. With `as` set to
       # github.actor below, a committed mandate.yaml is accepted only when the
@@ -79,9 +79,9 @@ jobs:
             {mcpConfig}
             -p
             Fix issue ${{ inputs.issue }} and open a pull request.
-          app-id: ${{ secrets.MANDATE_APP_ID }}
-          installation-id: ${{ secrets.MANDATE_INSTALLATION_ID }}
-          private-key: ${{ secrets.MANDATE_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.LEASTPILOT_APP_ID }}
+          installation-id: ${{ secrets.LEASTPILOT_INSTALLATION_ID }}
+          private-key: ${{ secrets.LEASTPILOT_APP_PRIVATE_KEY }}
 
       # The action graph is the audit record for the run: every call, its
       # decision, and the clause behind every refusal.

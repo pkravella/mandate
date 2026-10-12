@@ -3,7 +3,7 @@
 //   { "command": "node", "args": ["/usr/local/lib/mandate-mcp.mjs"] }
 //
 // It joins the agent's stdio to the relay's socket and nothing else. It holds
-// no secret and makes no decision; `mandate serve` on the host does both.
+// no secret and makes no decision; `leastpilot serve` on the host does both.
 import net from "node:net";
 
 const socket = net.connect("/run/mandate/mcp.sock");

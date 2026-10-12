@@ -5,7 +5,7 @@ import {
   createHash, createPrivateKey, createPublicKey, randomBytes, sign, verify, type KeyObject,
 } from "node:crypto";
 import { z } from "zod";
-import { mandateHash, MandateSchema, type Mandate } from "@mandate-dev/schema";
+import { mandateHash, MandateSchema, type Mandate } from "@leastpilot/schema";
 import {
   parseNode, TraceParseError,
   type ActionGraph, type ActionNode, type ForwardedCall, type GraphSink, type TraceCeiling,
@@ -123,7 +123,7 @@ export function loadAuditKey(path: string): AuditKey {
     throw new AuditKeyError(
       `the audit key at ${path} is an ${privateKey.asymmetricKeyType ?? "unknown"} key. The audit `
       + "log is signed with Ed25519, and with a key of its own: the GitHub App's key mints "
-      + "installation tokens and should sign nothing else. Create one with `mandate audit keygen`.",
+      + "installation tokens and should sign nothing else. Create one with `leastpilot audit keygen`.",
     );
   }
   return { privateKey, keyId: auditKeyId(privateKey) };

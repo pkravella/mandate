@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getOperation, type ConstraintKind } from "@mandate-dev/catalog";
+import { getOperation, type ConstraintKind } from "@leastpilot/catalog";
 
 export type EnforcedBy = "token" | "proxy" | "ruleset" | "sandbox";
 

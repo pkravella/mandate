@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
-import type { ActionGraph, ActionNode } from "@mandate-dev/proxy";
+import { MandateSchema, markValidated, type ValidatedMandate } from "@leastpilot/schema";
+import type { ActionGraph, ActionNode } from "@leastpilot/proxy";
 import { scoreMandate } from "./score.js";
 
 const mandate = (grants: unknown[]): ValidatedMandate =>

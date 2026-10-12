@@ -56,7 +56,7 @@ describe("pauseRecord", () => {
     expect(widenRefusal("contents.write.denyPaths")).toContain("ceiling change");
   });
 
-  // A widen request has to be something `mandate widen` will read, and the
+  // A widen request has to be something `leastpilot widen` will read, and the
   // request format validates its patterns as globs. `pages/[id].tsx` is how
   // Next.js names a dynamic route, so an observed path can legitimately be
   // unrepresentable as a pattern — and an offer the CLI would refuse to parse

@@ -1,5 +1,5 @@
 {
-  "name": "@mandate-dev/validator",
+  "name": "@leastpilot/validator",
   "version": "0.1.0",
   "type": "module",
   "license": "Apache-2.0",
@@ -19,8 +19,8 @@
     "dist"
   ],
   "dependencies": {
-    "@mandate-dev/catalog": "workspace:*",
-    "@mandate-dev/schema": "workspace:*",
+    "@leastpilot/catalog": "workspace:*",
+    "@leastpilot/schema": "workspace:*",
     "@cedar-policy/cedar-wasm": "4.13.0"
   },
   "engines": {

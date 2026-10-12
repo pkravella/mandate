@@ -1,10 +1,10 @@
 import { openSync, closeSync, writeSync } from "node:fs";
-import { parseMandateYaml } from "@mandate-dev/schema";
+import { parseMandateYaml } from "@leastpilot/schema";
 import { parseApprovalRef, type ApprovalComment, type ApprovalReader } from "./approval.js";
 import { REVIEW_MARKER } from "./commands/review.js";
 
 /**
- * `mandate reviewed` -- the step between an approval and a run: the
+ * `leastpilot reviewed` -- the step between an approval and a run: the
  * mandate the approved digest names, taken from the App's own review comment
  * (R5). The approval comment carries only the digest.
  *
@@ -62,11 +62,11 @@ export async function runReviewFetch(
     return 2;
   }
   if (!/^[0-9a-f]{64}$/.test(args.digest)) {
-    log("--digest is the 64 hex characters from the /mandate approve line.");
+    log("--digest is the 64 hex characters from the /leastpilot approve line.");
     return 2;
   }
   if (deps.comments === undefined || deps.botLogin === undefined) {
-    log("review fetch reads the App's comments: set MANDATE_APP_ID, MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH.");
+    log("review fetch reads the App's comments: set LEASTPILOT_APP_ID, LEASTPILOT_INSTALLATION_ID and LEASTPILOT_APP_KEY_PATH.");
     return 2;
   }
   let found: ReturnType<typeof extractReviewedMandate>;

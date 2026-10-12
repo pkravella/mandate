@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
-import { githubAppDeps } from "@mandate-dev/compiler";
+import { githubAppDeps } from "@leastpilot/compiler";
 import {
   APPROVE_COMMAND, approvalDigest, approvalLine, proofOf, type ValidatedMandate,
-} from "@mandate-dev/schema";
+} from "@leastpilot/schema";
 
 /**
  * R5's approval, where the review already happens: a comment on the issue or
- * pull request, by the requester, carrying exactly `/mandate approve <digest>`
+ * pull request, by the requester, carrying exactly `/leastpilot approve <digest>`
  * on a line of its own (see `approvalDigest`). `serve` and `run` refuse to mint
  * without one when given `--approval`.
  *
@@ -49,7 +49,7 @@ const DIGEST_LINE = new RegExp(`^${APPROVE_COMMAND.replace(/[/]/g, "\\/")} ([0-9
 /**
  * The first comment that approves `digest` for `requester`, or why none does.
  *
- * The line must stand alone: a quoted line (`> /mandate approve ...`), one in
+ * The line must stand alone: a quoted line (`> /leastpilot approve ...`), one in
  * inline backticks or one inside a sentence is someone talking about an
  * approval, not giving one. A line inside a fenced code block does count --
  * only the requester's comments count at all, so that can only be the
@@ -107,9 +107,9 @@ export function githubApprovalReader(
   readKey: (path: string) => string = (path) => readFileSync(path, "utf8"),
   makeDeps: typeof githubAppDeps = githubAppDeps,
 ): ApprovalReader | undefined {
-  const appId = env["MANDATE_APP_ID"];
-  const installationId = env["MANDATE_INSTALLATION_ID"];
-  const keyPath = env["MANDATE_APP_KEY_PATH"];
+  const appId = env["LEASTPILOT_APP_ID"];
+  const installationId = env["LEASTPILOT_INSTALLATION_ID"];
+  const keyPath = env["LEASTPILOT_APP_KEY_PATH"];
   if (appId === undefined || installationId === undefined || keyPath === undefined) return undefined;
   const id = Number(installationId);
   if (!Number.isInteger(id) || id <= 0) return undefined;
@@ -176,8 +176,8 @@ export function approvalInputs(
   }
   if (reader === undefined) {
     return {
-      error: "--approval reads the approval from GitHub, which needs MANDATE_APP_ID, "
-        + "MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH (and the App's issues and pull_requests read)",
+      error: "--approval reads the approval from GitHub, which needs LEASTPILOT_APP_ID, "
+        + "LEASTPILOT_INSTALLATION_ID and LEASTPILOT_APP_KEY_PATH (and the App's issues and pull_requests read)",
     };
   }
   return { ref };

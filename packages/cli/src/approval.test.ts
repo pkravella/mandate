@@ -5,7 +5,7 @@ const D = "a".repeat(64);
 const OTHER = "b".repeat(64);
 const at = "2026-10-12T10:00:00Z";
 const comment = (over: Partial<ApprovalComment>): ApprovalComment => ({
-  id: 1, author: "alice", body: `/mandate approve ${D}`, createdAt: at, updatedAt: at, ...over,
+  id: 1, author: "alice", body: `/leastpilot approve ${D}`, createdAt: at, updatedAt: at, ...over,
 });
 
 describe("findApproval", () => {
@@ -15,7 +15,7 @@ describe("findApproval", () => {
   });
 
   it("accepts the line among other lines, and ignores login case", () => {
-    const r = findApproval([comment({ author: "Alice", body: `Looks right.\n\n/mandate approve ${D}\n` })], D, "user:alice");
+    const r = findApproval([comment({ author: "Alice", body: `Looks right.\n\n/leastpilot approve ${D}\n` })], D, "user:alice");
     expect(r.ok).toBe(true);
   });
 
@@ -34,19 +34,19 @@ describe("findApproval", () => {
   });
 
   it("refuses an approval of a different mandate, and says what changes the digest", () => {
-    const r = findApproval([comment({ body: `/mandate approve ${OTHER}` })], D, "user:alice");
+    const r = findApproval([comment({ body: `/leastpilot approve ${OTHER}` })], D, "user:alice");
     expect(r).toMatchObject({ ok: false });
     if (!r.ok) expect(r.reason).toMatch(/different.*mandate.*ceiling.*requester/s);
   });
 
   it("does not count a quoted or embedded line", () => {
-    for (const body of [`> /mandate approve ${D}`, `please /mandate approve ${D}`, `\`/mandate approve ${D}\``, `/mandate approve ${D} later`]) {
+    for (const body of [`> /leastpilot approve ${D}`, `please /leastpilot approve ${D}`, `\`/leastpilot approve ${D}\``, `/leastpilot approve ${D} later`]) {
       expect(findApproval([comment({ body })], D, "user:alice").ok, body).toBe(false);
     }
   });
 
   it("does not take a prefix of the digest", () => {
-    expect(findApproval([comment({ body: `/mandate approve ${D.slice(0, 12)}` })], D, "user:alice").ok).toBe(false);
+    expect(findApproval([comment({ body: `/leastpilot approve ${D.slice(0, 12)}` })], D, "user:alice").ok).toBe(false);
   });
 
   it("finds one good approval among bad ones", () => {
@@ -61,7 +61,7 @@ describe("findApproval", () => {
   it("refuses when there is no approval at all, naming the line to post", () => {
     const r = findApproval([comment({ body: "lgtm" })], D, "user:alice");
     expect(r).toMatchObject({ ok: false });
-    if (!r.ok) expect(r.reason).toContain(`/mandate approve ${D}`);
+    if (!r.ok) expect(r.reason).toContain(`/leastpilot approve ${D}`);
   });
 });
 
@@ -78,13 +78,13 @@ describe("githubApprovalReader", () => {
   it("is undefined without the App's credentials, so --approval refuses rather than fails late", async () => {
     const { githubApprovalReader } = await import("./approval.js");
     expect(githubApprovalReader({})).toBeUndefined();
-    expect(githubApprovalReader({ MANDATE_APP_ID: "1", MANDATE_INSTALLATION_ID: "x", MANDATE_APP_KEY_PATH: "/k" })).toBeUndefined();
-    expect(typeof githubApprovalReader({ MANDATE_APP_ID: "1", MANDATE_INSTALLATION_ID: "2", MANDATE_APP_KEY_PATH: "/k" })).toBe("function");
+    expect(githubApprovalReader({ LEASTPILOT_APP_ID: "1", LEASTPILOT_INSTALLATION_ID: "x", LEASTPILOT_APP_KEY_PATH: "/k" })).toBeUndefined();
+    expect(typeof githubApprovalReader({ LEASTPILOT_APP_ID: "1", LEASTPILOT_INSTALLATION_ID: "2", LEASTPILOT_APP_KEY_PATH: "/k" })).toBe("function");
   });
 });
 
 describe("githubApprovalReader, against a fake App", () => {
-  const ENV = { MANDATE_APP_ID: "1", MANDATE_INSTALLATION_ID: "2", MANDATE_APP_KEY_PATH: "/k" };
+  const ENV = { LEASTPILOT_APP_ID: "1", LEASTPILOT_INSTALLATION_ID: "2", LEASTPILOT_APP_KEY_PATH: "/k" };
   const fake = (pages: number[]) => {
     const calls: { route: string; params?: Record<string, unknown> }[] = [];
     let page = 0;

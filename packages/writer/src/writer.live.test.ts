@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
-import { loadCeiling, runLints, validate, type UserAuthority } from "@mandate-dev/validator";
+import { loadCeiling, runLints, validate, type UserAuthority } from "@leastpilot/validator";
 import { writeMandate, WRITER_TOOLS, type AnthropicLike, type WriteRequest } from "./writer.js";
 
 // The one thing a stub cannot tell us: whether the real model, given the real
@@ -11,8 +11,8 @@ import { writeMandate, WRITER_TOOLS, type AnthropicLike, type WriteRequest } fro
 // an explicit opt-in as well as on credentials -- `pnpm test` must never bill
 // anyone by accident, and CI needs no secret.
 //
-//   MANDATE_LIVE=1 pnpm --filter @mandate-dev/writer test
-const live = process.env["MANDATE_LIVE"] === "1" && process.env["ANTHROPIC_API_KEY"] !== undefined;
+//   LEASTPILOT_LIVE=1 pnpm --filter @leastpilot/writer test
+const live = process.env["LEASTPILOT_LIVE"] === "1" && process.env["ANTHROPIC_API_KEY"] !== undefined;
 
 const fixture = (name: string): string =>
   readFileSync(fileURLToPath(new URL(`../../../fixtures/ceilings/${name}`, import.meta.url)), "utf8");

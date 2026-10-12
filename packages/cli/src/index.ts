@@ -6,13 +6,13 @@ import { runValidate, type ValidateArgs } from "./commands/validate.js";
 import { githubResolver, resolveAuthority, USER_LEVELS } from "./authority.js";
 import { runServe } from "./commands/serve.js";
 import { runRun, MCP_CONFIG_PLACEHOLDER } from "./commands/run.js";
-import { githubAppDeps, type MintDeps } from "@mandate-dev/compiler";
+import { githubAppDeps, type MintDeps } from "@leastpilot/compiler";
 import { runWiden } from "./commands/widen.js";
 import { runAuditKeygen, runAuditVerify } from "./commands/audit.js";
 import { runExportGhAw } from "./commands/export.js";
 import { githubApprovalReader } from "./approval.js";
 import Anthropic from "@anthropic-ai/sdk";
-import { writeMandate } from "@mandate-dev/writer";
+import { writeMandate } from "@leastpilot/writer";
 import { runReview, DEFAULT_MAX_PER_HOUR, DEFAULT_MIN_LEVEL } from "./commands/review.js";
 import { githubReviewComments } from "./reviewComments.js";
 import { runReviewFetch } from "./reviewFetch.js";
@@ -61,8 +61,8 @@ const mandateOptions = (c: Command): Command => c
   .requiredOption("--as <login>", "the requesting user's GitHub login")
   .option(
     "--repo <owner/name>",
-    "read --as's permission from GitHub; needs MANDATE_APP_ID, "
-    + "MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH",
+    "read --as's permission from GitHub; needs LEASTPILOT_APP_ID, "
+    + "LEASTPILOT_INSTALLATION_ID and LEASTPILOT_APP_KEY_PATH",
   )
   .option(
     "--level <level>",
@@ -75,9 +75,9 @@ const mandateOptions = (c: Command): Command => c
  * than a failure inside the first request.
  */
 const appDeps = (): MintDeps | undefined => {
-  const appId = process.env["MANDATE_APP_ID"];
-  const installationId = process.env["MANDATE_INSTALLATION_ID"];
-  const privateKeyPath = process.env["MANDATE_APP_KEY_PATH"];
+  const appId = process.env["LEASTPILOT_APP_ID"];
+  const installationId = process.env["LEASTPILOT_INSTALLATION_ID"];
+  const privateKeyPath = process.env["LEASTPILOT_APP_KEY_PATH"];
   if (appId === undefined || installationId === undefined || privateKeyPath === undefined) {
     return undefined;
   }
@@ -88,12 +88,12 @@ const APPROVAL_HELP = "refuse to mint unless the mandate's requester approved th
   + "with a comment on that issue or pull request (R5); reads it with the App's issues and pull_requests read";
 
 const AUDIT_LOG_HELP = "write a signed log of the session here as it happens (R16), signed with "
-  + "MANDATE_AUDIT_KEY_PATH; never over an existing file";
+  + "LEASTPILOT_AUDIT_KEY_PATH; never over an existing file";
 
 /** Only runs when this file is the entry point, so importing it is side-effect free. */
 export function main(argv: readonly string[]): void {
   const program = new Command();
-  program.name("mandate").description("Task-scoped authority for AI agents").version("0.1.0");
+  program.name("leastpilot").description("Task-scoped authority for AI agents").version("0.1.0");
   program.exitOverride();
 
   program
@@ -108,8 +108,8 @@ export function main(argv: readonly string[]): void {
     .requiredOption("--as <login>", "the requesting user's GitHub login")
     .option(
       "--repo <owner/name>",
-      "read --as's permission from GitHub; needs MANDATE_APP_ID, "
-      + "MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH",
+      "read --as's permission from GitHub; needs LEASTPILOT_APP_ID, "
+      + "LEASTPILOT_INSTALLATION_ID and LEASTPILOT_APP_KEY_PATH",
     )
     .option(
       "--level <level>",
@@ -160,8 +160,8 @@ export function main(argv: readonly string[]): void {
     .requiredOption("--as <login>", "the requesting user's GitHub login")
     .option(
       "--repo <owner/name>",
-      "read --as's permission from GitHub; needs MANDATE_APP_ID, "
-      + "MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH",
+      "read --as's permission from GitHub; needs LEASTPILOT_APP_ID, "
+      + "LEASTPILOT_INSTALLATION_ID and LEASTPILOT_APP_KEY_PATH",
     )
     .option(
       "--level <level>",
@@ -220,8 +220,8 @@ export function main(argv: readonly string[]): void {
       const github = appDeps();
       if (github === undefined) {
         log(
-          "mandate serve needs GitHub App credentials to mint the agent's token. Set "
-          + "MANDATE_APP_ID, MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH.",
+          "leastpilot serve needs GitHub App credentials to mint the agent's token. Set "
+          + "LEASTPILOT_APP_ID, LEASTPILOT_INSTALLATION_ID and LEASTPILOT_APP_KEY_PATH.",
         );
         process.exitCode = 2;
         return;
@@ -242,7 +242,7 @@ export function main(argv: readonly string[]): void {
         ...(resolve === undefined ? {} : { resolve }),
         // From the environment, never a flag: argv is readable by every process.
         relaySecret: process.env["MANDATE_RELAY_SECRET"],
-        auditKeyPath: process.env["MANDATE_AUDIT_KEY_PATH"],
+        auditKeyPath: process.env["LEASTPILOT_AUDIT_KEY_PATH"],
         approvals: githubApprovalReader(),
       });
     });
@@ -341,11 +341,11 @@ export function main(argv: readonly string[]): void {
   program
     .command("reviewed")
     .description(
-      "write out the mandate a /mandate approve digest names, from the App's own review comment "
+      "write out the mandate a /leastpilot approve digest names, from the App's own review comment "
       + "(R5); serve --approval then checks the approval against it",
     )
     .requiredOption("--on <owner/repo#number>", "where the review and the approval were posted")
-    .requiredOption("--digest <hex>", "the 64 hex characters from the /mandate approve line")
+    .requiredOption("--digest <hex>", "the 64 hex characters from the /leastpilot approve line")
     .requiredOption("--out <file>", "where to write the mandate; never over an existing file")
     .option("--task-out <file>", "also write the mandate's task here, for the agent to read")
     .action(async (opts: { on: string; digest: string; out: string; taskOut?: string }) => {
@@ -424,7 +424,7 @@ export function main(argv: readonly string[]): void {
     program.parse(argv, { from: "user" });
   } catch (e) {
     if (!(e instanceof CommanderError)) throw e;
-    // Commander's own exitCode, not a list of codes: `mandate help` raises
+    // Commander's own exitCode, not a list of codes: `leastpilot help` raises
     // commander.help with exitCode 0, and listing only helpDisplayed and
     // version mapped it to 2 -- found reviewing Phase 5.
     process.exitCode = e.exitCode === 0 ? 0 : 2;
@@ -433,7 +433,7 @@ export function main(argv: readonly string[]): void {
 
 /**
  * Run only when this file is the process entry point, so the package can also
- * be imported (the Vitest alias resolves `@mandate-dev/cli` to this file).
+ * be imported (the Vitest alias resolves `@leastpilot/cli` to this file).
  */
 const invokedDirectly = (): boolean => {
   const entry = process.argv[1];

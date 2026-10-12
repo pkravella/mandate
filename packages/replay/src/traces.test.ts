@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
-import { parseJsonl } from "@mandate-dev/proxy";
+import { MandateSchema, markValidated, type ValidatedMandate } from "@leastpilot/schema";
+import { parseJsonl } from "@leastpilot/proxy";
 import { scoreMandate } from "./score.js";
 
 /**

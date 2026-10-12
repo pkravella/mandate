@@ -10,7 +10,7 @@ import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { HANDSHAKE_PREFIX, ListenError, listenForAgent, type AgentListener } from "./listen.js";
 
 /**
- * The sandboxed agent reaches `mandate serve` over TCP, because a host Unix
+ * The sandboxed agent reaches `leastpilot serve` over TCP, because a host Unix
  * socket bind-mounted into a container returns ENOTSUP on Docker Desktop
  * (probed). And on Docker Desktop a host listener on 127.0.0.1 is reachable
  * from *every* container, seen as 127.0.0.1 -- so arriving is not evidence of
@@ -208,7 +208,7 @@ describe("listenForAgent", () => {
   });
 
   // After the agent's connection ends the session is over. A reconnect is a new
-  // session with a new token, which is `mandate run`'s to start, not this
+  // session with a new token, which is `leastpilot run`'s to start, not this
   // listener's to accept.
   it("does not accept a new connection after the first one closed", async () => {
     const s = secret();

@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { approvalDigest, parseMandateYaml, type Mandate } from "@mandate-dev/schema";
+import { approvalDigest, parseMandateYaml, type Mandate } from "@leastpilot/schema";
 import { extractReviewedMandate } from "./reviewFetch.js";
 import { REVIEW_MARKER } from "./commands/review.js";
 
@@ -23,7 +23,7 @@ destinations:
 `;
 const body = (digest: string, yaml = YAML, fence = "```") => [
   `${REVIEW_MARKER} digest=${digest} -->`, "**A mandate for @alice**", "", `${fence}text`, "diff", fence, "",
-  `\`/mandate approve ${digest}\``, "", "<details><summary>The mandate</summary>", "",
+  `\`/leastpilot approve ${digest}\``, "", "<details><summary>The mandate</summary>", "",
   `${fence}yaml`, yaml.trimEnd(), fence, "", "</details>",
 ].join("\n");
 const c = (author: string, b: string, id = 1) => ({ id, author, body: b, createdAt: "t", updatedAt: "t" });

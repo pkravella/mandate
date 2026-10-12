@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { ceilingSha256, type UserAuthority } from "@mandate-dev/validator";
+import { ceilingSha256, type UserAuthority } from "@leastpilot/validator";
 import { runValidate, type ValidateArgs, type ResolveAuthority } from "./validate.js";
 
 const fixture = (name: string): string =>

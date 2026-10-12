@@ -1,4 +1,4 @@
-# Contributing to Mandate
+# Contributing to LeastPilot
 
 This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Conduct
 concerns go to pranithravella@gmail.com; security vulnerabilities go through
@@ -94,39 +94,39 @@ the Anthropic API, mint real GitHub App tokens, start the real
 `github-mcp-server` in Docker, or write to a real repository:
 
 ```bash
-MANDATE_LIVE=1 pnpm --filter @mandate-dev/writer test      # ~$0.03
-MANDATE_LIVE=1 pnpm --filter @mandate-dev/compiler test     # free, mints tokens
-MANDATE_LIVE=1 pnpm --filter @mandate-dev/cli test          # ~$0.30, writes a PR
-MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test   # free, needs Docker
-MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/cli test        # free, Docker, macOS: relay + run --sandbox
-MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/bench exec vitest run src/acceptance.docker
+LEASTPILOT_LIVE=1 pnpm --filter @leastpilot/writer test      # ~$0.03
+LEASTPILOT_LIVE=1 pnpm --filter @leastpilot/compiler test     # free, mints tokens
+LEASTPILOT_LIVE=1 pnpm --filter @leastpilot/cli test          # ~$0.30, writes a PR
+LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/compiler test   # free, needs Docker
+LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/cli test        # free, Docker, macOS: relay + run --sandbox
+LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/bench exec vitest run src/acceptance.docker
                                                               # free, Docker: the acceptance container
 ```
 
 The benchmark's gates are separate from each other on purpose, and each one is
-its own variable rather than a shared `MANDATE_BENCH`:
+its own variable rather than a shared `LEASTPILOT_BENCH`:
 
 ```bash
-MANDATE_SEED=1 pnpm --filter @mandate-dev/bench test \
+LEASTPILOT_SEED=1 pnpm --filter @leastpilot/bench test \
   src/seed.live                 # free; writes the default branch, opens issues
-MANDATE_GROUND_TRUTH=1 pnpm --filter @mandate-dev/bench test \
+LEASTPILOT_GROUND_TRUTH=1 pnpm --filter @leastpilot/bench test \
   src/unconstrained             # ~$3; OVERWRITES the committed ground truth
-MANDATE_BENCH=1 pnpm --filter @mandate-dev/bench test \
+LEASTPILOT_BENCH=1 pnpm --filter @leastpilot/bench test \
   src/bench.live                # ~$1.80; the mandated sweep and the report
-MANDATE_WRITER_SWEEP=1 pnpm --filter @mandate-dev/bench test \
+LEASTPILOT_WRITER_SWEEP=1 pnpm --filter @leastpilot/bench test \
   src/writer-sweep.live         # ~$0.03 a write; writer effort settings compared
 ```
 
 The sweep runs each task's mandate in both tool-visibility modes unless
-`MANDATE_BENCH_MODES` says otherwise; `MANDATE_BENCH_TASKS` runs a subset and
-writes its report to `bench/out/` rather than `docs/`; `MANDATE_BENCH_PRIOR`
+`LEASTPILOT_BENCH_MODES` says otherwise; `LEASTPILOT_BENCH_TASKS` runs a subset and
+writes its report to `bench/out/` rather than `docs/`; `LEASTPILOT_BENCH_PRIOR`
 reuses an earlier sweep's `results.json` for the tasks it covers in every mode.
-Set `MANDATE_BENCH_BUDGET` (and `MANDATE_WRITER_BUDGET`): both stops are
+Set `LEASTPILOT_BENCH_BUDGET` (and `LEASTPILOT_WRITER_BUDGET`): both stops are
 predictive. A published report is regenerated from `docs/benchmark-results.json`
 by `packages/bench/src/published.test.ts`, so commit the results with it.
 
 **Why those three are not one gate.** They were briefly two, and the
-unconstrained pass shared `MANDATE_BENCH` with the mandated sweep — so running
+unconstrained pass shared `LEASTPILOT_BENCH` with the mandated sweep — so running
 the bench package to get a sweep also re-recorded the ground-truth traces every
 later score is measured against, and spent an extra $3 doing it. A gate that
 has a side effect nobody asked for is a gate that is too wide.

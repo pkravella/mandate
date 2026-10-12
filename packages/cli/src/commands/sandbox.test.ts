@@ -9,12 +9,12 @@ import { runRun, MCP_CONFIG_PLACEHOLDER, type RunArgs, type RunDeps } from "./ru
 import { CONTAINER_MCP_CONFIG, refusedPassEnv, type ServeHandle } from "../sandbox.js";
 
 /**
- * `mandate run --sandbox` (Task 5.1 b), offline: docker, serve and the host
+ * `leastpilot run --sandbox` (Task 5.1 b), offline: docker, serve and the host
  * platform are injected; git and the workspace are real.
  *
  * The properties under test are the ones the sandbox exists for. The App key
  * and any token in the operator's environment do not reach the container;
- * serve is started by `mandate run`, on the host, never by the agent; every
+ * serve is started by `leastpilot run`, on the host, never by the agent; every
  * secret reaches docker through its environment by name, never through argv,
  * which every process on the host can read; and nothing is minted for a run
  * that was going to be refused anyway.
@@ -79,8 +79,8 @@ interface Recorded {
 const HOST_ENV: Readonly<Record<string, string>> = {
   ANTHROPIC_API_KEY: "sk-ant-PASSED",
   GITHUB_TOKEN: "ghp_PLANTED",
-  MANDATE_APP_KEY_PATH: "/Users/op/.mandate/app.pem",
-  MANDATE_APP_ID: "5182699",
+  LEASTPILOT_APP_KEY_PATH: "/Users/op/.mandate/app.pem",
+  LEASTPILOT_APP_ID: "5182699",
 };
 
 async function sandboxRun(
@@ -117,7 +117,7 @@ async function sandboxRun(
 const valuesOf = (argv: readonly string[], flag: string): string[] =>
   argv.flatMap((a, i) => (a === flag && argv[i + 1] !== undefined ? [argv[i + 1]!] : []));
 
-describe("mandate run --sandbox", () => {
+describe("leastpilot run --sandbox", () => {
   it("runs the agent in docker and returns its exit code", async () => {
     const { code, rec } = await sandboxRun();
     expect(code).toBe(7);
@@ -145,7 +145,7 @@ describe("mandate run --sandbox", () => {
 
   it("gives serve the App credentials and the relay secret, through its environment", async () => {
     const { rec } = await sandboxRun();
-    expect(rec.serve?.env["MANDATE_APP_KEY_PATH"]).toBe("/Users/op/.mandate/app.pem");
+    expect(rec.serve?.env["LEASTPILOT_APP_KEY_PATH"]).toBe("/Users/op/.mandate/app.pem");
     expect(rec.serve?.env["MANDATE_RELAY_SECRET"]).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -160,7 +160,7 @@ describe("mandate run --sandbox", () => {
     const { rec } = await sandboxRun();
     const argv = rec.docker?.argv ?? [];
     expect(valuesOf(argv, "-e").sort()).toEqual([
-      "ANTHROPIC_API_KEY", "MANDATE_MCP_CONFIG", "MANDATE_RELAY_SECRET",
+      "ANTHROPIC_API_KEY", "LEASTPILOT_MCP_CONFIG", "MANDATE_RELAY_SECRET",
       "MANDATE_RELAY_TARGET", "MANDATE_SQUID_CONF",
     ]);
     const secret = rec.serve?.env["MANDATE_RELAY_SECRET"] ?? "";
@@ -175,14 +175,14 @@ describe("mandate run --sandbox", () => {
     const env = rec.docker?.env ?? {};
     expect(env["MANDATE_RELAY_SECRET"]).toBe(rec.serve?.env["MANDATE_RELAY_SECRET"]);
     expect(env["MANDATE_RELAY_TARGET"]).toBe("host.docker.internal:47999");
-    expect(env["MANDATE_MCP_CONFIG"]).toBe(CONTAINER_MCP_CONFIG);
+    expect(env["LEASTPILOT_MCP_CONFIG"]).toBe(CONTAINER_MCP_CONFIG);
     expect(env["ANTHROPIC_API_KEY"]).toBe("sk-ant-PASSED");
   });
 
   it("does not pass the operator's GitHub token or App credentials into the container", async () => {
     const { rec } = await sandboxRun();
     const named = valuesOf(rec.docker?.argv ?? [], "-e");
-    for (const n of ["GITHUB_TOKEN", "MANDATE_APP_KEY_PATH", "MANDATE_APP_ID"]) {
+    for (const n of ["GITHUB_TOKEN", "LEASTPILOT_APP_KEY_PATH", "LEASTPILOT_APP_ID"]) {
       expect(named, n).not.toContain(n);
     }
   });
@@ -235,11 +235,11 @@ describe("mandate run --sandbox", () => {
   });
 });
 
-// Found reviewing Phase 5: `mandate run --sandbox` had no signal handling, so
+// Found reviewing Phase 5: `leastpilot run --sandbox` had no signal handling, so
 // Ctrl-C or a `kill` ended it by the default action -- no `finally` ran, the
 // temporary workspace stayed in $TMPDIR, and a serve that was not also
 // signalled was left holding a live token.
-describe("mandate run --sandbox, interrupted", () => {
+describe("leastpilot run --sandbox, interrupted", () => {
   const interruptible = async (when: "serve" | "docker", signal: string) => {
     const signals = new EventEmitter();
     const rec: { stopped: boolean; launched: boolean; mounts: string[] } = { stopped: false, launched: false, mounts: [] };
@@ -282,7 +282,7 @@ describe("mandate run --sandbox, interrupted", () => {
   });
 });
 
-describe("mandate run --sandbox refuses, before anything is minted", () => {
+describe("leastpilot run --sandbox refuses, before anything is minted", () => {
   const refused = async (over: Partial<RunArgs>, deps: Partial<RunDeps> = {}) => {
     const r = await sandboxRun(over, deps);
     expect(r.rec.served, "serve must not start, so nothing is minted").toBe(false);
@@ -304,7 +304,7 @@ describe("mandate run --sandbox refuses, before anything is minted", () => {
 
   it("when asked to pass a credential into the container", async () => {
     for (const name of [
-      "GITHUB_TOKEN", "GH_TOKEN", "MANDATE_APP_KEY_PATH", "MANDATE_RELAY_SECRET", "SSH_AUTH_SOCK",
+      "GITHUB_TOKEN", "GH_TOKEN", "LEASTPILOT_APP_KEY_PATH", "MANDATE_RELAY_SECRET", "SSH_AUTH_SOCK",
       // Found reviewing Phase 5: the list was exact names only.
       "HOMEBREW_GITHUB_API_TOKEN", "GH_ENTERPRISE_TOKEN", "MY_GITHUB_PAT",
     ]) {

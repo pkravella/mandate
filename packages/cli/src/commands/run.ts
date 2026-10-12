@@ -14,16 +14,16 @@ import {
 } from "../sandbox.js";
 
 /**
- * `mandate run` — validate a mandate, then launch an agent that can only reach
+ * `leastpilot run` — validate a mandate, then launch an agent that can only reach
  * GitHub through it.
  *
  * It does not drive Claude Code, or Codex, or any particular agent. It writes
- * an MCP server config pointing at `mandate serve` and launches the command the
+ * an MCP server config pointing at `leastpilot serve` and launches the command the
  * operator gives it:
  *
- *   mandate run --mandate m.yaml ... -- claude --mcp-config {mcpConfig} -p "fix #42"
+ *   leastpilot run --mandate m.yaml ... -- claude --mcp-config {mcpConfig} -p "fix #42"
  *
- * The plan said this command "runs `mandate run`" and never said what that was.
+ * The plan said this command "runs `leastpilot run`" and never said what that was.
  * Driving a named agent would have meant a bespoke adapter per vendor, only
  * testable by paying a real agent to run, and a claim that stops being true the
  * moment a vendor changes its flags. Every MCP client already knows how to
@@ -31,14 +31,14 @@ import {
  * and it is what makes PRD goal 5, vendor neutrality, true rather than
  * aspirational.
  *
- * The honest cost of this choice: Mandate guarantees the agent's *only* GitHub
+ * The honest cost of this choice: LeastPilot guarantees the agent's *only* GitHub
  * authority is the mandate's, but it cannot stop an agent that has another
  * credential of its own. That is R9b's job — the sandbox — and
  * docs/enforced-where.md says so.
  *
- * `{mcpConfig}` is substituted in the agent's argv, and `MANDATE_MCP_CONFIG` is
+ * `{mcpConfig}` is substituted in the agent's argv, and `LEASTPILOT_MCP_CONFIG` is
  * set in its environment, so an agent that takes a flag and one that reads an
- * env var are both reachable without Mandate knowing which is which.
+ * env var are both reachable without LeastPilot knowing which is which.
  */
 export interface RunArgs extends PrepareArgs, SandboxArgs {
   /** The agent command and its arguments, after `--`. */
@@ -68,9 +68,9 @@ export interface RunDeps extends AuthorityDeps {
     command: string, argv: readonly string[], env: Readonly<Record<string, string>>,
     abort?: AbortSignal,
   ) => Promise<number>;
-  /** Path to the `mandate` entry point the config should point at. */
+  /** Path to the `leastpilot` entry point the config should point at. */
   readonly selfPath?: string;
-  /** Starts `mandate serve --listen` on the host, for --sandbox. Injected so tests mint nothing. */
+  /** Starts `leastpilot serve --listen` on the host, for --sandbox. Injected so tests mint nothing. */
   readonly startServe?: StartServe;
   /** The repository the sandbox clones HEAD from. Defaults to the process's. */
   readonly cwd?: string;
@@ -115,7 +115,7 @@ export async function runRun(
   if (command === undefined) {
     log(
       "No agent command. Put it after `--`, for example:\n"
-      + `  mandate run --mandate m.yaml ... -- claude --mcp-config ${MCP_CONFIG_PLACEHOLDER} `
+      + `  leastpilot run --mandate m.yaml ... -- claude --mcp-config ${MCP_CONFIG_PLACEHOLDER} `
       + '-p "fix issue 42"',
     );
     return 2;
@@ -135,7 +135,7 @@ export async function runRun(
   // and a serve that refuses to start leaves the agent running with no tools
   // and an error only its MCP client sees.
   const audited = auditInputs(
-    args.auditLog, (deps.env ?? process.env)["MANDATE_AUDIT_KEY_PATH"],
+    args.auditLog, (deps.env ?? process.env)["LEASTPILOT_AUDIT_KEY_PATH"],
   );
   if ("error" in audited) {
     log(audited.error);
@@ -150,7 +150,7 @@ export async function runRun(
   // Validated BEFORE anything is launched and before a token could be minted.
   // The agent must never start against a mandate that was not proved to sit
   // inside the ceiling, because at that point its authority is unbounded by
-  // anything Mandate decided.
+  // anything LeastPilot decided.
   const prepared = await prepareMandate(args, deps);
   if (!prepared.ok) {
     if (prepared.code === 1) {
@@ -204,7 +204,7 @@ export async function runRun(
     if (!args.agent.slice(1).some((a) => a.includes(MCP_CONFIG_PLACEHOLDER))) {
       log(
         `The agent command does not mention ${MCP_CONFIG_PLACEHOLDER}, so it will only find `
-        + "the enforced server if it reads MANDATE_MCP_CONFIG from the environment.",
+        + "the enforced server if it reads LEASTPILOT_MCP_CONFIG from the environment.",
       );
     }
     return runSandboxed({
@@ -229,7 +229,7 @@ export async function runRun(
   /**
    * The config names the mandate and the ceiling, never the token.
    *
-   * `mandate serve` mints its own credential in its own process, so the file
+   * `leastpilot serve` mints its own credential in its own process, so the file
    * the agent reads — and can read, since it is handed the path — carries no
    * secret. Writing a token here would put a live repository-scoped credential
    * on disk, readable by the very process whose authority it is meant to bound.
@@ -249,14 +249,14 @@ export async function runRun(
     if (!args.agent.slice(1).some((a) => a.includes(MCP_CONFIG_PLACEHOLDER))) {
       log(
         `The agent command does not mention ${MCP_CONFIG_PLACEHOLDER}, so it will only find `
-        + "the enforced server if it reads MANDATE_MCP_CONFIG from the environment. If it "
+        + "the enforced server if it reads LEASTPILOT_MCP_CONFIG from the environment. If it "
         + "takes a flag instead, pass the placeholder where the path belongs.",
       );
     }
 
     log(`Launching ${command} with the enforced server at ${configPath}.`);
     const code = await (deps.launch ?? defaultLaunch)(
-      command, argv, { MANDATE_MCP_CONFIG: configPath },
+      command, argv, { LEASTPILOT_MCP_CONFIG: configPath },
     );
     log(`${command} exited ${code}.`);
     return code;
@@ -268,7 +268,7 @@ export async function runRun(
 }
 
 /**
- * `<entry> serve` on the same inputs `mandate run` validated, every path
+ * `<entry> serve` on the same inputs `leastpilot run` validated, every path
  * absolute.
  *
  * Without the sandbox the agent spawns this from its own working directory, so
@@ -276,7 +276,7 @@ export async function runRun(
  * operator's: at best the ceiling is not found, at worst a different file with
  * the same relative name is enforced in place of the one that was approved.
  * Found by running the real binary rather than the test stub. With the sandbox,
- * `mandate run` starts it itself, from the same argv.
+ * `leastpilot run` starts it itself, from the same argv.
  */
 function serveArgvFor(args: RunArgs, self: string): string[] {
   return [

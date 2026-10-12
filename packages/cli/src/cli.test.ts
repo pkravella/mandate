@@ -4,7 +4,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AuditLog, loadAuditKey } from "@mandate-dev/proxy";
+import { AuditLog, loadAuditKey } from "@leastpilot/proxy";
 import { describe, expect, it } from "vitest";
 
 /**
@@ -13,14 +13,14 @@ import { describe, expect, it } from "vitest";
  * Every command documents the same exit codes -- 0 accepted, 1 refused, 2 bad
  * input -- and scripts branch on them. `program.exitOverride()` made commander
  * throw on help, version and every usage error, and nothing caught it, so all
- * of those printed a stack trace and exited 1: `mandate --version` failed, and
+ * of those printed a stack trace and exited 1: `leastpilot --version` failed, and
  * a mistyped flag read as a refused mandate. Measured on the built binary,
  * which is the only place the uncaught throw shows -- an in-process test of
  * `main()` sees an exception, not an exit code.
  */
 const BIN = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 
-const mandate = (...args: string[]): { status: number | null; stdout: string; stderr: string } => {
+const leastpilot = (...args: string[]): { status: number | null; stdout: string; stderr: string } => {
   // Fails rather than skips: a test that silently does nothing when the build
   // is missing is the kind of control this project keeps finding inert. CI runs
   // `pnpm typecheck` (tsc --build, which emits dist/) before `pnpm test`.
@@ -32,8 +32,8 @@ const mandate = (...args: string[]): { status: number | null; stdout: string; st
 /** A Node stack frame, which an operator should never see from a usage mistake. */
 const STACK_FRAME = /^\s+at /m;
 
-describe("the mandate binary's exit codes", () => {
-  // `mandate help` and `mandate help <command>` too: found reviewing Phase 5,
+describe("the leastpilot binary's exit codes", () => {
+  // `leastpilot help` and `leastpilot help <command>` too: found reviewing Phase 5,
   // commander raises those as commander.help with exitCode 0, and only
   // helpDisplayed was mapped to 0.
   //
@@ -42,15 +42,15 @@ describe("the mandate binary's exit codes", () => {
   // `pnpm test`, where it failed while the code was fine.
   it.each([
     "--help", "validate --help", "serve --help", "run --help", "help", "help validate",
-  ])("prints help and exits 0: mandate %s", (line) => {
-    const r = mandate(...line.split(" "));
+  ])("prints help and exits 0: leastpilot %s", (line) => {
+    const r = leastpilot(...line.split(" "));
     expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/^Usage: mandate/);
+    expect(r.stdout).toMatch(/^Usage: leastpilot/);
     expect(r.stderr).not.toMatch(STACK_FRAME);
   });
 
   it("prints the version and exits 0", () => {
-    const r = mandate("--version");
+    const r = leastpilot("--version");
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
     expect(r.stderr).not.toMatch(STACK_FRAME);
@@ -59,43 +59,43 @@ describe("the mandate binary's exit codes", () => {
   // 2, not 1: 1 means the mandate was refused, and a script has to be able to
   // tell "your mandate grants too much" from "you typed the command wrong".
   it("exits 2 on a missing required option, naming it, with no stack trace", () => {
-    const r = mandate("validate", "m.yaml");
+    const r = leastpilot("validate", "m.yaml");
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/required option '--ceiling <path>' not specified/);
     expect(r.stderr).not.toMatch(STACK_FRAME);
   });
 
   it("exits 2 on an unknown command, with no stack trace", () => {
-    const r = mandate("nosuchcmd");
+    const r = leastpilot("nosuchcmd");
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/unknown command 'nosuchcmd'/);
     expect(r.stderr).not.toMatch(STACK_FRAME);
   });
 
   it("exits 2 with usage when given no command, with no stack trace", () => {
-    const r = mandate();
+    const r = leastpilot();
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/^Usage: mandate/);
+    expect(r.stderr).toMatch(/^Usage: leastpilot/);
     expect(r.stderr).not.toMatch(STACK_FRAME);
   });
 });
 
-describe("mandate audit, through the binary", () => {
+describe("leastpilot audit, through the binary", () => {
   it.each(["audit --help", "audit verify --help", "audit keygen --help"])(
-    "prints help and exits 0: mandate %s", (line) => {
-      const r = mandate(...line.split(" "));
+    "prints help and exits 0: leastpilot %s", (line) => {
+      const r = leastpilot(...line.split(" "));
       expect(r.status).toBe(0);
-      expect(r.stdout).toMatch(/^Usage: mandate audit/);
+      expect(r.stdout).toMatch(/^Usage: leastpilot audit/);
     },
   );
 
-  it.each(["serve --help", "run --help"])("offers --audit-log: mandate %s", (line) => {
-    expect(mandate(...line.split(" ")).stdout).toContain("--audit-log <path>");
+  it.each(["serve --help", "run --help"])("offers --audit-log: leastpilot %s", (line) => {
+    expect(leastpilot(...line.split(" ")).stdout).toContain("--audit-log <path>");
   });
 
-  // The key reaches serve from MANDATE_AUDIT_KEY_PATH and is checked before
+  // The key reaches serve from LEASTPILOT_AUDIT_KEY_PATH and is checked before
   // anything else needs the network: an RSA key (the App's kind) is refused.
-  it("serve reads the audit key from MANDATE_AUDIT_KEY_PATH and refuses an RSA one", () => {
+  it("serve reads the audit key from LEASTPILOT_AUDIT_KEY_PATH and refuses an RSA one", () => {
     const dir = mkdtempSync(join(tmpdir(), "mandate-audit-env-"));
     const rsa = join(dir, "app.pem");
     writeFileSync(rsa, generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey
@@ -107,8 +107,8 @@ describe("mandate audit, through the binary", () => {
     ], {
       encoding: "utf8",
       env: {
-        PATH: process.env["PATH"] ?? "", MANDATE_APP_ID: "1", MANDATE_INSTALLATION_ID: "1",
-        MANDATE_APP_KEY_PATH: rsa, MANDATE_AUDIT_KEY_PATH: rsa,
+        PATH: process.env["PATH"] ?? "", LEASTPILOT_APP_ID: "1", LEASTPILOT_INSTALLATION_ID: "1",
+        LEASTPILOT_APP_KEY_PATH: rsa, LEASTPILOT_AUDIT_KEY_PATH: rsa,
       },
     });
     expect(r.status).toBe(2);
@@ -120,7 +120,7 @@ describe("mandate audit, through the binary", () => {
   it("makes a key, and verifies a log signed with it using only the public key", async () => {
     const dir = mkdtempSync(join(tmpdir(), "mandate-audit-bin-"));
     const key = join(dir, "audit.pem");
-    const made = mandate("audit", "keygen", "--out", key);
+    const made = leastpilot("audit", "keygen", "--out", key);
     expect(made.status).toBe(0);
     expect(made.stdout).toContain(`${key}.pub`);
 
@@ -133,21 +133,21 @@ describe("mandate audit, through the binary", () => {
     });
     sink.seal();
 
-    const ok = mandate("audit", "verify", log, "--public-key", `${key}.pub`);
+    const ok = leastpilot("audit", "verify", log, "--public-key", `${key}.pub`);
     expect(ok.status).toBe(0);
     expect(ok.stdout).toMatch(/^Intact/);
 
-    const missing = mandate("audit", "verify", log);
+    const missing = leastpilot("audit", "verify", log);
     expect(missing.status).toBe(2);
     expect(missing.stderr).toMatch(/required option '--public-key <path>'/);
   });
 });
 
-describe("mandate export gh-aw, through the binary", () => {
-  it.each(["export --help", "export gh-aw --help"])("prints help and exits 0: mandate %s", (line) => {
-    const r = mandate(...line.split(" "));
+describe("leastpilot export gh-aw, through the binary", () => {
+  it.each(["export --help", "export gh-aw --help"])("prints help and exits 0: leastpilot %s", (line) => {
+    const r = leastpilot(...line.split(" "));
     expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/^Usage: mandate export/);
+    expect(r.stdout).toMatch(/^Usage: leastpilot export/);
   });
 
   // stdout is the workflow and nothing else, so `> workflow.md` works.
@@ -164,29 +164,29 @@ describe("mandate export gh-aw, through the binary", () => {
       'destinations: { allow: ["github.com/acme/api"] }', "",
     ].join("\n"));
     const fx = (n: string): string => fileURLToPath(new URL(`../../../fixtures/${n}`, import.meta.url));
-    const r = mandate(
+    const r = leastpilot(
       "export", "gh-aw", "--mandate", file, "--ceiling", fx("ceilings/org-policy-v12.cedar"),
       "--schema", fx("ceilings/schema.cedarschema"),
       "--ceiling-destinations", fx("ceilings/org-policy-v12.destinations"), "--as", "alice", "--level", "push",
     );
     expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/^---\n# Generated by `mandate export gh-aw`/);
+    expect(r.stdout).toMatch(/^---\n# Generated by `leastpilot export gh-aw`/);
     expect(r.stdout.trimEnd().endsWith("\n---")).toBe(true);
     expect(r.stderr).toMatch(/asserted/);
   });
 });
 
 describe("--approval, through the binary", () => {
-  it.each(["serve --help", "run --help"])("offers --approval: mandate %s", (line) => {
-    expect(mandate(...line.split(" ")).stdout).toContain("--approval <owner/repo#number>");
+  it.each(["serve --help", "run --help"])("offers --approval: leastpilot %s", (line) => {
+    expect(leastpilot(...line.split(" ")).stdout).toContain("--approval <owner/repo#number>");
   });
 });
 
-describe("mandate review, through the binary", () => {
+describe("leastpilot review, through the binary", () => {
   it("prints help and exits 0", () => {
-    const r = mandate("review", "--help");
+    const r = leastpilot("review", "--help");
     expect(r.status).toBe(0);
-    expect(r.stdout).toMatch(/^Usage: mandate review/);
+    expect(r.stdout).toMatch(/^Usage: leastpilot review/);
     expect(r.stdout).toContain("--task-file <file>");
   });
 
@@ -197,6 +197,6 @@ describe("mandate review, through the binary", () => {
       "--ceiling", "c", "--schema", "s", "--ceiling-destinations", "d",
     ], { encoding: "utf8", env: { PATH: process.env["PATH"] ?? "" } });
     expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/MANDATE_APP_ID/);
+    expect(r.stderr).toMatch(/LEASTPILOT_APP_ID/);
   });
 });

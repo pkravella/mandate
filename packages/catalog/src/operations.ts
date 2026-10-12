@@ -1,10 +1,10 @@
 /**
- * The GitHub operation catalog: the vocabulary every other Mandate package
+ * The GitHub operation catalog: the vocabulary every other LeastPilot package
  * speaks. Pure data with no I/O and no dependencies, so it can be published as
  * part of the shared contract format.
  *
  * Each operation ties together four namespaces that must not drift apart:
- * Mandate's own action atom, the GitHub REST route, the tool name exposed by
+ * LeastPilot's own action atom, the GitHub REST route, the tool name exposed by
  * github/github-mcp-server, and the GitHub App permission a token needs.
  */
 

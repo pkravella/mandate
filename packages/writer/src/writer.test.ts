@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
-import { loadCeiling, runLints, validate, type UserAuthority } from "@mandate-dev/validator";
+import { loadCeiling, runLints, validate, type UserAuthority } from "@leastpilot/validator";
 import { WriterError } from "./errors.js";
 import { writeMandate, type AnthropicLike, type WriteRequest } from "./writer.js";
 

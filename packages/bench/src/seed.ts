@@ -1,4 +1,4 @@
-import type { MintDeps } from "@mandate-dev/compiler";
+import type { MintDeps } from "@leastpilot/compiler";
 import type { Corpus, LoadedTask } from "./tasks.js";
 
 /**

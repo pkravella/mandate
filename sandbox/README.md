@@ -10,9 +10,9 @@ container exists, destination enforcement is advisory —
 
 ## Running it
 
-The way to run an agent in it is `mandate run --sandbox`, which builds the
+The way to run an agent in it is `leastpilot run --sandbox`, which builds the
 container's environment, workspace and egress from the mandate and starts
-`mandate serve` on the host (see the [quickstart](../docs/quickstart.md#5-run-it-in-the-sandbox)).
+`leastpilot serve` on the host (see the [quickstart](../docs/quickstart.md#5-run-it-in-the-sandbox)).
 By hand, for the checks below:
 
 ```bash
@@ -26,7 +26,7 @@ docker run --rm --cap-add=NET_ADMIN \
 loaded, and the entrypoint exits rather than running the agent with egress open.
 
 `MANDATE_SQUID_CONF` is `compileEgress(mandate).squidConf` from
-`@mandate-dev/compiler`. It is passed as an environment variable rather than
+`@leastpilot/compiler`. It is passed as an environment variable rather than
 mounted so that nothing has to be written to a shared filesystem.
 
 ## What it does
@@ -46,15 +46,15 @@ mounted so that nothing has to be written to a shared filesystem.
   denied egress attempt lands there, which is the audit record for traffic the
   action graph (R8) cannot see.
 
-## Reaching `mandate serve` on the host
+## Reaching `leastpilot serve` on the host
 
-`mandate serve` holds the minted token and mints it from the App's private key,
+`leastpilot serve` holds the minted token and mints it from the App's private key,
 so it stays on the host. The agent reaches it through a relay:
 
 ```
 agent ──stdio──▶ mandate-mcp.mjs ──/run/mandate/mcp.sock──▶ mandate-relay.mjs
       (uid agent, no network)                              (uid relay)
-                                   ──TCP, secret handshake──▶ mandate serve --listen
+                                   ──TCP, secret handshake──▶ leastpilot serve --listen
 ```
 
 Start the container with `MANDATE_RELAY_TARGET=host.docker.internal:<port>` and
@@ -114,8 +114,8 @@ and strip the firewall rules — IPv4 and IPv6 separately — to confirm they ca
 actually fail:
 
 ```bash
-MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test sandbox
-MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/cli test relay
+LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/compiler test sandbox
+LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/cli test relay
 ```
 
 The second runs the relay end to end against the real host listener, checks the

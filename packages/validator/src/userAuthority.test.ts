@@ -78,7 +78,7 @@ describe("fetchUserAuthority — the fine-grained role", () => {
    * answer is the closest level GitHub can express rather than `none`.
    *
    * Resolving `none` instead would be safe but wrong in a way that looks like a
-   * Mandate bug to anyone using custom roles — every mandate rejected, with a
+   * LeastPilot bug to anyone using custom roles — every mandate rejected, with a
    * message saying they have no access to a repository they can push to.
    */
   it("falls back to permission for a custom role name", async () => {

@@ -4,7 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
 /**
- * Where a sandboxed agent reaches `mandate serve`: one TCP connection, gated by
+ * Where a sandboxed agent reaches `leastpilot serve`: one TCP connection, gated by
  * a secret.
  *
  * serve stays on the host because it holds the token, and the App key it mints
@@ -22,7 +22,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
  *
  * Exactly one connection is ever served. The session is one mandate's: a second
  * client would share its authority and spend its quota, and a reconnect is a
- * new session with a new token, which is `mandate run`'s to start.
+ * new session with a new token, which is `leastpilot run`'s to start.
  */
 export const HANDSHAKE_PREFIX = "MANDATE-RELAY/1 ";
 

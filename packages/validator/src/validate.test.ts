@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { MandateSchema, proofOf, type ProposedMandate } from "@mandate-dev/schema";
+import { MandateSchema, proofOf, type ProposedMandate } from "@leastpilot/schema";
 import { loadCeiling } from "./ceiling.js";
 import { validate } from "./validate.js";
 import type { UserAuthority } from "./userAuthority.js";

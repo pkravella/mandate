@@ -10,13 +10,13 @@ import { dockerAcceptance } from "./acceptance.js";
  * The acceptance container against real Docker. Free, but needs Docker, so it
  * is gated like the other sandbox suites:
  *
- *   MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/bench exec vitest run src/acceptance.docker
+ *   LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/bench exec vitest run src/acceptance.docker
  *
  * Each escape is checked twice: inside the container, where it must fail, and
  * on the host, where it must succeed -- a probe that can only fail proves
  * nothing about the container.
  */
-const enabled = process.env["MANDATE_SANDBOX"] === "1";
+const enabled = process.env["LEASTPILOT_SANDBOX"] === "1";
 const root = (p: string): string => fileURLToPath(new URL(`../../../${p}`, import.meta.url));
 
 describe.skipIf(!enabled)("dockerAcceptance", () => {
@@ -36,8 +36,8 @@ describe.skipIf(!enabled)("dockerAcceptance", () => {
   }, 120_000);
 
   it.each([
-    ["read the App key", `test -r "${join(homedir(), ".mandate", "app.pem")}"`, "MANDATE_APP_KEY_PATH"],
-    ["see a host credential variable", '[ -n "$ANTHROPIC_API_KEY$MANDATE_APP_KEY_PATH" ]', "ANTHROPIC_API_KEY"],
+    ["read the App key", `test -r "${join(homedir(), ".mandate", "app.pem")}"`, "LEASTPILOT_APP_KEY_PATH"],
+    ["see a host credential variable", '[ -n "$ANTHROPIC_API_KEY$LEASTPILOT_APP_KEY_PATH" ]', "ANTHROPIC_API_KEY"],
     ["reach the network", "node -e 'fetch(\"https://api.github.com\").then(()=>process.exit(0),()=>process.exit(1))'", undefined],
   ])("cannot %s, which the host can", (_what, command, needsEnv) => {
     // The control: skipped only if the host lacks the thing being guarded.

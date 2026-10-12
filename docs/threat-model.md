@@ -1,6 +1,6 @@
 # Threat model
 
-What Mandate defends against, what it does not, and what breaks it. This is
+What LeastPilot defends against, what it does not, and what breaks it. This is
 written to be useful to someone deciding whether to trust it, which means the
 limits are stated as plainly as the guarantees.
 
@@ -11,7 +11,7 @@ before any metric.
 
 ---
 
-## 1. The attacker Mandate is for
+## 1. The attacker LeastPilot is for
 
 **An agent whose context has been injected, running with a mandate-minted
 token.**
@@ -21,8 +21,8 @@ issue body, a file, a tool description, a dependency's README — that told it t
 do something other than its task. It then tries to do that, using the tools it
 has.
 
-This is the realistic case and it is the only one Mandate claims to bound.
-Mandate **does not detect prompt injection**; that is an explicit PRD non-goal.
+This is the realistic case and it is the only one LeastPilot claims to bound.
+LeastPilot **does not detect prompt injection**; that is an explicit PRD non-goal.
 It assumes the injection worked. Every test in `fixtures/adversarial/` therefore
 simulates a *fully compromised writer* — one that proposed exactly what the
 injected text demanded — and asks only whether the deterministic layers refused
@@ -48,9 +48,9 @@ it anyway. The question is never "did the model notice?"
 
 These are not oversights. Each is a decision with a reason.
 
-**A malicious operator.** Whoever runs `mandate validate` chooses the ceiling
-file, and an operator who wants to grant more does not need to attack Mandate:
-they can edit the ceiling. What Mandate does guarantee is that the record says
+**A malicious operator.** Whoever runs `leastpilot validate` chooses the ceiling
+file, and an operator who wants to grant more does not need to attack LeastPilot:
+they can edit the ceiling. What LeastPilot does guarantee is that the record says
 which ceiling it was. The ceiling is named by the operator's file and by the
 sha256 of what it contained, in the output and in the trace header; the
 mandate's own `ceiling:` field is shown only as an unchecked claim. (Until Phase
@@ -60,39 +60,39 @@ against the person holding the ceiling is a different product (a hosted broker,
 which is the paid half of the business model).
 
 **A compromised GitHub App private key.** It mints tokens directly. Nothing in
-Mandate is between an attacker with that key and the installation's full
+LeastPilot is between an attacker with that key and the installation's full
 authority. Protect it as the credential it is; v0.1 expects it on disk at mode
 600.
 
-**A malicious contributor to Mandate itself.** Supply-chain integrity of this
+**A malicious contributor to LeastPilot itself.** Supply-chain integrity of this
 repository is out of scope. `ValidatedMandate`'s brand stops *model output* from
 reaching the compiler; it does nothing about a commit.
 
-**A model's judgment as a control.** Mandate never asks a model whether an
+**A model's judgment as a control.** LeastPilot never asks a model whether an
 action is in scope. Intent checkers that do can be talked out of their answer,
 and the PRD's position — a model may flag, never allow — is why R15's drift
 monitor is P1 and absent rather than shipped and load-bearing.
 
 **Data-flow tracking.** If the agent writes a URL into a source file and
-something later executes it, Mandate does not see that. R14, P1. The sandbox is
+something later executes it, LeastPilot does not see that. R14, P1. The sandbox is
 the mitigation in v0.1.
 
 ---
 
 ## 3. What actually breaks it
 
-The honest list. Each of these defeats Mandate today.
+The honest list. Each of these defeats LeastPilot today.
 
 ### 3.1 Another credential
 
-**This is the big one.** Mandate bounds the authority *it* mints. An agent that
+**This is the big one.** LeastPilot bounds the authority *it* mints. An agent that
 has a personal access token in its environment, a credential in
 `.git/config`, a logged-in `gh` CLI, or an SSH key does not need the proxy and
 never transits it.
 
-The mitigation is R9b, and `mandate run --sandbox` is how to get it. The agent
+The mitigation is R9b, and `leastpilot run --sandbox` is how to get it. The agent
 runs in a container that holds **no GitHub credential at all** — the minted
-token stays with `mandate serve` on the host, reached through a relay — and
+token stays with `leastpilot serve` on the host, reached through a relay — and
 whose only egress is the allowlist compiled from `destinations.allow` — less
 GitHub's own hosts, which the agent reaches only through serve — plus the hosts
 the operator opens for the agent itself. squid refuses a destination given as an
@@ -109,12 +109,12 @@ than none, since the docs assert it holds.
 It runs on macOS with Docker Desktop. On Linux the relay's path is unprobed, and
 `--sandbox` refuses there rather than claim it.
 
-**Without `--sandbox`, Mandate's own launch path is one such credential.**
-`mandate run` starts the agent with the operator's environment, and the agent
-then spawns `mandate serve` from its MCP config — so the agent's environment
-names `MANDATE_APP_KEY_PATH`, and the agent runs as the user who can read that
+**Without `--sandbox`, LeastPilot's own launch path is one such credential.**
+`leastpilot run` starts the agent with the operator's environment, and the agent
+then spawns `leastpilot serve` from its MCP config — so the agent's environment
+names `LEASTPILOT_APP_KEY_PATH`, and the agent runs as the user who can read that
 key. An agent that reads it can mint a token for the App's whole installation.
-With `--sandbox`, serve is started on the host by `mandate run`, never by the
+With `--sandbox`, serve is started on the host by `leastpilot run`, never by the
 agent, and neither the key nor its path enters the container. The same holds
 for the audit log's signing key: without `--sandbox` the agent can read it and
 rewrite the log it signs, so the signature is evidence against the agent only
@@ -196,7 +196,7 @@ passed as updates.
 
 ### 3.6 An exported gh-aw workflow is gh-aw's to enforce
 
-`mandate export gh-aw` writes the limits and gh-aw enforces them. gh-aw
+`leastpilot export gh-aw` writes the limits and gh-aw enforces them. gh-aw
 prefers a PAT secret over the workflow token when one exists, and a PAT ignores
 `permissions:`, so the export pins both of gh-aw's tokens to `GITHUB_TOKEN`.
 Removing those lines quietly widens everything, and at v0.89.21 they are also
@@ -254,7 +254,7 @@ the tool schemas actually sent to the model and fails if one appears.
 
 ## 5. What an operator should actually do
 
-1. **Run the agent with `mandate run --sandbox`.** Everything in §3.1 depends on
+1. **Run the agent with `leastpilot run --sandbox`.** Everything in §3.1 depends on
    it, and it is the difference between "enforced" and "advisory" for
    destinations.
 2. **Set `permissions: {}`** on the job, and `persist-credentials: false` on
@@ -262,7 +262,7 @@ the tool schemas actually sent to the model and fails if one appears.
 3. **Require an approval with `--approval`.** The writer is untrusted, and
    nothing is minted until the requester has approved the exact mandate. That
    proves the requester posted its digest, not that they read it.
-   `mandate review` posts the diff right above the line, but a requester who
+   `leastpilot review` posts the diff right above the line, but a requester who
    pastes the line without reading has still approved. An approval stands until
    its comment is deleted: it covers every session of that mandate, under that
    ceiling, for that requester, and the audit log records which comment each
@@ -284,7 +284,7 @@ the tool schemas actually sent to the model and fails if one appears.
    nothing in it can tell which.
 9. **Never splice untrusted text into the agent's prompt.** An issue title or
    body passed through the Action's `agent` input reaches the model as
-   instructions. Mandate bounds what an injected agent can *do*, which is the
+   instructions. LeastPilot bounds what an injected agent can *do*, which is the
    whole premise — but that is a different guarantee from the text not being
    injected in the first place, and conflating them is how an operator ends up
    surprised. Pass identifiers, and let the agent fetch the content through its

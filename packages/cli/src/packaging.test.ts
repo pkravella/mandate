@@ -35,7 +35,7 @@ interface Action {
 }
 
 const action = parse(readFileSync(root("action.yml"), "utf8")) as Action;
-const workflow = parse(readFileSync(root(".github/workflows/mandate.yml"), "utf8")) as {
+const workflow = parse(readFileSync(root(".github/workflows/leastpilot.yml"), "utf8")) as {
   permissions?: unknown;
   jobs: Record<string, { steps: Step[] }>;
 };

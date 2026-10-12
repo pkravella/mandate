@@ -1,9 +1,9 @@
-import { operationsForMcpTool } from "@mandate-dev/catalog";
-import { unwrap, type ValidatedMandate } from "@mandate-dev/schema";
-import { callClass, compileRules, rulesForTool, type ProxyRules } from "@mandate-dev/compiler";
+import { operationsForMcpTool } from "@leastpilot/catalog";
+import { unwrap, type ValidatedMandate } from "@leastpilot/schema";
+import { callClass, compileRules, rulesForTool, type ProxyRules } from "@leastpilot/compiler";
 import {
   attributeCall, makeFacetEnforcer, type ActionGraph, type ActionNode, type ArgExtract,
-} from "@mandate-dev/proxy";
+} from "@leastpilot/proxy";
 
 /**
  * R11: score a mandate by replaying a recorded trace against it.

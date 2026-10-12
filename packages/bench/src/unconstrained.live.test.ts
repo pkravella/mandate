@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { githubAppDeps } from "@mandate-dev/compiler";
-import { Recorder, parseJsonl } from "@mandate-dev/proxy";
+import { githubAppDeps } from "@leastpilot/compiler";
+import { Recorder, parseJsonl } from "@leastpilot/proxy";
 import { taskPrompt } from "./prompt.js";
 import { seededIssues } from "./seed.js";
 import { loadCorpus } from "./tasks.js";
@@ -26,7 +26,7 @@ import { loadCorpus } from "./tasks.js";
  * Nodes carry no `action`, because no rule attributed the call. That is what
  * `ActionNode.action` being optional is for, and the scorer keys on `tool`.
  *
- * Gated on `MANDATE_GROUND_TRUTH`, **not** on `MANDATE_BENCH`. Two reasons, and
+ * Gated on `LEASTPILOT_GROUND_TRUTH`, **not** on `LEASTPILOT_BENCH`. Two reasons, and
  * both were nearly paid for: this pass costs 2.4x the mandated one, because the
  * agent is shown all 46 of the server's tools rather than the handful a mandate
  * grants; and it **overwrites the committed ground-truth traces**, which every
@@ -37,20 +37,20 @@ import { loadCorpus } from "./tasks.js";
  * Re-record only when the corpus or the task prompt changes, because a trace
  * recorded against a different question is not ground truth for this one.
  *
- *   MANDATE_GROUND_TRUTH=1 pnpm --filter @mandate-dev/bench exec vitest run src/unconstrained
+ *   LEASTPILOT_GROUND_TRUTH=1 pnpm --filter @leastpilot/bench exec vitest run src/unconstrained
  */
 const env = (n: string): string | undefined => process.env[n];
-const enabled = env("MANDATE_GROUND_TRUTH") === "1"
+const enabled = env("LEASTPILOT_GROUND_TRUTH") === "1"
   && env("ANTHROPIC_API_KEY") !== undefined
-  && env("MANDATE_APP_ID") !== undefined
-  && env("MANDATE_INSTALLATION_ID") !== undefined
-  && env("MANDATE_APP_KEY_PATH") !== undefined;
+  && env("LEASTPILOT_APP_ID") !== undefined
+  && env("LEASTPILOT_INSTALLATION_ID") !== undefined
+  && env("LEASTPILOT_APP_KEY_PATH") !== undefined;
 
 const CORPUS = fileURLToPath(new URL("../../../fixtures/bench", import.meta.url));
 const TRACES = join(CORPUS, "traces");
 
 /** Dollars this run may spend in total. Measured per task at roughly $0.63. */
-const BUDGET = Number(env("MANDATE_GROUND_TRUTH_BUDGET") ?? "5.00");
+const BUDGET = Number(env("LEASTPILOT_GROUND_TRUTH_BUDGET") ?? "5.00");
 /** Charged against the budget before a task starts, so the stop is predictive. */
 const ESTIMATE_PER_TASK = 0.75;
 
@@ -76,9 +76,9 @@ describe.skipIf(!enabled)("the unconstrained pass", () => {
     const corpus = loadCorpus(CORPUS);
     const name = corpus.repo.split("/")[1] ?? "";
     const deps = githubAppDeps({
-      appId: env("MANDATE_APP_ID") ?? "",
-      installationId: Number(env("MANDATE_INSTALLATION_ID") ?? "0"),
-      privateKeyPath: env("MANDATE_APP_KEY_PATH") ?? "",
+      appId: env("LEASTPILOT_APP_ID") ?? "",
+      installationId: Number(env("LEASTPILOT_INSTALLATION_ID") ?? "0"),
+      privateKeyPath: env("LEASTPILOT_APP_KEY_PATH") ?? "",
     });
 
     // The issue number per task, read from the marker the seeder wrote. The
@@ -88,7 +88,7 @@ describe.skipIf(!enabled)("the unconstrained pass", () => {
     const tokenRes = await deps.asApp(
       "POST /app/installations/{installation_id}/access_tokens",
       {
-        installation_id: Number(env("MANDATE_INSTALLATION_ID") ?? "0"),
+        installation_id: Number(env("LEASTPILOT_INSTALLATION_ID") ?? "0"),
         repositories: [name],
         permissions: { contents: "write", issues: "write", pull_requests: "write", metadata: "read" },
       },

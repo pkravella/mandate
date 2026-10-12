@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
+import { MandateSchema, markValidated, type ValidatedMandate } from "@leastpilot/schema";
 import { compileGhAw, ghAwBackend, type GhAwResult } from "./ghaw.js";
 
 const validated = (grants: unknown[], over: Record<string, unknown> = {}): ValidatedMandate =>

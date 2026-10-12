@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Grant } from "@mandate-dev/schema";
+import type { Grant } from "@leastpilot/schema";
 import { applyPrune, prunePrompt } from "./prune.js";
 
 const g = (action: string, extra: Partial<Grant> = {}): Grant =>

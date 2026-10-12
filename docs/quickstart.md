@@ -9,7 +9,7 @@ tokens.
 pnpm install && pnpm build
 ```
 
-Node 22.12 or later. The CLI binary is `mandate`; the examples below call
+Node 22.12 or later. The CLI binary is `leastpilot`; the examples below call
 `packages/cli/dist/index.js` directly so they work in a checkout without a
 global install.
 
@@ -75,7 +75,7 @@ that reports it says so. To make the result an authorisation record, read the
 real permission instead:
 
 ```bash
-export MANDATE_APP_ID=... MANDATE_INSTALLATION_ID=... MANDATE_APP_KEY_PATH=~/.mandate/app.pem
+export LEASTPILOT_APP_ID=... LEASTPILOT_INSTALLATION_ID=... LEASTPILOT_APP_KEY_PATH=~/.mandate/app.pem
 
 node packages/cli/dist/index.js validate mandate.yaml \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
@@ -108,7 +108,7 @@ guessed afterwards, which is why there always is one.
 
 ## 3. Run an agent under it
 
-`mandate serve` is an MCP server that enforces one mandate. `mandate run`
+`leastpilot serve` is an MCP server that enforces one mandate. `leastpilot run`
 validates, writes a config pointing at it, and launches the command you give it:
 
 ```bash
@@ -122,15 +122,15 @@ node packages/cli/dist/index.js run \
   -- claude --mcp-config '{mcpConfig}' -p "Fix issue #42 and open a PR"
 ```
 
-`{mcpConfig}` is replaced with the config path, and `MANDATE_MCP_CONFIG` is set
+`{mcpConfig}` is replaced with the config path, and `LEASTPILOT_MCP_CONFIG` is set
 in the agent's environment, so an agent that takes a flag and one that reads the
-environment both work. Mandate does not drive a particular agent: every MCP
+environment both work. LeastPilot does not drive a particular agent: every MCP
 client already knows how to start a server from a config, so being that server
 is the whole integration.
 
 Nothing is minted and no agent is launched until the mandate validates.
 
-**The config carries no credential.** `mandate serve` mints its own token in its
+**The config carries no credential.** `leastpilot serve` mints its own token in its
 own process, so the file the agent reads — and it is handed the path — names the
 mandate and the ceiling and nothing else.
 
@@ -151,9 +151,9 @@ session ends, including on Ctrl-C or SIGTERM, so only a session killed outright
 (SIGKILL, a crash) leaves none.
 
 For evidence that survives a kill and can be checked by someone else, add
-`--audit-log session.audit.jsonl` with `MANDATE_AUDIT_KEY_PATH` set to a key
-from `mandate audit keygen --out <path>`, and check it with
-`mandate audit verify session.audit.jsonl --public-key <path>.pub`. Run it with
+`--audit-log session.audit.jsonl` with `LEASTPILOT_AUDIT_KEY_PATH` set to a key
+from `leastpilot audit keygen --out <path>`, and check it with
+`leastpilot audit verify session.audit.jsonl --public-key <path>.pub`. Run it with
 `--sandbox`, or the agent can read the key. See [audit-log.md](audit-log.md).
 
 ## 4. Widen, when a mandate was too small
@@ -177,12 +177,12 @@ disallowed destination are refused with the reason instead. A one-click "add
 
 ## 5. Run it in the sandbox
 
-Everything above bounds the authority Mandate mints. An agent that has another
+Everything above bounds the authority LeastPilot mints. An agent that has another
 credential — a PAT in its environment, something in `.git/config`, a logged-in
 `gh` — does not transit the proxy at all.
 
-`mandate run --sandbox` runs the agent in a container that holds no GitHub
-credential — the token stays with `mandate serve` on the host — works in a clone
+`leastpilot run --sandbox` runs the agent in a container that holds no GitHub
+credential — the token stays with `leastpilot serve` on the host — works in a clone
 of HEAD, and reaches only the mandate's non-GitHub destinations and the hosts you
 open for it — GitHub itself it reaches only through serve. macOS with Docker
 Desktop for now.
@@ -201,7 +201,7 @@ This is the shape of the live run:
 
 ```bash
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_AUTOUPDATER=1
-mandate run --mandate m.yaml --ceiling fixtures/ceilings/sandbox-v1.cedar \
+leastpilot run --mandate m.yaml --ceiling fixtures/ceilings/sandbox-v1.cedar \
   --schema fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/sandbox-v1.destinations \
   --as pkravella --repo pkravella/mandate-sandbox \
@@ -221,7 +221,7 @@ The working tree has to be clean, because uncommitted changes would not be in
 the clone. The sandbox's own checks run free with Docker:
 
 ```bash
-MANDATE_SANDBOX=1 pnpm vitest run packages/compiler/src/sandbox.docker.test.ts \
+LEASTPILOT_SANDBOX=1 pnpm vitest run packages/compiler/src/sandbox.docker.test.ts \
   packages/cli/src/relay.docker.test.ts packages/cli/src/sandbox.docker.test.ts
 ```
 

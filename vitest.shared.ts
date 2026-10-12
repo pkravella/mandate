@@ -7,7 +7,7 @@ const src = (pkg: string): string =>
  * Workspace packages resolve to their TypeScript source during tests, not to
  * their built `dist`.
  *
- * Without this, `@mandate-dev/catalog` resolves through node_modules to
+ * Without this, `@leastpilot/catalog` resolves through node_modules to
  * dist/index.js, so editing the catalog and running the validator's tests
  * silently reads a stale build. That can make a test pass that should fail,
  * which is the worst possible failure mode for a test suite. Each package's
@@ -15,13 +15,13 @@ const src = (pkg: string): string =>
  * not propagate into Vitest projects.
  */
 export const workspaceAlias: Readonly<Record<string, string>> = {
-  "@mandate-dev/bench": src("bench"),
-  "@mandate-dev/catalog": src("catalog"),
-  "@mandate-dev/cli": src("cli"),
-  "@mandate-dev/compiler": src("compiler"),
-  "@mandate-dev/proxy": src("proxy"),
-  "@mandate-dev/replay": src("replay"),
-  "@mandate-dev/schema": src("schema"),
-  "@mandate-dev/validator": src("validator"),
-  "@mandate-dev/writer": src("writer"),
+  "@leastpilot/bench": src("bench"),
+  "@leastpilot/catalog": src("catalog"),
+  "@leastpilot/cli": src("cli"),
+  "@leastpilot/compiler": src("compiler"),
+  "@leastpilot/proxy": src("proxy"),
+  "@leastpilot/replay": src("replay"),
+  "@leastpilot/schema": src("schema"),
+  "@leastpilot/validator": src("validator"),
+  "@leastpilot/writer": src("writer"),
 };

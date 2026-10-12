@@ -3,8 +3,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
-import { githubAppDeps } from "@mandate-dev/compiler";
-import { loadCeiling, type UserAuthority } from "@mandate-dev/validator";
+import { githubAppDeps } from "@leastpilot/compiler";
+import { loadCeiling, type UserAuthority } from "@leastpilot/validator";
 import { seededIssues } from "./seed.js";
 import { loadCorpus } from "./tasks.js";
 import {
@@ -19,22 +19,22 @@ import { renderReport, type BenchResult } from "./report.js";
  *
  * Spends money, with a predictive budget stop:
  *
- *   MANDATE_BENCH=1 MANDATE_BENCH_BUDGET=2.50 \
- *     pnpm --filter @mandate-dev/bench exec vitest run src/bench.live
+ *   LEASTPILOT_BENCH=1 LEASTPILOT_BENCH_BUDGET=2.50 \
+ *     pnpm --filter @leastpilot/bench exec vitest run src/bench.live
  *
- * MANDATE_BENCH_MODES=granted,all (the default) runs each task's agent once
- * per tool-visibility mode under one mandate (Task 6.1). MANDATE_BENCH_TASKS
+ * LEASTPILOT_BENCH_MODES=granted,all (the default) runs each task's agent once
+ * per tool-visibility mode under one mandate (Task 6.1). LEASTPILOT_BENCH_TASKS
  * runs only the named tasks, and then writes its report to bench/out/ rather
- * than replacing the published one. MANDATE_BENCH_PRIOR names an earlier
+ * than replacing the published one. LEASTPILOT_BENCH_PRIOR names an earlier
  * sweep's results.json: tasks it covers in every mode are not run again, and
  * the report and results.json cover both.
  */
 const env = (n: string): string | undefined => process.env[n];
-const enabled = env("MANDATE_BENCH") === "1"
+const enabled = env("LEASTPILOT_BENCH") === "1"
   && env("ANTHROPIC_API_KEY") !== undefined
-  && env("MANDATE_APP_ID") !== undefined
-  && env("MANDATE_INSTALLATION_ID") !== undefined
-  && env("MANDATE_APP_KEY_PATH") !== undefined;
+  && env("LEASTPILOT_APP_ID") !== undefined
+  && env("LEASTPILOT_INSTALLATION_ID") !== undefined
+  && env("LEASTPILOT_APP_KEY_PATH") !== undefined;
 
 const CORPUS = fileURLToPath(new URL("../../../fixtures/bench", import.meta.url));
 /** Scratch output. Gitignored, because a sweep's traces are not fixtures. */
@@ -49,17 +49,17 @@ const read = (p: string): string => readFileSync(p, "utf8");
 
 describe.skipIf(!enabled)("the mandated sweep", () => {
   it("runs the corpus under mandates and writes the report", async () => {
-    const modes = parseModes(env("MANDATE_BENCH_MODES"));
-    const selected = selectTasks(loadCorpus(CORPUS), env("MANDATE_BENCH_TASKS"));
+    const modes = parseModes(env("LEASTPILOT_BENCH_MODES"));
+    const selected = selectTasks(loadCorpus(CORPUS), env("LEASTPILOT_BENCH_TASKS"));
     const corpus = selected.corpus;
     const groundTruth = loadGroundTruth(CORPUS, corpus);
     expect(Object.keys(groundTruth).length, "no ground truth recorded").toBeGreaterThan(0);
 
-    const installationId = Number(env("MANDATE_INSTALLATION_ID") ?? "0");
+    const installationId = Number(env("LEASTPILOT_INSTALLATION_ID") ?? "0");
     const github = githubAppDeps({
-      appId: env("MANDATE_APP_ID") ?? "",
+      appId: env("LEASTPILOT_APP_ID") ?? "",
       installationId,
-      privateKeyPath: env("MANDATE_APP_KEY_PATH") ?? "",
+      privateKeyPath: env("LEASTPILOT_APP_KEY_PATH") ?? "",
     });
 
     const ceiling = loadCeiling(
@@ -92,7 +92,7 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       expect(issues[task.id], `${task.id} has no seeded issue`).toBeDefined();
     }
 
-    const priorPath = env("MANDATE_BENCH_PRIOR");
+    const priorPath = env("LEASTPILOT_BENCH_PRIOR");
     const prior = priorPath === undefined ? [] : JSON.parse(read(priorPath)) as BenchResult[];
     const { corpus: toRun, kept } = applyPrior(corpus, prior, modes);
 
@@ -106,7 +106,7 @@ describe.skipIf(!enabled)("the mandated sweep", () => {
       issues,
       outDir: OUT,
       modes,
-      budget: Number(env("MANDATE_BENCH_BUDGET") ?? "2.50"),
+      budget: Number(env("LEASTPILOT_BENCH_BUDGET") ?? "2.50"),
       log: (s) => { console.log(`    ${s}`); },
     });
     // One file holds every result the report is computed from.

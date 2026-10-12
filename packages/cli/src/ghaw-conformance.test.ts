@@ -3,14 +3,14 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { compileGhAw } from "@mandate-dev/compiler";
-import { MandateSchema, markValidated, type Grant, type ValidatedMandate } from "@mandate-dev/schema";
-import { globMatches } from "@mandate-dev/validator";
+import { compileGhAw } from "@leastpilot/compiler";
+import { MandateSchema, markValidated, type Grant, type ValidatedMandate } from "@leastpilot/schema";
+import { globMatches } from "@leastpilot/validator";
 
 /**
  * The gh-aw export's conformance test: whatever gh-aw would let through, the
  * mandate allows. Run through gh-aw's own matchers (fixtures/gh-aw/v0.89.21,
- * copied unmodified), not a description of them, against Mandate's own
+ * copied unmodified), not a description of them, against LeastPilot's own
  * `globMatches` -- the membership check the proxy uses on real arguments.
  *
  * Over generated paths and branch names, for every mandate that exports: the
@@ -154,7 +154,7 @@ describe("the gh-aw export lets through nothing the mandate refuses", () => {
 });
 
 // Why branch patterns and lone "*" are refused, shown with gh-aw's own code.
-describe("what gh-aw does that Mandate's matcher does not", () => {
+describe("what gh-aw does that LeastPilot's matcher does not", () => {
   it("admits a name inside agent/42-* and pushes it outside", () => {
     expect(isAllowedBranch("agent/42-!!", ["agent/42-*"])).toBe(true);
     const pushed = normalizeBranchName("agent/42-!!");
@@ -167,7 +167,7 @@ describe("what gh-aw does that Mandate's matcher does not", () => {
     expect(globMatches(["*"], "release/v1")).toBe(false);
   });
 
-  it("matches files exactly as Mandate does: * stops at a slash, ** does not", () => {
+  it("matches files exactly as LeastPilot does: * stops at a slash, ** does not", () => {
     for (const [p, v] of [["src/*", "src/a/b"], ["src/**", "src/a/b"], ["**.env**", "a/.env.x"], ["src/*.js", "src/.js"]] as const) {
       expect(globPatternToRegex(p).test(v), `${p} vs ${v}`).toBe(globMatches([p], v));
     }

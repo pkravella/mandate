@@ -1,5 +1,5 @@
-import { getOperation } from "@mandate-dev/catalog";
-import type { Grant } from "@mandate-dev/schema";
+import { getOperation } from "@leastpilot/catalog";
+import type { Grant } from "@leastpilot/schema";
 import { closeUnderPrerequisites, dependsOn, enforcementFor, inheritFacet } from "./cover.js";
 
 /**

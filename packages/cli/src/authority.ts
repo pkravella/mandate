@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { githubAppDeps } from "@mandate-dev/compiler";
-import { fetchUserAuthority, type UserAuthority } from "@mandate-dev/validator";
+import { githubAppDeps } from "@leastpilot/compiler";
+import { fetchUserAuthority, type UserAuthority } from "@leastpilot/validator";
 
 export const USER_LEVELS = ["none", "pull", "triage", "push", "maintain", "admin"] as const;
 
@@ -91,7 +91,7 @@ export async function resolveAuthority(
   if (resolve === undefined) {
     return {
       error: "--repo needs GitHub App credentials to read the requester's permission. Set "
-        + "MANDATE_APP_ID, MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH, or assert the "
+        + "LEASTPILOT_APP_ID, LEASTPILOT_INSTALLATION_ID and LEASTPILOT_APP_KEY_PATH, or assert the "
         + "level with --level.",
     };
   }
@@ -133,9 +133,9 @@ export async function resolveAuthority(
 export function githubResolver(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): ResolveAuthority | undefined {
-  const appId = env["MANDATE_APP_ID"];
-  const installationId = env["MANDATE_INSTALLATION_ID"];
-  const keyPath = env["MANDATE_APP_KEY_PATH"];
+  const appId = env["LEASTPILOT_APP_ID"];
+  const installationId = env["LEASTPILOT_INSTALLATION_ID"];
+  const keyPath = env["LEASTPILOT_APP_KEY_PATH"];
   if (appId === undefined || installationId === undefined || keyPath === undefined) {
     return undefined;
   }

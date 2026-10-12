@@ -24,7 +24,7 @@ updates:
     directory: "/sandbox"
     schedule: { interval: weekly }
     # Odd-numbered Node releases are never LTS. CI does not build this image
-    # (it is behind MANDATE_SANDBOX), so a green check says nothing about one.
+    # (it is behind LEASTPILOT_SANDBOX), so a green check says nothing about one.
     # Comparator ranges, not "23.x": Dependabot's Docker requirement is a plain
     # Gem::Requirement, where "23.x" matches only the literal string "23.x".
     ignore:

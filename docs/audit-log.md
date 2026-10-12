@@ -8,7 +8,7 @@ wrote it. This is R16.
 
 The trace (`--trace`) and the audit log are different things. The trace is the
 action graph replay reads, written once when the session ends. The audit log is
-evidence: signed, chained, and readable after a kill. `mandate audit verify`
+evidence: signed, chained, and readable after a kill. `leastpilot audit verify`
 gives back the same action graph from it.
 
 ## Turning it on
@@ -23,19 +23,19 @@ That writes the private key at mode 600 and its public half to
 `~/.mandate/audit.pem.pub`, and prints the key's id. Give the `.pub` file to
 whoever checks logs. This is **not** the GitHub App's key and should not be
 stored with it: the App key mints installation tokens and signs nothing else.
-Mandate refuses an RSA key here for that reason, and refuses any key file other
+LeastPilot refuses an RSA key here for that reason, and refuses any key file other
 users can open. `openssl genpkey -algorithm ed25519 -out key.pem` makes an
 acceptable key too.
 
 Then pass `--audit-log` to `serve` or `run`, with the key in the environment:
 
 ```bash
-export MANDATE_AUDIT_KEY_PATH=~/.mandate/audit.pem
+export LEASTPILOT_AUDIT_KEY_PATH=~/.mandate/audit.pem
 node packages/cli/dist/index.js run --mandate mandate.yaml ... \
   --sandbox ... --audit-log session-42.audit.jsonl -- claude ...
 ```
 
-Before anything is minted, Mandate checks that the key exists and is an Ed25519
+Before anything is minted, LeastPilot checks that the key exists and is an Ed25519
 key only its owner can read, and that the log file does not already exist. An
 audit log is never overwritten. If any of those fails, nothing runs.
 
@@ -96,7 +96,7 @@ since. Whether that rules out the agent depends on where the key was:
 
 | | The agent can read the key | The agent can write the log |
 | --- | --- | --- |
-| `run --sandbox` | No. The key path stays on the host, and `--pass-env` refuses every `MANDATE_*` name. | No. serve writes it on the host. |
+| `run --sandbox` | No. The key path stays on the host, and `--pass-env` refuses every `LEASTPILOT_*` and `MANDATE_*` name. | No. serve writes it on the host. |
 | `run` without `--sandbox`, or `serve` spawned by an agent | **Yes.** It runs as your user, and serve's environment is its environment. | **Yes.** |
 | The GitHub Action | `--audit-log` is not wired into the Action, for this reason: the agent runs on the runner beside the key. | |
 
@@ -143,7 +143,7 @@ Events are appended with a synchronous write as they happen, so they survive the
 process being killed, which was probed with SIGKILL. They are not fsynced, so a
 power cut can lose what the OS had not yet flushed.
 
-If a write fails, for example a full disk, Mandate says so once on stderr and
+If a write fails, for example a full disk, LeastPilot says so once on stderr and
 writes nothing more, and the log ends unsealed. The call itself is not refused,
 because audit is not authorisation. Turning a logging outage into refused calls
 would make the logger an enforcement point whose rules nothing validated.

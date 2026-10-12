@@ -1,6 +1,6 @@
-import { destinationWithin } from "@mandate-dev/schema";
-import { globMatches, GlobParseError } from "@mandate-dev/validator";
-import type { ProxyRules, ToolRule } from "@mandate-dev/compiler";
+import { destinationWithin } from "@leastpilot/schema";
+import { globMatches, GlobParseError } from "@leastpilot/validator";
+import type { ProxyRules, ToolRule } from "@leastpilot/compiler";
 import type { Decision } from "./proxy.js";
 
 export interface ArgExtract {
@@ -13,7 +13,7 @@ export interface ArgExtract {
   /**
    * Values in destination-bearing fields that could not be read as a
    * destination. Absent when there are none. Any entry denies the call: a field
-   * that names where data goes, holding something Mandate cannot place, is
+   * that names where data goes, holding something LeastPilot cannot place, is
    * doubt, and an unparseable value used to be dropped and the call allowed.
    */
   readonly unreadableDestinations?: readonly UnreadableDestination[];
@@ -265,7 +265,7 @@ function pathIsSuspicious(p: string): boolean {
  *
  * github-mcp-server v1.14.0 does guard paths this way ("path must not contain
  * '..' due to auth vulnerability issue", measured 2026-10-07) and does not
- * guard refs. Relying on an upstream for a control Mandate claims to enforce
+ * guard refs. Relying on an upstream for a control LeastPilot claims to enforce
  * is how the reason goes missing from the audit log even when the call fails.
  */
 function refIsSuspicious(ref: string): boolean {

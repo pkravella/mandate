@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseMandateYaml, proofOf, type ProposedMandate } from "@mandate-dev/schema";
+import { parseMandateYaml, proofOf, type ProposedMandate } from "@leastpilot/schema";
 import { ceilingSha256, loadCeiling } from "./ceiling.js";
 import { validate, type RejectionCode } from "./validate.js";
 import { workBudget } from "./glob/budget.js";
@@ -11,7 +11,7 @@ import type { UserAuthority } from "./userAuthority.js";
  * The adversarial suite, validator half (Task 19 families A and D's mandate
  * side).
  *
- * Mandate does not detect prompt injection -- that is an explicit non-goal. So
+ * LeastPilot does not detect prompt injection -- that is an explicit non-goal. So
  * the question is never "did the model notice the attack?" but "did the ceiling
  * hold anyway?". Every case here therefore simulates a FULLY COMPROMISED
  * writer that proposed exactly what the injected text asked for, and asserts

@@ -3,8 +3,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { markValidated, parseMandateYaml, type ValidatedMandate } from "@mandate-dev/schema";
-import type { MintDeps } from "@mandate-dev/compiler";
+import { markValidated, parseMandateYaml, type ValidatedMandate } from "@leastpilot/schema";
+import type { MintDeps } from "@leastpilot/compiler";
 import { openSession } from "./session.js";
 
 /**
@@ -164,7 +164,7 @@ describe("openSession", () => {
   });
 
   // Task 6.1. The benchmark's measurement mode goes through the one session
-  // seam, so the mode it measures is the enforcement `mandate serve` runs.
+  // seam, so the mode it measures is the enforcement `leastpilot serve` runs.
   it("offers every upstream tool when asked to, and still refuses the ungranted ones", async () => {
     const session = await openSession({
       mandate: mandate(), github: fakeGithub().deps, upstream: fakeUpstream().connect,
@@ -281,7 +281,7 @@ describe("openSession — giving the token back", () => {
   });
 
   it("never puts the token in the proxy rules", async () => {
-    // The rules are written to disk for `mandate serve` to read. A token in
+    // The rules are written to disk for `leastpilot serve` to read. A token in
     // them would be a credential on disk with no reason to be there.
     const session = await openSession({
       mandate: mandate(), github: fakeGithub().deps, upstream: fakeUpstream().connect,

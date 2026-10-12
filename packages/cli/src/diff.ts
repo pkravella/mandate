@@ -1,7 +1,7 @@
-import { getOperation, highRiskOps, OPERATIONS } from "@mandate-dev/catalog";
-import type { GhPermission } from "@mandate-dev/catalog";
-import type { Grant, Mandate } from "@mandate-dev/schema";
-import type { Rejection } from "@mandate-dev/validator";
+import { getOperation, highRiskOps, OPERATIONS } from "@leastpilot/catalog";
+import type { GhPermission } from "@leastpilot/catalog";
+import type { Grant, Mandate } from "@leastpilot/schema";
+import type { Rejection } from "@leastpilot/validator";
 
 export interface DiffOptions {
   readonly color?: boolean;

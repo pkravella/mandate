@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
+import { MandateSchema, markValidated, type ValidatedMandate } from "@leastpilot/schema";
 import { githubAppDeps } from "./githubApp.js";
 import { MintError, mintToken, requiredPermissions, revokeToken } from "./token.js";
 
@@ -8,21 +8,21 @@ import { MintError, mintToken, requiredPermissions, revokeToken } from "./token.
 // for a real repository, so it is gated on an explicit opt-in as well as on
 // the app's details being configured.
 //
-//   MANDATE_LIVE=1 pnpm --filter @mandate-dev/compiler test
+//   LEASTPILOT_LIVE=1 pnpm --filter @leastpilot/compiler test
 const env = (name: string): string | undefined => process.env[name];
-const live = env("MANDATE_LIVE") === "1"
-  && env("MANDATE_APP_ID") !== undefined
-  && env("MANDATE_INSTALLATION_ID") !== undefined
-  && env("MANDATE_APP_KEY_PATH") !== undefined
-  && env("MANDATE_TEST_REPO") !== undefined;
+const live = env("LEASTPILOT_LIVE") === "1"
+  && env("LEASTPILOT_APP_ID") !== undefined
+  && env("LEASTPILOT_INSTALLATION_ID") !== undefined
+  && env("LEASTPILOT_APP_KEY_PATH") !== undefined
+  && env("LEASTPILOT_TEST_REPO") !== undefined;
 
 const deps = (): ReturnType<typeof githubAppDeps> => githubAppDeps({
-  appId: env("MANDATE_APP_ID") ?? "",
-  installationId: Number(env("MANDATE_INSTALLATION_ID") ?? "0"),
-  privateKeyPath: env("MANDATE_APP_KEY_PATH") ?? "",
+  appId: env("LEASTPILOT_APP_ID") ?? "",
+  installationId: Number(env("LEASTPILOT_INSTALLATION_ID") ?? "0"),
+  privateKeyPath: env("LEASTPILOT_APP_KEY_PATH") ?? "",
 });
 
-const repo = (): string => env("MANDATE_TEST_REPO") ?? "";
+const repo = (): string => env("LEASTPILOT_TEST_REPO") ?? "";
 
 const AppSchema = z.object({ permissions: z.record(z.string(), z.string()) });
 

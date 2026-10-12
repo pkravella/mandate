@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MandateSchema, mandateHash, markValidated, unwrap, type ValidatedMandate,
-} from "@mandate-dev/schema";
+} from "@leastpilot/schema";
 import { capToCredential, compileRules, CREDENTIAL_MARGIN_MS, enforcementReport, rulesForTool } from "./rules.js";
 
 const validated = (grants: unknown[], over: Record<string, unknown> = {}): ValidatedMandate =>

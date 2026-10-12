@@ -36,7 +36,7 @@ describe("catalog", () => {
   // Risk class and GitHub App permission level are independent axes. Risk is
   // about consequence; permission level is about whether the call mutates.
   // Conflating them would force a high-risk read such as secrets.read to
-  // request write access it does not need -- the exact over-granting Mandate
+  // request write access it does not need -- the exact over-granting LeastPilot
   // exists to prevent.
   it("gives every write-risk operation a write permission level", () => {
     for (const op of OPERATIONS.filter((o) => o.risk === "write")) {

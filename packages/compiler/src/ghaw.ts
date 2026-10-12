@@ -1,5 +1,5 @@
-import { getOperation } from "@mandate-dev/catalog";
-import type { Grant, ValidatedMandate } from "@mandate-dev/schema";
+import { getOperation } from "@leastpilot/catalog";
+import type { Grant, ValidatedMandate } from "@leastpilot/schema";
 import type { Backend } from "./rules.js";
 
 /**
@@ -10,7 +10,7 @@ import type { Backend } from "./rules.js";
  * **One workflow per task template, not per task.** gh-aw compiles these
  * limits into the workflow's lock file when it is authored, and `allowed-files`
  * cannot be set at run time, so the output is committed once for a kind of
- * task. That is weaker than Mandate's per-task loop, and the export says so.
+ * task. That is weaker than LeastPilot's per-task loop, and the export says so.
  *
  * **Never wider than the mandate.** Anything it cannot express exactly is
  * refused, never approximated outward; where gh-aw can only be narrower, the
@@ -21,7 +21,7 @@ import type { Backend } from "./rules.js";
  * Probed against gh-aw v0.89.21 (its schema and its handlers), not its docs:
  *
  *   - `allowed-files` and `excluded-files` match with `*` stopping at `/` and
- *     `**` crossing it, anchored and case-sensitive: Mandate's glob language.
+ *     `**` crossing it, anchored and case-sensitive: LeastPilot's glob language.
  *     The job that creates the PR enforces `allowed-files`.
  *   - `allowed-branches` is checked against the name the agent asked for; gh-aw
  *     then normalises it and, unless `preserve-branch-name`, appends a random

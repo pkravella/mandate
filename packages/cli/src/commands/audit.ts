@@ -2,17 +2,17 @@ import { closeSync, existsSync, openSync, readFileSync, unlinkSync, writeSync } 
 import { generateKeyPairSync } from "node:crypto";
 import {
   AuditKeyError, auditKeyId, loadAuditKey, verifyAuditLog, type AuditKey,
-} from "@mandate-dev/proxy";
+} from "@leastpilot/proxy";
 
 /**
- * `mandate audit` -- R16's signed log, from the outside: making the key that
+ * `leastpilot audit` -- R16's signed log, from the outside: making the key that
  * signs it and checking a log someone hands you.
  *
  * Exit codes follow the rest of the CLI: 0 the log is intact and sealed, 1 it
  * is not (broken, or unsealed), 2 bad input.
  */
 
-const KEYGEN_HINT = "Create one with `mandate audit keygen --out <path>`.";
+const KEYGEN_HINT = "Create one with `leastpilot audit keygen --out <path>`.";
 
 /**
  * What `serve` and `run` check before anything is minted when `--audit-log`
@@ -26,7 +26,7 @@ export function auditInputs(
   if (auditLog === undefined) return {};
   if (keyPath === undefined) {
     return {
-      error: "--audit-log needs MANDATE_AUDIT_KEY_PATH, the Ed25519 key that signs the log. "
+      error: "--audit-log needs LEASTPILOT_AUDIT_KEY_PATH, the Ed25519 key that signs the log. "
         + `${KEYGEN_HINT} Nothing was minted.`,
     };
   }
@@ -82,7 +82,7 @@ export function runAuditKeygen(args: AuditKeygenArgs, log: (s: string) => void):
   log(`Wrote the audit signing key to ${args.out} (mode 600) and its public key to ${args.publicOut}.`);
   log(`Key id: ${auditKeyId(publicKey)}`);
   log(
-    `Set MANDATE_AUDIT_KEY_PATH=${args.out} where serve runs, and give ${args.publicOut} to whoever `
+    `Set LEASTPILOT_AUDIT_KEY_PATH=${args.out} where serve runs, and give ${args.publicOut} to whoever `
     + "checks the logs. This is not the GitHub App's key and should not be stored with it.",
   );
   return 0;

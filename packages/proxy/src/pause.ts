@@ -1,17 +1,17 @@
 import {
   NOT_WIDENABLE, splitClause, WidenDeltaSchema, type PauseRecord,
-} from "@mandate-dev/schema";
+} from "@leastpilot/schema";
 import type { Decision } from "./proxy.js";
 
 /**
- * The pause record and the widen request are defined in `@mandate-dev/schema`,
+ * The pause record and the widen request are defined in `@leastpilot/schema`,
  * not here. They are the contract between the layer that *offers* a widen and
- * the layer that *applies* one (`mandate widen`), and a second copy of either
+ * the layer that *applies* one (`leastpilot widen`), and a second copy of either
  * — or of the refusal list — is a copy that can drift. A drift means a denial
  * the proxy deliberately declined to offer a widen for gets widened anyway.
  */
-export type { PauseRecord, WidenRequest } from "@mandate-dev/schema";
-export { widenRefusal } from "@mandate-dev/schema";
+export type { PauseRecord, WidenRequest } from "@leastpilot/schema";
+export { widenRefusal } from "@leastpilot/schema";
 
 /**
  * Turns a denial into a reviewable widen request (R10).
