@@ -77,6 +77,9 @@ const PERMISSION_KEY: Readonly<Record<string, string>> = {
 
 const isLiteral = (glob: string): boolean => !glob.includes("*");
 
+/** The workflow's own token, whose `permissions:` bind; a PAT secret's do not. */
+const WORKFLOW_TOKEN = "${{ secrets.GITHUB_TOKEN }}";
+
 /**
  * Whether gh-aw's `normalizeBranchName` leaves a name unchanged: it replaces
  * runs of anything but `A-Za-z0-9-_/.` with "-", collapses repeated "-", trims
@@ -148,7 +151,11 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
     }
   });
 
+  // gh-aw uses a PAT from GH_AW_GITHUB_TOKEN when the repository has that
+  // secret, and a PAT ignores the workflow's permissions:. Pinned to the
+  // workflow token, the permissions gh-aw computes are what bound the writes.
   const safeOutputs: Record<string, unknown> = {
+    "github-token": WORKFLOW_TOKEN,
     // Run-status comments on the triggering issue or PR, and failure reports
     // filed as issues: writes gh-aw makes by default, none in the mandate.
     "activation-comments": false,
@@ -167,6 +174,20 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
       "contents.write or branch.create without pull_request.create: gh-aw writes code only through "
       + "a pull request (or to an existing one's branch, which this export does not map)",
     );
+  }
+  // And the converse: create-pull-request commits whatever the agent changed
+  // on a new branch, so without contents.write there is no allowed-files and
+  // any file goes in, and without branch.create the branch was never granted.
+  if (pr !== undefined) {
+    for (const needed of ["contents.write", "branch.create"]) {
+      if (!byAction.has(needed)) {
+        refuse(
+          `pull_request.create without ${needed}: gh-aw's create-pull-request commits the agent's `
+          + "changes to a new branch, which needs both contents.write and branch.create",
+          pr.i, pr.g,
+        );
+      }
+    }
   }
   if (pr !== undefined) {
     const createPr: Record<string, unknown> = {};
@@ -229,6 +250,13 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
       );
     }
     createPr["protected-files"] = "blocked";
+    // Otherwise a CI-trigger PAT (GH_AW_CI_TRIGGER_TOKEN), if the repository
+    // has one, pushes an empty commit to the branch after the PR opens.
+    createPr["github-token-for-extra-empty-commit"] = "none";
+    narrowings.push(
+      "github-token-for-extra-empty-commit: none, so a pull request opened with the workflow token "
+      + "does not start CI by itself",
+    );
     narrowings.push(
       "protected-files: blocked refuses changes to package manifests, agent instruction files and "
       + ".github/ even where the mandate's paths allow them",
@@ -298,7 +326,12 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
       permissions,
       "timeout-minutes": mandate.expiresInMinutes,
       network: "defaults",
-      tools: { github: { "read-only": true, "allowed-repos": [repo], allowed: tools } },
+      // The same for the agent's GitHub tools, which would otherwise prefer
+      // GH_AW_GITHUB_MCP_SERVER_TOKEN or GH_AW_GITHUB_TOKEN; the workflow token
+      // carries only the read permissions above.
+      tools: {
+        github: { "read-only": true, "github-token": WORKFLOW_TOKEN, "allowed-repos": [repo], allowed: tools },
+      },
       "safe-outputs": safeOutputs,
     },
   };

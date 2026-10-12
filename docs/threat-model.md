@@ -196,10 +196,12 @@ passed as updates.
 
 ### 3.6 An exported gh-aw workflow is gh-aw's to enforce
 
-`mandate export gh-aw` writes the limits and gh-aw enforces them. The agent
-holds no write token, but `allowed-branches` is checked only in gh-aw's
-safe-outputs MCP server, so that limit rests on gh-aw keeping the agent away
-from its request file. Once committed, the workflow file is the policy, and an
+`mandate export gh-aw` writes the limits and gh-aw enforces them. gh-aw
+prefers a PAT secret over the workflow token when one exists, and a PAT ignores
+`permissions:`, so the export pins both of gh-aw's tokens to `GITHUB_TOKEN`.
+Removing those lines quietly widens everything. `allowed-branches` is checked
+only in gh-aw's safe-outputs MCP server, so that limit rests on gh-aw keeping
+the agent away from its request file. Once committed, the workflow file is the policy, and an
 edit to it is not re-checked against the mandate. [gh-aw.md](gh-aw.md) says
 what maps and what is refused.
 

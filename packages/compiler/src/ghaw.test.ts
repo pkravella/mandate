@@ -89,16 +89,27 @@ describe("compileGhAw: a fix-issue mandate", () => {
       "report-incomplete": { "create-issue": false },
       "missing-tool": { "create-issue": false }, "missing-data": { "create-issue": false },
     });
-    expect(Object.keys(so).filter((k) => !GLOBAL_KEYS.has(k))).toEqual(["create-pull-request"]);
+    expect(Object.keys(so).filter((k) => !GLOBAL_KEYS.has(k) && k !== "github-token"))
+      .toEqual(["create-pull-request"]);
   });
 
   it("gives the agent read-only GitHub tools for what the mandate reads, on its repository", () => {
     expect(at(r.frontmatter, "tools", "github")).toEqual({
       "read-only": true,
+      "github-token": "${{ secrets.GITHUB_TOKEN }}",
       "allowed-repos": ["acme/api"],
       allowed: ["get_file_contents", "list_branches", "search_code"],
     });
     expect(r.frontmatter["permissions"]).toEqual({ contents: "read" });
+  });
+
+  // gh-aw prefers a PAT from GH_AW_GITHUB_TOKEN (or ..._MCP_SERVER_TOKEN) when
+  // the secret exists, and a PAT ignores permissions:. Pinned, the workflow
+  // token's permissions are the bound; found in review.
+  it("pins the agent's GitHub tools and the safe-output jobs to the workflow token", () => {
+    expect(at(r.frontmatter, "tools", "github", "github-token")).toBe("${{ secrets.GITHUB_TOKEN }}");
+    expect(at(r.frontmatter, "safe-outputs", "github-token")).toBe("${{ secrets.GITHUB_TOKEN }}");
+    expect(pr["github-token-for-extra-empty-commit"]).toBe("none");
   });
 
   it("caps the run at the mandate's expiry, and names its egress as the agent's own", () => {
@@ -208,6 +219,16 @@ describe("compileGhAw: what it refuses rather than widen", () => {
 
   it("a base given as a pattern", () => {
     refuse(validated(fixGrants({ base: "release/*" })), /base/);
+  });
+
+  // Found in review: gh-aw's create-pull-request commits whatever the agent
+  // changed, so a PR grant without contents.write exported with no
+  // allowed-files at all -- any file. The three go together or not at all.
+  it("pull_request.create without contents.write or branch.create", () => {
+    const [read, branch, , pr] = fixGrants();
+    refuse(validated([read, branch, pr]), /pull_request\.create.*contents\.write/s);
+    const [, , write] = fixGrants();
+    refuse(validated([read, write, pr]), /branch\.create/);
   });
 
   it("contents.write without pull_request.create", () => {

@@ -57,7 +57,8 @@ branch is deleted.
 | `pull_request.create` `base` | `base-branch`; the agent cannot override it (no `allowed-base-branches`, `stacked: false`) |
 | `contents.write` `paths` | `allowed-files` (the same glob language: `*` stops at `/`, `**` does not) |
 | `contents.write` `denyPaths` | `excluded-files`, which drops them from the patch (see below) |
-| `issue.comment` / `pull_request.comment` | `add-comment`: `target: "*"`, `issues` / `pull-requests` as granted, `discussions: false`, `max` the sum of both grants |
+| `issue.comment` / `pull_request.comment` | `add-comment`: `target: "*"`, `max` the sum of both grants, and `issues` / `pull-requests` as granted with `discussions: false`. Those three only set the write job's token permissions, which is why the token is pinned (below) |
+| (none: how the limits bind) | `github-token: ${{ secrets.GITHUB_TOKEN }}` on the agent's GitHub tools and on safe-outputs |
 | `expiresInMinutes` | `timeout-minutes` |
 
 Switched off, because each one writes something the mandate does not grant:
@@ -80,6 +81,7 @@ Switched off, because each one writes something the mandate does not grant:
 | A base given as a pattern | gh-aw takes one base branch |
 | A read limited by path or branch | gh-aw allows a tool or not; it cannot limit what the tool reads |
 | `contents.write` or `branch.create` without `pull_request.create` | gh-aw writes code only through a pull request |
+| `pull_request.create` without `contents.write` or `branch.create` | gh-aw's pull request commits whatever the agent changed, on a new branch. Without `contents.write` there is no file limit at all. Found in review: an earlier version exported it |
 | Any other write (`issue.create`, `issue.label`, …) | Not mapped yet. Refused, not dropped |
 | A mandate that writes nothing | gh-aw adds a `create-issue` output to any workflow without a write output. The published triage mandate (`repo.read` alone) is one |
 | A destination outside GitHub | gh-aw's network setting is the agent's own egress, not a destination for repository data |
@@ -95,6 +97,9 @@ Switched off, because each one writes something the mandate does not grant:
   path names.
 - `protected-files: blocked` refuses changes to package manifests, agent
   instruction files and `.github/`, even where the mandate's paths allow them.
+- `github-token-for-extra-empty-commit: none`: a pull request opened with the
+  workflow token does not start CI by itself. Otherwise a CI-trigger token, if
+  the repository has one, would push an extra commit to the branch.
 
 **Not from the mandate:** `network: defaults` is gh-aw's infrastructure egress
 for the agent, and gh-aw adds its engine's API host. It is the operator's
@@ -107,14 +112,34 @@ Change it deliberately.
 
 ## What enforces it, and what that rests on
 
-gh-aw enforces it, not Mandate. The agent never holds a write token.
-`allowed-files`, the base branch and the pull-request count are checked in the
-job that performs the write (read in gh-aw's handlers at v0.89.21; the comment
-count was not traced). `allowed-branches` is checked only in gh-aw's
-safe-outputs MCP server, while the agent's request is recorded. That holds
-because the agent's container mounts the request file read-only, and gh-aw's
-own steps copy and ingest it only after the agent has exited. It is gh-aw's
-boundary, not Mandate's.
+gh-aw enforces it, not Mandate.
+
+**The tokens are pinned, and that is what makes the permissions mean
+anything.** Left to its defaults, gh-aw gives the agent's GitHub tools a PAT
+from `GH_AW_GITHUB_MCP_SERVER_TOKEN` or `GH_AW_GITHUB_TOKEN`, and the write jobs
+one from `GH_AW_GITHUB_TOKEN`, whenever the repository has those secrets. A PAT
+ignores the workflow's `permissions:`. The export sets `github-token` to the
+workflow's own `GITHUB_TOKEN` in both places, so the agent's tools carry only
+the read permissions listed, and the write job carries only what gh-aw computes
+from the safe outputs.
+
+That job's permissions are merged across outputs. A mandate granting
+`issue.comment` alongside a pull request therefore gets a token that can also
+comment on pull requests. That matches Mandate's own proxy, which cannot tell
+the two apart either (one tool, combined allowance). `discussions: false` holds
+because the token has no discussions permission.
+
+The agent itself gets a shell and file edits inside gh-aw's sandbox, which is
+gh-aw's default. The credentials in its job are the pinned workflow token at
+read permissions and a checkout that keeps no credentials.
+
+Read in gh-aw's handlers at v0.89.21:
+- `allowed-files`, the base branch and both counts are checked in the job that
+  performs the write.
+- `allowed-branches` is checked only in gh-aw's safe-outputs MCP server, while
+  the agent's request is recorded. That holds because the agent's container
+  mounts the request file read-only, and gh-aw's own steps copy and ingest it
+  only after the agent has exited. It is gh-aw's boundary, not Mandate's.
 
 Once committed, the workflow file is the policy. Editing it afterwards changes
 what is enforced, and nothing re-checks it against the mandate.
