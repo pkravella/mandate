@@ -259,21 +259,30 @@ the tool schemas actually sent to the model and fails if one appears.
    destinations.
 2. **Set `permissions: {}`** on the job, and `persist-credentials: false` on
    checkout. The action refuses to run with a `GITHUB_TOKEN` present.
-3. **Use `--repo`, not `--level`.** `--level` is an assertion, labelled as one
+3. **Require an approval with `--approval`.** The writer is untrusted, and
+   nothing is minted until the requester has approved the exact mandate. That
+   proves the requester posted its digest, not that they read it. Until the
+   diff is posted beside the line (the next part of R5), the digest reaches
+   them in a refusal message, and pasting it is easy. An approval stands until
+   its comment is deleted: it covers every session of that mandate, under that
+   ceiling, for that requester, and the audit log records which comment each
+   session used. Who may fire the workflow that runs it is still the
+   workflow's choice.
+4. **Use `--repo`, not `--level`.** `--level` is an assertion, labelled as one
    in every line of output that reports it. Only `--repo` makes the result an
    authorisation record.
-4. **Read `enforcedBy` in the permission diff.** A grant marked `proxy` is not
+5. **Read `enforcedBy` in the permission diff.** A grant marked `proxy` is not
    enforced by the token, so it does not survive the agent going around the
    proxy.
-5. **Do not read a zero false-pause count as success.** See §3.3.
-6. **Keep the App's permission set minimal.** The token can never be narrower
+6. **Do not read a zero false-pause count as success.** See §3.3.
+7. **Keep the App's permission set minimal.** The token can never be narrower
    than the installation; `actions` is deliberately absent from the
    development App, which is what makes the 422 path a test fixture.
-7. **Write an audit log, and keep its key away from the agent.** Use
+8. **Write an audit log, and keep its key away from the agent.** Use
    `--audit-log` with `--sandbox`, store the logs somewhere the key is not, and
    give auditors the public key. A log with no seal was killed or cut off;
    nothing in it can tell which.
-8. **Never splice untrusted text into the agent's prompt.** An issue title or
+9. **Never splice untrusted text into the agent's prompt.** An issue title or
    body passed through the Action's `agent` input reaches the model as
    instructions. Mandate bounds what an injected agent can *do*, which is the
    whole premise — but that is a different guarantee from the text not being

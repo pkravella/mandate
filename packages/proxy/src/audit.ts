@@ -61,6 +61,17 @@ export class AuditLogError extends Error {
  */
 export type SealReason = "closed" | "never-opened";
 
+/** R16's "approvals": the requester's approval serve found before minting (R5). */
+export interface AuditApproval {
+  /** `owner/repo#number`. */
+  readonly issue: string;
+  readonly comment: number;
+  readonly by: string;
+  readonly at: string;
+  /** What was approved: `approvalDigest(mandate, ceiling sha256, requester)`. */
+  readonly digest: string;
+}
+
 export interface AuditKey {
   readonly privateKey: KeyObject;
   /** sha256 of the public key's SubjectPublicKeyInfo DER, hex. */
@@ -178,7 +189,7 @@ export class AuditLog implements GraphSink {
   }
 
   /** The first event: what was authorised, by whom, against which ceiling, signed by which key. */
-  open(mandate: Mandate, ceiling?: TraceCeiling): void {
+  open(mandate: Mandate, ceiling?: TraceCeiling, approval?: AuditApproval): void {
     if (this.#state !== "new") {
       this.#report("the audit log was opened twice; the second open was not written");
       return;
@@ -197,6 +208,7 @@ export class AuditLog implements GraphSink {
       mandateId: mandate.mandate,
       mandateHash: mandateHash(mandate),
       ...(ceiling === undefined ? {} : { ceiling }),
+      ...(approval === undefined ? {} : { approval }),
       // JSON drops a ValidatedMandate's symbol brand, so this is the plain mandate.
       mandate,
     });
@@ -287,6 +299,10 @@ const OpenEvent = z.object({
   mandateId: z.string().min(1),
   mandateHash: Sha256Hex,
   ceiling: z.object({ label: z.string().min(1), sha256: Sha256Hex }).strict().optional(),
+  approval: z.object({
+    issue: z.string().min(1), comment: z.number().int().positive(), by: z.string().min(1),
+    at: Timestamp, digest: Sha256Hex,
+  }).strict().optional(),
   mandate: z.unknown(),
 }).strict();
 
@@ -334,6 +350,8 @@ export type AuditVerdict =
     readonly mandateId: string;
     readonly mandateHash: string;
     readonly mandate: Mandate;
+    /** The requester's approval serve found before minting, when it required one. */
+    readonly approval?: AuditApproval;
     /** The trace the session's recorder held, as replay reads it. */
     readonly graph: ActionGraph;
     readonly unfinished: readonly UnfinishedCall[];
@@ -504,6 +522,7 @@ export function verifyAuditLog(src: string, publicKeyPem: string): AuditVerdict 
     mandateId: open.mandateId,
     mandateHash: open.mandateHash,
     mandate,
+    ...(open.approval === undefined ? {} : { approval: open.approval }),
     graph: {
       mode: "enforced",
       mandateId: open.mandateId,

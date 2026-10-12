@@ -10,6 +10,7 @@ import { githubAppDeps, type MintDeps } from "@mandate-dev/compiler";
 import { runWiden } from "./commands/widen.js";
 import { runAuditKeygen, runAuditVerify } from "./commands/audit.js";
 import { runExportGhAw } from "./commands/export.js";
+import { githubApprovalReader } from "./approval.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
@@ -73,6 +74,9 @@ const appDeps = (): MintDeps | undefined => {
   }
   return githubAppDeps({ appId, installationId: Number(installationId), privateKeyPath });
 };
+
+const APPROVAL_HELP = "refuse to mint unless the mandate's requester approved this exact mandate "
+  + "with a comment on that issue or pull request (R5); reads it with the App's issues and pull_requests read";
 
 const AUDIT_LOG_HELP = "write a signed log of the session here as it happens (R16), signed with "
   + "MANDATE_AUDIT_KEY_PATH; never over an existing file";
@@ -195,10 +199,11 @@ export function main(argv: readonly string[]): void {
     )
     .option("--ready-file <path>", "with --listen: write {host, port} here once listening")
     .option("--audit-log <path>", AUDIT_LOG_HELP)
+    .option("--approval <owner/repo#number>", APPROVAL_HELP)
     .action(async (opts: {
       mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
       as: string; level?: string; repo?: string; trace?: string;
-      listen?: string; readyFile?: string; auditLog?: string;
+      listen?: string; readyFile?: string; auditLog?: string; approval?: string;
     }) => {
       // stdout is the JSON-RPC stream. Every diagnostic goes to stderr, or the
       // agent sees a parse error instead of a tool list.
@@ -222,12 +227,14 @@ export function main(argv: readonly string[]): void {
         ...(opts.listen === undefined ? {} : { listen: opts.listen }),
         ...(opts.readyFile === undefined ? {} : { readyFile: opts.readyFile }),
         ...(opts.auditLog === undefined ? {} : { auditLog: opts.auditLog }),
+        ...(opts.approval === undefined ? {} : { approval: opts.approval }),
       }, log, {
         github,
         ...(resolve === undefined ? {} : { resolve }),
         // From the environment, never a flag: argv is readable by every process.
         relaySecret: process.env["MANDATE_RELAY_SECRET"],
         auditKeyPath: process.env["MANDATE_AUDIT_KEY_PATH"],
+        approvals: githubApprovalReader(),
       });
     });
 
@@ -241,6 +248,7 @@ export function main(argv: readonly string[]): void {
     .option("--trace <path>", "write the action graph here when the session ends (R8)")
     .option("--diff", "print the permission diff before launching")
     .option("--audit-log <path>", AUDIT_LOG_HELP)
+    .option("--approval <owner/repo#number>", APPROVAL_HELP)
     .option(
       "--sandbox",
       "run the agent in the sandbox container, with serve on the host (macOS, Docker Desktop)",
@@ -260,9 +268,10 @@ export function main(argv: readonly string[]): void {
       mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
       as: string; level?: string; repo?: string; trace?: string; diff?: boolean;
       sandbox?: boolean; image?: string; agentEgress?: string[]; passEnv?: string[];
-      auditLog?: string;
+      auditLog?: string; approval?: string;
     }) => {
       const resolve = githubResolver();
+      const approvals = githubApprovalReader();
       process.exitCode = await runRun({
         file: opts.mandate, ceiling: opts.ceiling, schema: opts.schema,
         destinations: opts.ceilingDestinations, as: opts.as, agent,
@@ -275,7 +284,11 @@ export function main(argv: readonly string[]): void {
         ...(opts.agentEgress === undefined ? {} : { agentEgress: opts.agentEgress }),
         ...(opts.passEnv === undefined ? {} : { passEnv: opts.passEnv }),
         ...(opts.auditLog === undefined ? {} : { auditLog: opts.auditLog }),
-      }, (m) => { console.log(m); }, resolve === undefined ? {} : { resolve });
+        ...(opts.approval === undefined ? {} : { approval: opts.approval }),
+      }, (m) => { console.log(m); }, {
+        ...(resolve === undefined ? {} : { resolve }),
+        ...(approvals === undefined ? {} : { approvals }),
+      });
     });
 
   const exporter = program

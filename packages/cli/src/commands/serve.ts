@@ -5,6 +5,9 @@ import type { MintDeps } from "@mandate-dev/compiler";
 import { proofOf } from "@mandate-dev/schema";
 import { AuditLog, AuditLogError, type AuditKey, type Decision } from "@mandate-dev/proxy";
 import { auditInputs } from "./audit.js";
+import {
+  approvalInputs, requireApproval, type ApprovalReader, type ApprovalRecord,
+} from "../approval.js";
 import { renderRejections } from "../diff.js";
 import { prepareMandate, type PrepareArgs } from "../prepare.js";
 import { openSession, type Session, type SessionOptions } from "../session.js";
@@ -47,6 +50,11 @@ export interface ServeArgs extends PrepareArgs {
    * `deps.auditKeyPath`; never over an existing file.
    */
   readonly auditLog?: string | undefined;
+  /**
+   * R5: `owner/repo#number`. Nothing is minted unless the mandate's requester
+   * approved this exact mandate there (see approval.ts).
+   */
+  readonly approval?: string | undefined;
 }
 
 export interface ServeDeps extends AuthorityDeps {
@@ -71,6 +79,8 @@ export interface ServeDeps extends AuthorityDeps {
   readonly signals?: NodeJS.EventEmitter;
   /** The audit signing key, for `auditLog`. From MANDATE_AUDIT_KEY_PATH. */
   readonly auditKeyPath?: string | undefined;
+  /** Reads an issue's comments, for `approval`. Defaults to none: --approval then refuses. */
+  readonly approvals?: ApprovalReader | undefined;
 }
 
 /**
@@ -128,6 +138,12 @@ export async function runServe(
   }
   const auditKey: AuditKey | undefined = audited.key;
 
+  const approvalIn = approvalInputs(args.approval, deps.approvals);
+  if ("error" in approvalIn) {
+    log(approvalIn.error);
+    return 2;
+  }
+
   // Listening for SIGINT and SIGTERM from here, before anything is minted.
   // Found reviewing Phase 5: the listeners used to go on only once serve was
   // serving, so a signal during the mint -- the launcher's start-up timeout,
@@ -153,6 +169,19 @@ export async function runServe(
     return 2;
   }
 
+  // Before the audit log and the mint: an unapproved mandate gets neither.
+  let approved: ApprovalRecord | undefined;
+  if (approvalIn.ref !== undefined && deps.approvals !== undefined) {
+    const check = await requireApproval(prepared.mandate, approvalIn.ref, deps.approvals);
+    if (!check.ok) {
+      log(check.message);
+      log("Nothing was minted.");
+      return check.code;
+    }
+    approved = check.record;
+    log(`Approved by ${approved.by} in ${approved.issue} (comment ${approved.comment}, ${approved.at}).`);
+  }
+
   // Opened before the mint, so the log records a session that failed to open
   // as well as one that ran.
   let audit: AuditLog | undefined;
@@ -168,7 +197,7 @@ export async function runServe(
       return 2;
     }
     const proof = proofOf(prepared.mandate);
-    audit.open(prepared.mandate, { label: proof.ceilingId, sha256: proof.ceilingSha256 });
+    audit.open(prepared.mandate, { label: proof.ceilingId, sha256: proof.ceilingSha256 }, approved);
   }
   const sealAudit = (reason: "closed" | "never-opened"): void => {
     if (audit === undefined) return;

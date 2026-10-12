@@ -128,7 +128,7 @@ The events:
 
 | `type` | When | Carries |
 | --- | --- | --- |
-| `open` | First, before the token is minted | `format`, `at`, `keyId` (sha256 of the public key's SPKI DER), a random `session`, `mandateId`, `mandateHash`, `ceiling` (`label`, `sha256`), and the `mandate` itself |
+| `open` | First, before the token is minted | `format`, `at`, `keyId` (sha256 of the public key's SPKI DER), a random `session`, `mandateId`, `mandateHash`, `ceiling` (`label`, `sha256`), the `mandate` itself, and with `--approval` the `approval` found (`issue`, `comment`, `by`, `at`, `digest`) |
 | `forwarded` | An allowed call, as it is sent upstream | `call` (1, 2, …) and what the call named, as a trace node names it: `at`, `tool`, `action`, `resource`, `branch`, `paths`, `base`, `destinations`, `unreadableDestinations`, `method` |
 | `node` | A decision, as it completes | `node` (an action-graph node, held to the trace's rules) and, on an allowed call, the `call` it finishes |
 | `seal` | After the session closed and the token was revoked | `at`, and `reason`: `closed` (it served) or `never-opened` |
