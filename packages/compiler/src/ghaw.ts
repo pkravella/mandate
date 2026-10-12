@@ -295,6 +295,19 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
     };
   }
 
+  // gh-aw v0.89.21: when creating the pull request is refused for
+  // permissions, create_pull_request.cjs opens a fallback issue (lines
+  // 2815-2864) before it ever reads fallback-as-issue (line 2875). The only
+  // thing that stops it is a token without issues: write -- which add-comment
+  // on issues grants. Found by the live run, where the pinned token stopped it.
+  if (pr !== undefined && byAction.has("issue.comment")) {
+    refuse(
+      "pull_request.create with issue.comment: gh-aw v0.89.21 opens a fallback issue when it is "
+      + "refused permission to create the pull request, ignoring fallback-as-issue, and the "
+      + "issues: write that issue comments need would let it -- an issue the mandate does not grant",
+    );
+  }
+
   if (pr === undefined && comments.length === 0 && unit.length === 0) {
     refuse(
       "the mandate writes nothing; gh-aw adds a create-issue output to any workflow without a "
