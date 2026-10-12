@@ -243,13 +243,19 @@ export function enforcementReport(m: ValidatedMandate): readonly EnforcementRow[
 }
 
 /**
- * The seam R12's other backends slot into. **Interface only in v0.1.**
+ * The seam R12's backends slot into.
  *
  * R12 is P1: a Docker MCP Gateway interceptor, a Cedar export for AWS
- * AgentCore Policy, OPA, and gh-aw safe-outputs. None is implemented, and this
- * file deliberately ships the shape rather than a stub of each — a half
- * implementation of four backends would be four things that look supported and
- * are not.
+ * AgentCore Policy, OPA, and gh-aw safe-outputs. gh-aw is implemented
+ * (`ghAwBackend`, ghaw.ts); the other three are not, deliberately, since a
+ * half implementation of four backends would be four things that look
+ * supported and are not.
+ *
+ * Implementing one showed what the shape needed: a backend must be able to
+ * refuse. gh-aw cannot hold a branch pattern or a read limited by path, and an
+ * export that silently dropped such a limit would be wider than the mandate --
+ * a breach with Mandate's name on it. So its `T` is a result that is either the
+ * configuration or the reasons it refused, never a best effort.
  *
  * The constraint that matters is the argument type. A backend compiles a
  * `ValidatedMandate` and nothing else, so a new backend cannot become a second

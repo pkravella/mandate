@@ -1,7 +1,9 @@
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/node_modules/**", "**/*.d.ts"] },
+  // fixtures/gh-aw holds gh-aw's code copied byte-for-byte (its blob hashes
+  // are checked), so it is linted by gh-aw's rules, not these.
+  { ignores: ["**/dist/**", "**/node_modules/**", "**/*.d.ts", "fixtures/gh-aw/**"] },
 
   {
     files: ["packages/**/*.ts"],

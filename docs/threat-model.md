@@ -194,7 +194,18 @@ arguments -- `issue_write` updates, `update_pull_request`, `add_issue_comment`
 `issue.create`'s own limit; until Phase 5 it was not, and creates past the limit
 passed as updates.
 
-### 3.6 Mandate ids can collide
+### 3.6 An exported gh-aw workflow is gh-aw's to enforce
+
+`mandate export gh-aw` writes the limits and gh-aw enforces them. gh-aw
+prefers a PAT secret over the workflow token when one exists, and a PAT ignores
+`permissions:`, so the export pins both of gh-aw's tokens to `GITHUB_TOKEN`.
+Removing those lines quietly widens everything. `allowed-branches` is checked
+only in gh-aw's safe-outputs MCP server, so that limit rests on gh-aw keeping
+the agent away from its request file. Once committed, the workflow file is the policy, and an
+edit to it is not re-checked against the mandate. [gh-aw.md](gh-aw.md) says
+what maps and what is refused.
+
+### 3.7 Mandate ids can collide
 
 `slug()` truncates at 48 characters on a word boundary, so two tasks opening
 with the same words share an id. `mandateHash` exists for this and the trace

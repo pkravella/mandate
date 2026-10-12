@@ -210,6 +210,21 @@ key never reaches the agent; without it, the agent could read the key and
 rewrite the log. [docs/audit-log.md](docs/audit-log.md) has the format and what
 the signature does and does not prove.
 
+### Exporting to gh-aw
+
+`mandate export gh-aw` validates a mandate and prints it as the frontmatter of
+a [GitHub Agentic Workflows](https://github.github.com/gh-aw/) workflow (gh-aw
+v0.89.21). The agent runs read-only, and gh-aw's own job writes the pull
+request or comments within the mandate's limits. It refuses anything gh-aw
+cannot hold exactly rather than widen it: branch patterns (gh-aw normalises a
+branch name after checking it, so `agent/42-!!` matches `agent/42-*` and is
+pushed as `agent/42`), reads limited by path, more than one repository, a
+mandate that writes nothing. It also switches off every gh-aw default that
+writes something on its own. gh-aw sets these limits when the workflow is
+written, so the result is a template for a kind of task, not one task's
+mandate. A conformance test runs gh-aw's own matcher code against Mandate's.
+[docs/gh-aw.md](docs/gh-aw.md) has the mapping and every refusal.
+
 There is also an [Action](action.yml) and an
 [example workflow](.github/workflows/mandate.yml). The workflow sets
 `permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
@@ -250,6 +265,7 @@ what to do about it.
 | [Enforced where](docs/enforced-where.md) | Which control bounds what, and what defeats each |
 | [Threat model](docs/threat-model.md) | What holds, what is out of scope, what breaks it |
 | [Audit log](docs/audit-log.md) | The signed session log: turning it on, checking it, its format, what it proves |
+| [gh-aw export](docs/gh-aw.md) | A mandate as a GitHub Agentic Workflows workflow: what maps, what is refused, what enforces it |
 | [Architecture](docs/architecture.md) | The package graph and why it is shaped that way |
 | [Benchmark report](docs/benchmark-report.md) | Measured completion, authority cut, over-grant, and the denials an under-grant produces, rendered from [its results](docs/benchmark-results.json) |
 
@@ -409,10 +425,10 @@ upstream of it is untrusted; everything downstream takes only a
 | `@mandate-dev/schema` | The mandate contract, canonical hashing, the ceiling digest, and the `ValidatedMandate` brand. |
 | `@mandate-dev/validator` | Glob-set containment by DFA inclusion, the constrained Cedar ceiling profile, the two-layer subset proof, and the R4 lints. |
 | `@mandate-dev/writer` | The one model-driven component, and untrusted. Covers from the catalog, prunes, and emits a `ProposedMandate` that only `validate()` accepts. Runs both calls at effort `medium`, by measurement. |
-| `@mandate-dev/compiler` | Mints a repository-scoped GitHub App token and revokes it, and compiles the mandate into proxy rules — capped to end before the token does — plus the token-versus-proxy enforcement report. |
+| `@mandate-dev/compiler` | Mints a repository-scoped GitHub App token and revokes it, and compiles the mandate into proxy rules — capped to end before the token does — plus the token-versus-proxy enforcement report and the gh-aw export. |
 | `@mandate-dev/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list` (or, in the benchmark's measurement mode only, offers every tool and refuses on call), checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. Writes and verifies the signed audit log. |
 | `@mandate-dev/replay` | Scores a mandate by replaying a recorded action graph through the production argument enforcer, reporting over-grant, under-grant, and which operations a task needed that the mandate lacked. |
-| `@mandate-dev/cli` | `mandate validate`, `widen`, `serve`, `run` (with `--sandbox`: the workspace clone, the container launch and the relay listener) and `audit keygen`/`verify`, the permission diff, the rejection report, and the enforced session the CLI and the benchmark share. |
+| `@mandate-dev/cli` | `mandate validate`, `widen`, `serve`, `run` (with `--sandbox`: the workspace clone, the container launch and the relay listener) `audit keygen`/`verify` and `export gh-aw`, the permission diff, the rejection report, and the enforced session the CLI and the benchmark share. |
 | `@mandate-dev/bench` | Private. The benchmark corpus loader, the seeder, the harness (each mandate run with tools filtered and with every tool offered; acceptance in a locked-down container), the writer-effort sweep, and the report renderer. |
 
 **The egress sandbox is the layer that actually holds.** An MCP proxy sees MCP
@@ -462,10 +478,9 @@ has no source for an app principal's authority, and borrowing the operator's
 would attribute the request to the automation while a person's level bounded
 it. `requestedBy` must name the user checked with `--as`.
 
-**R12's other backends are an interface only.** `Backend` in
-`compiler/src/rules.ts` is the seam the Docker MCP Gateway, Cedar/AgentCore,
-OPA and gh-aw exports slot into. Shipping four half-implemented backends would
-be four things that look supported and are not.
+**One of R12's four backends.** `mandate export gh-aw` is built (see below).
+The Docker MCP Gateway, Cedar/AgentCore and OPA exports are not. Shipping four
+half-implemented backends would be four things that look supported and are not.
 
 **The audit log has no outside witness, and the Action does not write one.** A
 log with no seal was killed or truncated, and nothing in the file can tell

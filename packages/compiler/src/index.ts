@@ -15,3 +15,6 @@ export {
   compileEgress, EgressCompileError, type EgressOptions, type EgressPolicy,
 } from "./egress.js";
 export { attributeCall, callClass, type Attribution } from "./attribution.js";
+export {
+  compileGhAw, ghAwBackend, GH_AW_VERSION, type GhAwRefusal, type GhAwResult,
+} from "./ghaw.js";
