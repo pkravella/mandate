@@ -224,8 +224,11 @@ The refusal prints the exact line to post. The digest covers the mandate's
 content, the ceiling it was proved against and its requester, so a mandate
 edited after review, or validated against another ceiling, needs a new
 approval. Only the requester's own comment counts, and never an edited one,
-since a repository admin can edit anyone's comment. The approval goes into
-the audit log. Reading it needs the App's `issues: read` and
+since a repository admin can edit anyone's comment. GitHub dates comments to
+the second, so an edit made within the second the comment was posted is not
+detected. An approval stands until its comment is deleted: it covers every
+session of that mandate, ceiling and requester, not one run. Each session's
+approval goes into the audit log. Reading it needs the App's `issues: read` and
 `pull_requests: read`: a pull request's comments are refused to an
 `issues: read` token (probed).
 

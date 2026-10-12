@@ -50,10 +50,14 @@ const DIGEST_LINE = new RegExp(`^${APPROVE_COMMAND.replace(/[/]/g, "\\/")} ([0-9
  * The first comment that approves `digest` for `requester`, or why none does.
  *
  * The line must stand alone: a quoted line (`> /mandate approve ...`), one in
- * backticks or one inside a sentence is someone talking about an approval,
- * not giving one. An edited comment is refused outright, because a repository
- * admin can edit anyone's comment -- an edited approval is one its author may
- * never have written.
+ * inline backticks or one inside a sentence is someone talking about an
+ * approval, not giving one. A line inside a fenced code block does count --
+ * only the requester's comments count at all, so that can only be the
+ * requester approving. An edited comment is refused outright, because a
+ * repository admin can edit anyone's comment: an edited approval is one its
+ * author may never have written. "Edited" is updated_at differing from
+ * created_at, which GitHub gives to the second, so an edit within the same
+ * second is not seen; GraphQL's edit history would see it (not yet used).
  */
 export function findApproval(
   comments: readonly ApprovalComment[], digest: string, requester: string,

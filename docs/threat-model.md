@@ -259,10 +259,15 @@ the tool schemas actually sent to the model and fails if one appears.
    destinations.
 2. **Set `permissions: {}`** on the job, and `persist-credentials: false` on
    checkout. The action refuses to run with a `GITHUB_TOKEN` present.
-3. **Require an approval with `--approval`.** The writer is untrusted; the
-   requester's approval of the exact mandate is the one point a person reads
-   what it proposed before anything is minted. Who may fire the workflow that
-   runs it is still the workflow's choice.
+3. **Require an approval with `--approval`.** The writer is untrusted, and
+   nothing is minted until the requester has approved the exact mandate. That
+   proves the requester posted its digest, not that they read it. Until the
+   diff is posted beside the line (the next part of R5), the digest reaches
+   them in a refusal message, and pasting it is easy. An approval stands until
+   its comment is deleted: it covers every session of that mandate, under that
+   ceiling, for that requester, and the audit log records which comment each
+   session used. Who may fire the workflow that runs it is still the
+   workflow's choice.
 4. **Use `--repo`, not `--level`.** `--level` is an assertion, labelled as one
    in every line of output that reports it. Only `--repo` makes the result an
    authorisation record.
