@@ -84,6 +84,9 @@ describe("compileGhAw: a fix-issue mandate", () => {
     expect(pr["allowed-base-branches"]).toBeUndefined();
     expect(pr["target-repo"]).toBeUndefined();
     const so = at(r.frontmatter, "safe-outputs") as Obj;
+    // Found preparing the live run: detection files an "[aw] Detection Runs"
+    // issue and labels the triggering item needs-review, by default.
+    expect(so["threat-detection"]).toEqual({ "report-as-issue": false, "continue-on-error": false });
     expect(so).toMatchObject({
       "activation-comments": false, "report-failed-jobs": false, "report-failure-as-issue": false,
       "report-incomplete": { "create-issue": false },
@@ -130,7 +133,7 @@ describe("compileGhAw: a fix-issue mandate", () => {
 });
 
 const GLOBAL_KEYS = new Set([
-  "activation-comments", "report-failed-jobs", "report-failure-as-issue", "report-incomplete",
+  "threat-detection", "activation-comments", "report-failed-jobs", "report-failure-as-issue", "report-incomplete",
   "missing-tool", "missing-data",
 ]);
 

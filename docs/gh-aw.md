@@ -70,6 +70,7 @@ Switched off, because each one writes something the mandate does not grant:
 | `auto-merge: false`, `close-older-pull-requests: false` | Merge, or close other pull requests |
 | `activation-comments: false` | Comment on the triggering issue or PR when the run starts and ends |
 | `report-failed-jobs`, `report-failure-as-issue`, `report-incomplete`, `missing-tool`, `missing-data` | File issues about the run |
+| `threat-detection: { report-as-issue: false, continue-on-error: false }` | File or update an "[aw] Detection Runs" issue, and label the triggering issue or PR `needs-review` on a warning. Detection still runs; a failure now blocks the writes instead |
 
 ## What it refuses, and why
 

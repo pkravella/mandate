@@ -158,6 +158,11 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
     "github-token": WORKFLOW_TOKEN,
     // Run-status comments on the triggering issue or PR, and failure reports
     // filed as issues: writes gh-aw makes by default, none in the mandate.
+    // Threat detection stays on, but by default it files or updates an
+    // "[aw] Detection Runs" issue and, on a warning, labels the triggering
+    // issue or PR needs-review. Without continue-on-error a detection failure
+    // blocks the safe outputs instead of labelling.
+    "threat-detection": { "report-as-issue": false, "continue-on-error": false },
     "activation-comments": false,
     "report-failed-jobs": false,
     "report-failure-as-issue": false,

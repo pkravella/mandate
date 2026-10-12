@@ -375,6 +375,24 @@
     "staged",
     "title-prefix"
   ],
+  "safe-outputs.threat-detection": [
+    "artifact-base-url",
+    "continue-on-error",
+    "enabled",
+    "engine",
+    "engine-config",
+    "engine-timeout",
+    "environment",
+    "max-ai-credits",
+    "max-turns",
+    "model",
+    "post-steps",
+    "prompt",
+    "report-as-issue",
+    "retries",
+    "runs-on",
+    "steps"
+  ],
   "enum:safe-outputs.create-pull-request.protected-files": [
     "blocked",
     "allowed",
