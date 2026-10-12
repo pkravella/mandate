@@ -1,0 +1,130 @@
+# Example: ask for a mandate in a comment, approve it in a comment, run it (R5).
+#
+# Copy this to .github/workflows/ in your repository. It lives outside
+# .github/workflows here so it never fires on this one.
+#
+#   1. Someone with at least push (`min-level`) comments:
+#        /mandate Fix the off-by-one in src/paginate.js and open a pull request.
+#      The review job writes a mandate for that task, proves it inside your
+#      ceiling and the commenter's own permission, and posts the permission
+#      diff with the line that approves it.
+#   2. The same person, having read the diff, replies with that line:
+#        /mandate approve <digest>
+#      The run job takes that exact mandate from the App's review comment and
+#      runs the agent under it. Nothing is minted unless the approval is the
+#      requester's own, unedited, and names this exact mandate, ceiling and
+#      requester.
+#
+# Secrets: MANDATE_APP_ID, MANDATE_INSTALLATION_ID, MANDATE_APP_PRIVATE_KEY (the
+# App's PEM) and ANTHROPIC_API_KEY. The App needs contents, pull_requests and
+# issues on the repository, and must be installed on it.
+#
+# Read the notes in mandate.yml too. Without --sandbox, which these Linux
+# runners cannot use, the agent can read the App key (threat model §3.1):
+# install the App only where that is acceptable.
+name: Mandate review (example)
+
+on:
+  issue_comment:
+    types: [created]
+
+# No GITHUB_TOKEN at all: every GitHub call goes through the App, and the
+# Actions refuse to run if a GITHUB_TOKEN reaches them.
+permissions: {}
+
+jobs:
+  review:
+    # A person's request, never an approval and never a bot's comment.
+    if: >-
+      github.event.comment.user.type == 'User'
+      && startsWith(github.event.comment.body, '/mandate ')
+      && !startsWith(github.event.comment.body, '/mandate approve ')
+    runs-on: ubuntu-latest
+    # The hourly limit is read and then written, so two reviews at once could
+    # both pass it. One at a time per repository, queued rather than cancelled.
+    concurrency:
+      group: mandate-review-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Pin this to a commit of pkravella/mandate rather than a branch.
+      - uses: pkravella/mandate/review@main
+        with:
+          # The requester's text. The Action reads it from env and writes it to a
+          # file; it is never a shell word.
+          task: ${{ github.event.comment.body }}
+          on: ${{ github.repository }}#${{ github.event.issue.number }}
+          as: ${{ github.event.comment.user.login }}
+          repo: ${{ github.repository }}
+          ceiling: .github/mandate/ceiling.cedar
+          schema: .github/mandate/schema.cedarschema
+          ceiling-destinations: .github/mandate/ceiling.destinations
+          app-id: ${{ secrets.MANDATE_APP_ID }}
+          installation-id: ${{ secrets.MANDATE_INSTALLATION_ID }}
+          private-key: ${{ secrets.MANDATE_APP_PRIVATE_KEY }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  run:
+    if: >-
+      github.event.comment.user.type == 'User'
+      && startsWith(github.event.comment.body, '/mandate approve ')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The digest, checked to be exactly 64 hex characters before it goes
+      # anywhere. The comment arrives through env, never the script text.
+      - name: Read the approved digest
+        id: digest
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          line="$(printf '%s\n' "$COMMENT_BODY" | head -n 1 | tr -d '\r')"
+          if [[ ! "$line" =~ ^/mandate\ approve\ ([0-9a-f]{64})$ ]]; then
+            echo "::error::The first line is not /mandate approve followed by a 64-character digest."
+            exit 1
+          fi
+          echo "digest=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+      - name: Install the agent
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Pin this to a commit of pkravella/mandate rather than a branch.
+      - uses: pkravella/mandate@main
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          approved-digest: ${{ steps.digest.outputs.digest }}
+          approval: ${{ github.repository }}#${{ github.event.issue.number }}
+          # The commenter. serve refuses unless they are the mandate's requester
+          # and the approval is theirs.
+          as: ${{ github.event.comment.user.login }}
+          repo: ${{ github.repository }}
+          ceiling: .github/mandate/ceiling.cedar
+          schema: .github/mandate/schema.cedarschema
+          ceiling-destinations: .github/mandate/ceiling.destinations
+          # The task is in a file the Action writes; the agent is told to read
+          # it rather than given it as an argument.
+          agent: |
+            claude
+            --mcp-config
+            {mcpConfig}
+            --allowedTools
+            mcp__github
+            -p
+            Read the file .mandate-task.md in the working directory and do the task it describes. Use only the GitHub tools you are given.
+          app-id: ${{ secrets.MANDATE_APP_ID }}
+          installation-id: ${{ secrets.MANDATE_INSTALLATION_ID }}
+          private-key: ${{ secrets.MANDATE_APP_PRIVATE_KEY }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: mandate-trace
+          path: mandate-trace.jsonl

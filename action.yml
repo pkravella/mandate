@@ -32,8 +32,21 @@ author: Mandate contributors
 
 inputs:
   mandate:
-    description: Path to the mandate YAML, relative to the workspace.
-    required: true
+    description: >-
+      Path to the mandate YAML, relative to the workspace. Pass this or
+      approved-digest, not both.
+    required: false
+  approved-digest:
+    description: >-
+      Run the mandate `mandate review` posted with this digest instead of a file:
+      the 64 hex characters from a `/mandate approve` comment. Needs `approval`,
+      which serve checks before anything is minted (R5).
+    required: false
+  approval:
+    description: >-
+      The issue or pull request (owner/repo#number) where the requester approved
+      this mandate. When set, nothing is minted without that approval.
+    required: false
   ceiling:
     description: Path to the Cedar org ceiling policy.
     required: true
@@ -111,6 +124,18 @@ runs:
           exit 1
         fi
 
+    # dist/ is never committed, so from any other repository this Action has
+    # no CLI until it builds one. Skipped when it is already built.
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+
+    - name: Build Mandate
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: bash "$ACTION_PATH/scripts/build-action.sh"
+
     - name: Write the App key
       id: key
       shell: bash
@@ -140,6 +165,8 @@ runs:
         IN_LEVEL: ${{ inputs.level }}
         IN_AGENT: ${{ inputs.agent }}
         IN_TRACE: ${{ inputs.trace }}
+        IN_APPROVAL: ${{ inputs.approval }}
+        IN_APPROVED_DIGEST: ${{ inputs.approved-digest }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
@@ -172,14 +199,47 @@ runs:
           exit 2
         fi
 
+        # A file, or the mandate `mandate review` posted and the requester
+        # approved. Taken from a comment safely: serve re-derives the digest
+        # from this file, the ceiling and the requester, so an altered mandate
+        # does not match the approval and nothing is minted.
+        mandate_file="$IN_MANDATE"
+        if [ -n "$IN_MANDATE" ] && [ -n "$IN_APPROVED_DIGEST" ]; then
+          echo "::error::Pass mandate or approved-digest, not both."
+          exit 2
+        elif [ -n "$IN_APPROVED_DIGEST" ]; then
+          if [ -z "$IN_APPROVAL" ]; then
+            echo "::error::approved-digest needs approval: the issue or pull request whose" \
+                 "approval serve checks before anything is minted."
+            exit 2
+          fi
+          mandate_file="$RUNNER_TEMP/mandate-approved.yaml"
+          # The task goes to a file the agent is told to read, never into its
+          # argv: it is the requester's comment, in the end.
+          node "$ACTION_PATH/packages/cli/dist/index.js" reviewed \
+            --on "$IN_APPROVAL" \
+            --digest "$IN_APPROVED_DIGEST" \
+            --out "$mandate_file" \
+            --task-out "$GITHUB_WORKSPACE/.mandate-task.md"
+        elif [ -z "$IN_MANDATE" ]; then
+          echo "::error::Pass mandate (a file) or approved-digest (a reviewed mandate)."
+          exit 2
+        fi
+
+        approval=()
+        if [ -n "$IN_APPROVAL" ]; then
+          approval=(--approval "$IN_APPROVAL")
+        fi
+
         node "$ACTION_PATH/packages/cli/dist/index.js" run \
-          --mandate "$IN_MANDATE" \
+          --mandate "$mandate_file" \
           --ceiling "$IN_CEILING" \
           --schema "$IN_SCHEMA" \
           --ceiling-destinations "$IN_DESTINATIONS" \
           --as "$IN_AS" \
           "${authority[@]}" \
           --trace "$IN_TRACE" \
+          "${approval[@]}" \
           --diff \
           -- "${agent[@]}"
 

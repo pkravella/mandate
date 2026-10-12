@@ -15,6 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { writeMandate } from "@mandate-dev/writer";
 import { runReview, DEFAULT_MAX_PER_HOUR, DEFAULT_MIN_LEVEL } from "./commands/review.js";
 import { githubReviewComments } from "./reviewComments.js";
+import { runReviewFetch } from "./reviewFetch.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
@@ -335,6 +336,31 @@ export function main(argv: readonly string[]): void {
           write: async (req: Parameters<typeof writeMandate>[1]) => (await writeMandate(anthropic, req)).proposed,
         }),
       });
+    });
+
+  program
+    .command("reviewed")
+    .description(
+      "write out the mandate a /mandate approve digest names, from the App's own review comment "
+      + "(R5); serve --approval then checks the approval against it",
+    )
+    .requiredOption("--on <owner/repo#number>", "where the review and the approval were posted")
+    .requiredOption("--digest <hex>", "the 64 hex characters from the /mandate approve line")
+    .requiredOption("--out <file>", "where to write the mandate; never over an existing file")
+    .option("--task-out <file>", "also write the mandate's task here, for the agent to read")
+    .action(async (opts: { on: string; digest: string; out: string; taskOut?: string }) => {
+      const reviews = githubReviewComments();
+      process.exitCode = await runReviewFetch(
+        {
+          on: opts.on, digest: opts.digest, out: opts.out,
+          ...(opts.taskOut === undefined ? {} : { taskOut: opts.taskOut }),
+        },
+        (m) => { process.stderr.write(`${m}\n`); },
+        {
+          comments: githubApprovalReader(),
+          ...(reviews === undefined ? {} : { botLogin: () => reviews.botLogin() }),
+        },
+      );
     });
 
   const exporter = program
