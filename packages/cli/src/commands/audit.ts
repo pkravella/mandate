@@ -130,6 +130,9 @@ export function runAuditVerify(args: AuditVerifyArgs, log: (s: string) => void):
   if (v.graph.ceiling !== undefined) {
     log(`Proved against ceiling ${v.graph.ceiling.label} (sha256 ${v.graph.ceiling.sha256}).`);
   }
+  log(v.approval === undefined
+    ? "No approval was required for this session."
+    : `Approved by ${v.approval.by} in ${v.approval.issue} (comment ${v.approval.comment}, ${v.approval.at}).`);
   log(`${v.graph.nodes.length} decision(s): ${allowed} allowed, ${denied} denied.`);
   if (v.unfinished.length > 0) {
     log(

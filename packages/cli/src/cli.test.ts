@@ -175,3 +175,9 @@ describe("mandate export gh-aw, through the binary", () => {
     expect(r.stderr).toMatch(/asserted/);
   });
 });
+
+describe("--approval, through the binary", () => {
+  it.each(["serve --help", "run --help"])("offers --approval: mandate %s", (line) => {
+    expect(mandate(...line.split(" ")).stdout).toContain("--approval <owner/repo#number>");
+  });
+});

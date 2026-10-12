@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
 import { prepareMandate, type PrepareArgs } from "../prepare.js";
 import { auditInputs } from "./audit.js";
+import { approvalInputs, requireApproval, type ApprovalReader } from "../approval.js";
 import type { AuthorityDeps } from "../authority.js";
 import {
   checkSandboxInputs, CONTAINER_MCP_CONFIG, defaultStartServe, runSandboxed,
@@ -53,6 +54,8 @@ export interface RunArgs extends PrepareArgs, SandboxArgs {
   readonly diff?: boolean | undefined;
   /** R16: serve writes a signed log of the session here. See serve.ts. */
   readonly auditLog?: string | undefined;
+  /** R5: the issue or PR the requester's approval is on. See approval.ts. */
+  readonly approval?: string | undefined;
 }
 
 export interface RunDeps extends AuthorityDeps {
@@ -79,6 +82,8 @@ export interface RunDeps extends AuthorityDeps {
   readonly tty?: boolean;
   /** Where interrupts arrive, for --sandbox. Defaults to the process. */
   readonly signals?: NodeJS.EventEmitter;
+  /** Reads an issue's comments, for --approval. */
+  readonly approvals?: ApprovalReader | undefined;
 }
 
 /** The placeholder substituted with the config path in the agent's argv. */
@@ -136,6 +141,11 @@ export async function runRun(
     log(audited.error);
     return 2;
   }
+  const approvalIn = approvalInputs(args.approval, deps.approvals);
+  if ("error" in approvalIn) {
+    log(approvalIn.error);
+    return 2;
+  }
 
   // Validated BEFORE anything is launched and before a token could be minted.
   // The agent must never start against a mandate that was not proved to sit
@@ -155,6 +165,19 @@ export async function runRun(
 
   log(prepared.provenance);
   if (args.diff === true) log(renderPermissionDiff(prepared.proposed, { color: false }));
+
+  // Checked here as well as in serve, which is the check that holds: without
+  // --sandbox the agent starts serve, and a serve that refuses leaves it
+  // running with no tools and the reason somewhere only its client sees.
+  if (approvalIn.ref !== undefined && deps.approvals !== undefined) {
+    const check = await requireApproval(prepared.mandate, approvalIn.ref, deps.approvals);
+    if (!check.ok) {
+      log(check.message);
+      log("Nothing was minted and no agent was launched.");
+      return check.code;
+    }
+    log(`Approved by ${check.record.by} in ${check.record.issue} (comment ${check.record.comment}).`);
+  }
 
   /**
    * The entry point the agent's config will name.
@@ -267,5 +290,6 @@ function serveArgvFor(args: RunArgs, self: string): string[] {
     ...(args.level !== undefined ? ["--level", args.level] : []),
     ...(args.trace !== undefined ? ["--trace", resolve(args.trace)] : []),
     ...(args.auditLog !== undefined ? ["--audit-log", resolve(args.auditLog)] : []),
+    ...(args.approval !== undefined ? ["--approval", args.approval] : []),
   ];
 }

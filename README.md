@@ -210,6 +210,25 @@ key never reaches the agent; without it, the agent could read the key and
 rewrite the log. [docs/audit-log.md](docs/audit-log.md) has the format and what
 the signature does and does not prove.
 
+### Requiring an approval
+
+`--approval owner/repo#number` on `serve` or `run` refuses to mint until the
+mandate's requester has approved it in a comment on that issue or pull request,
+on a line of its own:
+
+```
+/mandate approve 3f9c…
+```
+
+The refusal prints the exact line to post. The digest covers the mandate's
+content, the ceiling it was proved against and its requester, so a mandate
+edited after review, or validated against another ceiling, needs a new
+approval. Only the requester's own comment counts, and never an edited one,
+since a repository admin can edit anyone's comment. The approval goes into
+the audit log. Reading it needs the App's `issues: read` and
+`pull_requests: read`: a pull request's comments are refused to an
+`issues: read` token (probed).
+
 ### Exporting to gh-aw
 
 `mandate export gh-aw` validates a mandate and prints it as the frontmatter of
@@ -460,17 +479,12 @@ check.
 
 Stated here rather than left to be discovered.
 
-**No GitHub App webhook service.** The plan had an App that subscribed to
-`issue_comment`, wrote a mandate on `/mandate <task>`, and posted the permission
-diff with an approval checkbox. It is not built, for two reasons. It needs
-persistent state that nothing in this project has — "approval recorded against
-`mandateHash`" is a database — and more importantly it would spend money writing
-a mandate in response to **untrusted input**, since any commenter could trigger
-it. The PRD's own R2 is that task text arrives from an authorized source, and a
-drive-by comment is not one. Half of it, shipped, would look like the reviewed
-approval flow R5 describes while being neither reviewed nor authorized.
-
-The CLI half of R5 — the permission diff — is built and is what `--diff` prints.
+**R5's review flow is half built.** The permission diff is what `--diff`
+prints, and `--approval` makes `serve` and `run` refuse to mint until the
+requester has approved that exact mandate (below). What is not built yet is the
+other half: a `/mandate <task>` comment that writes a mandate and posts its
+diff. It spends money on a comment, so it waits on an authority check before
+any model call and a rate limit; it will run in GitHub Actions, with no server.
 
 **No `app:` requesters.** A mandate requested by an automation account is
 refused: GitHub reveals what another App may do only to that App, so Mandate

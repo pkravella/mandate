@@ -13,6 +13,6 @@ export {
   type GraphSink, type TraceCeiling, type RecordHandle, type RecorderMeta, type TraceMode,
 } from "./graph.js";
 export {
-  AUDIT_FORMAT, AuditKeyError, AuditLog, AuditLogError, auditKeyId, loadAuditKey,
+  AUDIT_FORMAT, AuditKeyError, type AuditApproval, AuditLog, AuditLogError, auditKeyId, loadAuditKey,
   verifyAuditLog, type AuditKey, type AuditLogOptions, type AuditVerdict, type SealReason, type UnfinishedCall,
 } from "./audit.js";

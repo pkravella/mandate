@@ -163,6 +163,30 @@ describe("mandate run", () => {
     expect(launched).toBe(false);
   });
 
+  it("passes --approval to serve, and refuses before launching when it is missing", async () => {
+    const chunks: string[] = [];
+    let launched = false;
+    const code = await runRun(baseArgs({ approval: "acme/api#42" }), (s) => chunks.push(s), {
+      launch: async () => { launched = true; return 0; },
+      selfPath: SELF,
+      approvals: async () => [],
+    });
+    expect(code).toBe(1);
+    expect(launched).toBe(false);
+    expect(chunks.join("\n")).toMatch(/\/mandate approve [0-9a-f]{64}/);
+
+    const line = /\/mandate approve [0-9a-f]{64}/.exec(chunks.join("\n"))?.[0] ?? "";
+    let config = "";
+    const ok = await runRun(baseArgs({ approval: "acme/api#42" }), () => undefined, {
+      launch: async (_c, _a, env) => { config = readFileSync(env["MANDATE_MCP_CONFIG"] ?? "", "utf8"); return 0; },
+      selfPath: SELF,
+      approvals: async () => [{ id: 1, author: "alice", body: line, createdAt: "t", updatedAt: "t" }],
+    });
+    expect(ok).toBe(0);
+    const args = (JSON.parse(config) as { mcpServers: { github: { args: string[] } } }).mcpServers.github.args;
+    expect(args[args.indexOf("--approval") + 1]).toBe("acme/api#42");
+  });
+
   it("refuses --audit-log without MANDATE_AUDIT_KEY_PATH before launching anything", async () => {
     const chunks: string[] = [];
     let launched = false;
@@ -557,6 +581,120 @@ describe("mandate serve --audit-log", () => {
     const v = verifyAuditLog(readFileSync(auditLog, "utf8"), key.publicPem);
     expect(v).toMatchObject({ ok: true, sealed: true, sealedAs: "never-opened", unfinished: [] });
     if (v.ok) expect(v.graph.nodes).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --approval: R5, the mandate refused unless its requester approved it
+// ---------------------------------------------------------------------------
+
+describe("mandate serve --approval", () => {
+  type Comment = import("../approval.js").ApprovalComment;
+  const at = "2026-10-12T10:00:00Z";
+  const serveApproving = async (
+    over: Partial<ServeArgs>, comments: readonly Comment[] | undefined,
+    deps: Partial<ServeDeps> = {},
+  ): Promise<{ code: number; out: string; mints: number; reads: string[] }> => {
+    const chunks: string[] = [];
+    const reads: string[] = [];
+    const gh = fakeGithub();
+    const code = await runServe(serveArgs(over), (s) => chunks.push(s), {
+      github: gh.deps,
+      upstream: fakeUpstream,
+      connect: async () => undefined,
+      until: async () => undefined,
+      ...(comments === undefined ? {} : {
+        approvals: async (ref) => { reads.push(`${ref.owner}/${ref.repo}#${ref.number}`); return comments; },
+      }),
+      ...deps,
+    });
+    return { code, out: chunks.join("\n"), mints: gh.mints(), reads };
+  };
+  /** The line the refusal tells the requester to post. */
+  const lineFrom = (out: string): string => {
+    const m = /\/mandate approve [0-9a-f]{64}/.exec(out);
+    if (m === null) throw new Error(`no approve line in:\n${out}`);
+    return m[0];
+  };
+
+  it("refuses to mint without an approval, and names the exact line to post", async () => {
+    const { code, out, mints, reads } = await serveApproving({ approval: "acme/api#42" }, []);
+    expect(code).toBe(1);
+    expect(mints).toBe(0);
+    expect(reads).toEqual(["acme/api#42"]);
+    expect(out).toMatch(/no approval by alice/);
+    expect(out).toMatch(/Nothing was minted/);
+    lineFrom(out);
+  });
+
+  it("serves once the requester has posted that line", async () => {
+    const line = lineFrom((await serveApproving({ approval: "acme/api#42" }, [])).out);
+    const { code, out, mints } = await serveApproving({ approval: "acme/api#42" }, [
+      { id: 9, author: "alice", body: line, createdAt: at, updatedAt: at },
+    ]);
+    expect(code).toBe(0);
+    expect(mints).toBe(1);
+    expect(out).toMatch(/Approved by alice in acme\/api#42 \(comment 9/);
+  });
+
+  it("refuses an approval of the same mandate by someone else", async () => {
+    const line = lineFrom((await serveApproving({ approval: "acme/api#42" }, [])).out);
+    const { code, mints } = await serveApproving({ approval: "acme/api#42" }, [
+      { id: 9, author: "mallory", body: line, createdAt: at, updatedAt: at },
+    ]);
+    expect(code).toBe(1);
+    expect(mints).toBe(0);
+  });
+
+  // The approval binds the ceiling: the same mandate proved against another
+  // ceiling file is a different thing to approve.
+  it("refuses an approval given under a different ceiling", async () => {
+    const line = lineFrom((await serveApproving({ approval: "acme/api#42" }, [])).out);
+    const other = write(`other-${randomBytes(3).toString("hex")}.cedar`, `${readFileSync(CEILING, "utf8")}\n// edited\n`);
+    const { code, mints } = await serveApproving({ approval: "acme/api#42", ceiling: other }, [
+      { id: 9, author: "alice", body: line, createdAt: at, updatedAt: at },
+    ]);
+    expect(code).toBe(1);
+    expect(mints).toBe(0);
+  });
+
+  it("refuses a reference it cannot read, before anything else", async () => {
+    const { code, out, reads } = await serveApproving({ approval: "acme/api" }, []);
+    expect(code).toBe(2);
+    expect(out).toMatch(/owner\/repo#number/);
+    expect(reads).toEqual([]);
+  });
+
+  it("refuses --approval when nothing can read GitHub comments", async () => {
+    const { code, out, mints } = await serveApproving({ approval: "acme/api#42" }, undefined);
+    expect(code).toBe(2);
+    expect(out).toMatch(/MANDATE_APP_ID/);
+    expect(mints).toBe(0);
+  });
+
+  // Nothing known is not "not approved": exit 2, and still nothing minted.
+  it("mints nothing, and exits 2, when the approval cannot be read", async () => {
+    const { code, out, mints } = await serveApproving({ approval: "acme/api#42" }, [], {
+      approvals: async () => { throw new Error("HTTP 502"); },
+    });
+    expect(code).toBe(2);
+    expect(out).toMatch(/Could not read the approval.*502/);
+    expect(mints).toBe(0);
+  });
+
+  it("records the approval in the audit log's open event", async () => {
+    const line = lineFrom((await serveApproving({ approval: "acme/api#42" }, [])).out);
+    const key = auditKey();
+    const auditLog = freshPath("audit.jsonl");
+    const { code } = await serveApproving({ approval: "acme/api#42", auditLog }, [
+      { id: 9, author: "alice", body: line, createdAt: at, updatedAt: at },
+    ], { auditKeyPath: key.path });
+    expect(code).toBe(0);
+    const v = verifyAuditLog(readFileSync(auditLog, "utf8"), key.publicPem);
+    expect(v).toMatchObject({
+      ok: true,
+      approval: { issue: "acme/api#42", comment: 9, by: "alice", at, digest: line.split(" ")[2] },
+    });
   });
 });
 
