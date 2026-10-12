@@ -527,12 +527,13 @@ check.
 
 Stated here rather than left to be discovered.
 
-**R5's review flow has not been run end to end in a real repository yet.**
-[examples/workflows/mandate-review.yml](examples/workflows/mandate-review.yml)
-wires `review` to a `/mandate <task>` comment and `run --approval` to the
-approval, and its pieces are tested offline. Auto-approval for routine
-templates is not built, because there is no template library (R13) for a
-policy to name.
+**R5 has no auto-approval.** There is no template library (R13) for an
+auto-approval policy to name. The review flow itself,
+[examples/workflows/mandate-review.yml](examples/workflows/mandate-review.yml),
+has run end to end in a private test repository:
+1. A `/mandate` comment produced a review.
+2. The App's own reply re-triggered the workflow, and that run was skipped.
+3. The requester's approval ran the agent under that exact mandate.
 
 **No `app:` requesters.** A mandate requested by an automation account is
 refused: GitHub reveals what another App may do only to that App, so Mandate
