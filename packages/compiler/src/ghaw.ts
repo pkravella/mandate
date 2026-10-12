@@ -158,6 +158,11 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
     "github-token": WORKFLOW_TOKEN,
     // Run-status comments on the triggering issue or PR, and failure reports
     // filed as issues: writes gh-aw makes by default, none in the mandate.
+    // Threat detection stays on, but by default it files or updates an
+    // "[aw] Detection Runs" issue and, on a warning, labels the triggering
+    // issue or PR needs-review. Without continue-on-error a detection failure
+    // blocks the safe outputs instead of labelling.
+    "threat-detection": { "report-as-issue": false, "continue-on-error": false },
     "activation-comments": false,
     "report-failed-jobs": false,
     "report-failure-as-issue": false,
@@ -321,6 +326,8 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
       "network: defaults is gh-aw's infrastructure egress for the agent (with its engine's API "
       + "host, which gh-aw adds): the operator's choice, like --agent-egress, and not a destination "
       + "the mandate grants",
+      "tools.bash: [\"*\"] is gh-aw's own default, a shell inside its sandbox, written out because "
+      + "its strict mode requires it beside min-integrity: none; the mandate neither grants nor limits it",
     ],
     frontmatter: {
       permissions,
@@ -330,7 +337,22 @@ export function compileGhAw(mandate: ValidatedMandate): GhAwResult {
       // GH_AW_GITHUB_MCP_SERVER_TOKEN or GH_AW_GITHUB_TOKEN; the workflow token
       // carries only the read permissions above.
       tools: {
-        github: { "read-only": true, "github-token": WORKFLOW_TOKEN, "allowed-repos": [repo], allowed: tools },
+        // gh-aw gives the agent a shell in its sandbox by default (bash ["*"],
+        // tools.go:613-628); its strict mode requires that stated beside
+        // min-integrity: none. Stated, not chosen.
+        bash: ["*"],
+        github: {
+          "read-only": true,
+          "github-token": WORKFLOW_TOKEN,
+          "allowed-repos": [repo],
+          // Required beside allowed-repos by gh-aw's compiler, though not by its
+          // schema. It filters what the agent is shown by its author's trust;
+          // the mandate says nothing about that, so nothing is filtered.
+          // Raising it is a defence against injected issue text, and the
+          // operator's choice.
+          "min-integrity": "none",
+          allowed: tools,
+        },
       },
       "safe-outputs": safeOutputs,
     },

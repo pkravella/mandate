@@ -59,6 +59,7 @@ branch is deleted.
 | `contents.write` `denyPaths` | `excluded-files`, which drops them from the patch (see below) |
 | `issue.comment` / `pull_request.comment` | `add-comment`: `target: "*"`, `max` the sum of both grants, and `issues` / `pull-requests` as granted with `discussions: false`. Those three only set the write job's token permissions, which is why the token is pinned (below) |
 | (none: how the limits bind) | `github-token: ${{ secrets.GITHUB_TOKEN }}` on the agent's GitHub tools and on safe-outputs |
+| (none: the mandate says nothing of it) | `tools.github.min-integrity: none`, which gh-aw's compiler requires beside `allowed-repos`. It filters what the agent is shown by its author's trust, and `none` filters nothing. Raising it is a defence against injected issue text, and the operator's choice |
 | `expiresInMinutes` | `timeout-minutes` |
 
 Switched off, because each one writes something the mandate does not grant:
@@ -70,6 +71,7 @@ Switched off, because each one writes something the mandate does not grant:
 | `auto-merge: false`, `close-older-pull-requests: false` | Merge, or close other pull requests |
 | `activation-comments: false` | Comment on the triggering issue or PR when the run starts and ends |
 | `report-failed-jobs`, `report-failure-as-issue`, `report-incomplete`, `missing-tool`, `missing-data` | File issues about the run |
+| `threat-detection: { report-as-issue: false, continue-on-error: false }` | File or update an "[aw] Detection Runs" issue, and label the triggering issue or PR `needs-review` on a warning. Detection still runs; a failure now blocks the writes instead |
 
 ## What it refuses, and why
 
@@ -101,9 +103,17 @@ Switched off, because each one writes something the mandate does not grant:
   workflow token does not start CI by itself. Otherwise a CI-trigger token, if
   the repository has one, would push an extra commit to the branch.
 
-**Not from the mandate:** `network: defaults` is gh-aw's infrastructure egress
-for the agent, and gh-aw adds its engine's API host. It is the operator's
-choice, like `--agent-egress`, and not a destination the mandate grants.
+**Not from the mandate:**
+- `network: defaults` is gh-aw's infrastructure egress for the agent, and gh-aw
+  adds its engine's API host. It is the operator's choice, like
+  `--agent-egress`, and not a destination the mandate grants.
+- `tools.bash: ["*"]` is gh-aw's own default: a shell inside its sandbox,
+  which it sets whenever the sandbox is on. It is written out only because
+  gh-aw's strict mode requires it beside `min-integrity: none`.
+
+Both of these, and `min-integrity`, were found by compiling the export with
+`gh aw compile`. gh-aw's JSON schema accepts the output without them; its
+compiler does not.
 
 The trigger is `workflow_dispatch`, which only people with write access can
 fire. A trigger an outsider can fire, such as `issues` or `issue_comment`, puts
