@@ -101,6 +101,9 @@ describe("compileGhAw: a fix-issue mandate", () => {
       "read-only": true,
       "github-token": "${{ secrets.GITHUB_TOKEN }}",
       "allowed-repos": ["acme/api"],
+      // gh-aw's compiler requires one beside allowed-repos (found by the live
+      // run); "none" filters nothing, which is what the mandate says.
+      "min-integrity": "none",
       allowed: ["get_file_contents", "list_branches", "search_code"],
     });
     expect(r.frontmatter["permissions"]).toEqual({ contents: "read" });
@@ -124,6 +127,14 @@ describe("compileGhAw: a fix-issue mandate", () => {
   // choice, like --agent-egress, and not a destination the mandate grants.
   it("says what it adds that is not from the mandate", () => {
     expect(r.beyondMandate.join("\n")).toMatch(/network: defaults.*not a destination/s);
+    expect(r.beyondMandate.join("\n")).toMatch(/bash.*gh-aw's own default/s);
+  });
+
+  // gh-aw's strict mode requires bash be stated beside min-integrity: none.
+  // ["*"] is what gh-aw sets itself when its sandbox is on (tools.go:613-628),
+  // so stating it grants nothing gh-aw would not.
+  it("states gh-aw's default shell, which its strict mode requires", () => {
+    expect(at(r.frontmatter, "tools", "bash")).toEqual(["*"]);
   });
 
   it("says where it is narrower than the mandate", () => {
