@@ -62,6 +62,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.132.1
+        version: 0.132.1(zod@4.6.5)
       '@mandate-dev/catalog':
         specifier: workspace:*
         version: link:../catalog
@@ -77,6 +80,9 @@ importers:
       '@mandate-dev/validator':
         specifier: workspace:*
         version: link:../validator
+      '@mandate-dev/writer':
+        specifier: workspace:*
+        version: link:../writer
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
         version: 1.32.1(zod@4.6.5)
@@ -86,13 +92,6 @@ importers:
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
-    devDependencies:
-      '@anthropic-ai/sdk':
-        specifier: ^0.132.1
-        version: 0.132.1(zod@4.6.5)
-      '@mandate-dev/writer':
-        specifier: workspace:*
-        version: link:../writer
 
   packages/compiler:
     dependencies:

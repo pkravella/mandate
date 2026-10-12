@@ -22,18 +22,16 @@
     "dist"
   ],
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
     "@mandate-dev/catalog": "workspace:*",
     "@mandate-dev/compiler": "workspace:*",
     "@mandate-dev/proxy": "workspace:*",
     "@mandate-dev/schema": "workspace:*",
     "@mandate-dev/validator": "workspace:*",
+    "@mandate-dev/writer": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "commander": "^15.0.0",
     "yaml": "^2.9.1"
-  },
-  "devDependencies": {
-    "@anthropic-ai/sdk": "^0.132.1",
-    "@mandate-dev/writer": "workspace:*"
   },
   "engines": {
     "node": ">=22.12.0"
