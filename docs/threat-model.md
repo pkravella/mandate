@@ -261,9 +261,9 @@ the tool schemas actually sent to the model and fails if one appears.
    checkout. The action refuses to run with a `GITHUB_TOKEN` present.
 3. **Require an approval with `--approval`.** The writer is untrusted, and
    nothing is minted until the requester has approved the exact mandate. That
-   proves the requester posted its digest, not that they read it. Until the
-   diff is posted beside the line (the next part of R5), the digest reaches
-   them in a refusal message, and pasting it is easy. An approval stands until
+   proves the requester posted its digest, not that they read it.
+   `mandate review` posts the diff right above the line, but a requester who
+   pastes the line without reading has still approved. An approval stands until
    its comment is deleted: it covers every session of that mandate, under that
    ceiling, for that requester, and the audit log records which comment each
    session used. Who may fire the workflow that runs it is still the

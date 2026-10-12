@@ -232,6 +232,40 @@ approval goes into the audit log. Reading it needs the App's `issues: read` and
 `pull_requests: read`: a pull request's comments are refused to an
 `issues: read` token (probed).
 
+### Asking for a mandate in a comment
+
+`mandate review` writes a mandate for a requester's task and posts its
+permission diff on the issue or pull request, with the exact line that
+approves it:
+
+```bash
+node packages/cli/dist/index.js review --task-file task.txt --on acme/api#42 \
+  --as alice --repo acme/api \
+  --ceiling fixtures/ceilings/org-policy-v12.cedar \
+  --schema  fixtures/ceilings/schema.cedarschema \
+  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations --post
+```
+
+The model call costs money and the request is a comment, so everything that
+can refuse without the model goes first:
+- **The requester's level.** It is read from GitHub, and `--level` is refused.
+  It must be at least `--min-level` (default `push`). The validator still
+  bounds the mandate by that level afterwards.
+- **A rate limit.** At most `--max-per-hour` (default 10) mandates per
+  repository per hour. Only the App's own review comments are counted, since
+  anyone can type the marker it leaves. Rejections and failed writes count too,
+  since they were paid for. The count is read, then the write happens, so two
+  reviews running at once can both pass it: run them one at a time per
+  repository (a workflow `concurrency` group does that). Deleting the App's
+  comments resets the count.
+- **The task's length.** A mandate holds at most 4000 characters of task, and
+  a longer one is refused before it is sent to the model.
+
+The task text sits inside code fences it cannot close, so a comment cannot
+write Markdown under the App's name. A rejected proposal, or a writer that
+produced nothing, is posted too, with nothing to approve. Without `--post`, the
+comment is printed instead.
+
 ### Exporting to gh-aw
 
 `mandate export gh-aw` validates a mandate and prints it as the frontmatter of
@@ -482,12 +516,11 @@ check.
 
 Stated here rather than left to be discovered.
 
-**R5's review flow is half built.** The permission diff is what `--diff`
-prints, and `--approval` makes `serve` and `run` refuse to mint until the
-requester has approved that exact mandate (below). What is not built yet is the
-other half: a `/mandate <task>` comment that writes a mandate and posts its
-diff. It spends money on a comment, so it waits on an authority check before
-any model call and a rate limit; it will run in GitHub Actions, with no server.
+**R5's review flow is not yet wired into a workflow.** `mandate review` writes
+and posts the diff, and `--approval` refuses to mint without the requester's
+approval (both below). What is not built is the GitHub Actions workflow that
+runs `review` on a `/mandate <task>` comment and `run --approval` on the
+approval, so today an operator runs them.
 
 **No `app:` requesters.** A mandate requested by an automation account is
 refused: GitHub reveals what another App may do only to that App, so Mandate

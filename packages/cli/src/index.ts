@@ -11,6 +11,10 @@ import { runWiden } from "./commands/widen.js";
 import { runAuditKeygen, runAuditVerify } from "./commands/audit.js";
 import { runExportGhAw } from "./commands/export.js";
 import { githubApprovalReader } from "./approval.js";
+import Anthropic from "@anthropic-ai/sdk";
+import { writeMandate } from "@mandate-dev/writer";
+import { runReview, DEFAULT_MAX_PER_HOUR, DEFAULT_MIN_LEVEL } from "./commands/review.js";
+import { githubReviewComments } from "./reviewComments.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
@@ -22,6 +26,10 @@ export {
 } from "./commands/run.js";
 export { prepareMandate, type PrepareArgs, type Prepared } from "./prepare.js";
 export { runExportGhAw } from "./commands/export.js";
+export {
+  runReview, REVIEW_MARKER, type ReviewArgs, type ReviewComments, type ReviewDeps,
+} from "./commands/review.js";
+export { githubReviewComments } from "./reviewComments.js";
 export {
   auditInputs, runAuditKeygen, runAuditVerify, type AuditKeygenArgs, type AuditVerifyArgs,
 } from "./commands/audit.js";
@@ -288,6 +296,44 @@ export function main(argv: readonly string[]): void {
       }, (m) => { console.log(m); }, {
         ...(resolve === undefined ? {} : { resolve }),
         ...(approvals === undefined ? {} : { approvals }),
+      });
+    });
+
+  mandateOptions(
+    program
+      .command("review")
+      .description(
+        "write a mandate for a requester's task and post its permission diff, with the line that "
+        + "approves it, on the issue or pull request (R5); refuses before any model call unless the "
+        + "requester's level, read from GitHub, is high enough and the hourly limit is not reached",
+      )
+      .requiredOption("--task-file <file>", "the task text (in a workflow: the comment's body, written to a file)")
+      .requiredOption("--on <owner/repo#number>", "the issue or pull request the request came from"),
+  )
+    .option("--min-level <level>", `the least level that may request a mandate (default ${DEFAULT_MIN_LEVEL})`)
+    .option("--max-per-hour <n>", `mandates the App may write on the repository per hour (default ${DEFAULT_MAX_PER_HOUR})`)
+    .option("--post", "post the comment; without it, the comment is printed")
+    .action(async (opts: {
+      taskFile: string; on: string; ceiling: string; schema: string; ceilingDestinations: string;
+      as: string; level?: string; repo?: string; minLevel?: string; maxPerHour?: string; post?: boolean;
+    }) => {
+      const resolve = githubResolver();
+      const comments = githubReviewComments();
+      const anthropic = process.env["ANTHROPIC_API_KEY"] === undefined ? undefined : new Anthropic();
+      process.exitCode = await runReview({
+        taskFile: opts.taskFile, on: opts.on, as: opts.as,
+        ceiling: opts.ceiling, schema: opts.schema, destinations: opts.ceilingDestinations,
+        ...(opts.repo === undefined ? {} : { repo: opts.repo }),
+        ...(opts.level === undefined ? {} : { level: opts.level }),
+        ...(opts.minLevel === undefined ? {} : { minLevel: opts.minLevel }),
+        ...(opts.maxPerHour === undefined ? {} : { maxPerHour: Number(opts.maxPerHour) }),
+        ...(opts.post === undefined ? {} : { post: opts.post }),
+      }, (m) => { process.stdout.write(`${m}\n`); }, (m) => { process.stderr.write(`${m}\n`); }, {
+        resolve,
+        comments,
+        ...(anthropic === undefined ? {} : {
+          write: async (req: Parameters<typeof writeMandate>[1]) => (await writeMandate(anthropic, req)).proposed,
+        }),
       });
     });
 

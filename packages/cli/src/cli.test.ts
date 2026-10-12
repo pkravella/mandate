@@ -181,3 +181,22 @@ describe("--approval, through the binary", () => {
     expect(mandate(...line.split(" ")).stdout).toContain("--approval <owner/repo#number>");
   });
 });
+
+describe("mandate review, through the binary", () => {
+  it("prints help and exits 0", () => {
+    const r = mandate("review", "--help");
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/^Usage: mandate review/);
+    expect(r.stdout).toContain("--task-file <file>");
+  });
+
+  // No credentials at all: refused at the start, before anything is spent.
+  it("refuses without the App's credentials, exit 2", () => {
+    const r = spawnSync(process.execPath, [
+      BIN, "review", "--task-file", "/dev/null", "--on", "acme/api#1", "--as", "alice", "--repo", "acme/api",
+      "--ceiling", "c", "--schema", "s", "--ceiling-destinations", "d",
+    ], { encoding: "utf8", env: { PATH: process.env["PATH"] ?? "" } });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/MANDATE_APP_ID/);
+  });
+});
