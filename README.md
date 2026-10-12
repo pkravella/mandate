@@ -253,7 +253,13 @@ can refuse without the model goes first:
   bounds the mandate by that level afterwards.
 - **A rate limit.** At most `--max-per-hour` (default 10) mandates per
   repository per hour. Only the App's own review comments are counted, since
-  anyone can type the marker it leaves.
+  anyone can type the marker it leaves. Rejections and failed writes count too,
+  since they were paid for. The count is read, then the write happens, so two
+  reviews running at once can both pass it: run them one at a time per
+  repository (a workflow `concurrency` group does that). Deleting the App's
+  comments resets the count.
+- **The task's length.** A mandate holds at most 4000 characters of task, and
+  a longer one is refused before it is sent to the model.
 
 The task text sits inside code fences it cannot close, so a comment cannot
 write Markdown under the App's name. A rejected proposal, or a writer that

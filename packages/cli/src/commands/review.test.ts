@@ -134,6 +134,23 @@ describe("mandate review: before any model call", () => {
     expect((await run({ recent: mine, args: { maxPerHour: 1 } })).code).toBe(1);
   });
 
+  // MandateSchema caps the task at 4000 characters, but the writer only finds
+  // out after both model calls; a long comment would pay and then fail.
+  it("holds the task to exactly the schema's limit", async () => {
+    const { MandateSchema } = await import("@mandate-dev/schema");
+    const { MAX_TASK_CHARS } = await import("./review.js");
+    const task = (n: number) => MandateSchema.shape.task.safeParse("x".repeat(n)).success;
+    expect([task(MAX_TASK_CHARS), task(MAX_TASK_CHARS + 1)]).toEqual([true, false]);
+    expect((await run({ task: "x".repeat(MAX_TASK_CHARS) })).writes).toHaveLength(1);
+  });
+
+  it("refuses a task longer than a mandate can hold, before any model call", async () => {
+    const r = await run({ task: "x".repeat(4001) });
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/4000/);
+    expect(r.writes).toEqual([]);
+  });
+
   it("refuses a review thread in another repository than the mandate's", async () => {
     const r = await run({ args: { on: "acme/web#3" } });
     expect(r.code).toBe(2);
@@ -183,6 +200,38 @@ describe("mandate review: the comment it posts", () => {
     expect(r.code).toBe(1);
     expect(r.posted[0]!.body).toMatch(/no mandate was written/i);
     expect(r.posted[0]!.body.startsWith(REVIEW_MARKER)).toBe(true);
+  });
+
+  // Not a WriterError: the model could not be called at all. Still a named
+  // stop on the thread, and counted, since it may have been paid for.
+  it("posts and exits 2 when the model cannot be called", async () => {
+    const r = await run({ write: async () => { throw new Error("529 overloaded"); } });
+    expect(r.code).toBe(2);
+    expect(r.posted[0]!.body.startsWith(REVIEW_MARKER)).toBe(true);
+    expect(r.posted[0]!.body).toMatch(/529 overloaded/);
+    expect(r.err).toMatch(/529 overloaded/);
+  });
+
+  it("exits 2 with a named reason when the comment cannot be posted", async () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const taskFile = join(tmp, "post-fails.txt");
+    writeFileSync(taskFile, "Fix issue #42");
+    const code = await runReview({
+      taskFile, on: "acme/api#42", as: "alice", repo: "acme/api",
+      ceiling: fixture("ceilings/org-policy-v12.cedar"), schema: fixture("ceilings/schema.cedarschema"),
+      destinations: fixture("ceilings/org-policy-v12.destinations"), post: true,
+    }, (s) => out.push(s), (s) => err.push(s), {
+      resolve: async (_r, login) => ({ login, level: "push" }),
+      write: async (req) => PROPOSAL(req.requestedBy, req.task),
+      comments: {
+        botLogin: async () => BOT, since: async () => [],
+        post: async () => { throw new Error("could not post the comment (status 403)"); },
+      },
+      now: () => NOW,
+    });
+    expect(code).toBe(2);
+    expect(err.join("\n")).toMatch(/could not post.*403/s);
   });
 
   // The task text is the commenter's. It must not be able to close the code

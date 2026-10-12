@@ -77,6 +77,13 @@ export const DEFAULT_MAX_PER_HOUR = 10;
 
 const HOUR_MS = 60 * 60 * 1000;
 
+/**
+ * MandateSchema's limit on `task`. The writer enforces it only on the mandate
+ * it assembles, after both model calls, so a longer task would be paid for
+ * and then fail; it is refused here, before anything is spent.
+ */
+export const MAX_TASK_CHARS = 4000;
+
 export async function runReview(
   args: ReviewArgs, out: (s: string) => void, err: (s: string) => void, deps: ReviewDeps = {},
 ): Promise<number> {
@@ -127,6 +134,10 @@ export async function runReview(
     err("The task is empty.");
     return 2;
   }
+  if (task.length > MAX_TASK_CHARS) {
+    err(`The task is ${task.length} characters; a mandate holds at most ${MAX_TASK_CHARS}. Nothing was written.`);
+    return 2;
+  }
   let ceiling: Ceiling;
   try {
     ceiling = loadCeiling(
@@ -164,12 +175,19 @@ export async function runReview(
   }
 
   // ---- the paid part ------------------------------------------------------
-  const deliver = async (body: string): Promise<void> => {
-    if (args.post === true) {
+  /** False when the comment could not be posted: a named stop, not a stack trace. */
+  const deliver = async (body: string): Promise<boolean> => {
+    if (args.post !== true) {
+      out(body);
+      return true;
+    }
+    try {
       const posted = await deps.comments!.post(on, body);
       err(`Posted ${posted.url}`);
-    } else {
-      out(body);
+      return true;
+    } catch (e) {
+      err(`Could not post the comment on ${args.on}: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
     }
   };
 
@@ -179,15 +197,23 @@ export async function runReview(
       task, repo: args.repo, requestedBy: `user:${login}`, ceiling, issueNumber: on.number,
     });
   } catch (e) {
-    if (!(e instanceof WriterError)) throw e;
-    await deliver(writerFailedBody(login, e.message));
-    err(`No mandate was written: ${e.message}`);
+    const message = e instanceof Error ? e.message : String(e);
+    if (!(e instanceof WriterError)) {
+      // The model could not be called, or failed in a way the writer did not
+      // name. Posted, so the requester is told and the attempt -- which may
+      // have been paid for -- counts toward the hour.
+      await deliver(writerFailedBody(login, `the model could not be called: ${message}`));
+      err(`No mandate was written: the model could not be called: ${message}`);
+      return 2;
+    }
+    if (!await deliver(writerFailedBody(login, message))) return 2;
+    err(`No mandate was written: ${message}`);
     return 1;
   }
 
   const decision = validate(proposed, { ceiling, authority: resolved.authority });
   if (!decision.ok) {
-    await deliver(rejectedBody(login, renderRejections(decision.rejections, proposed)));
+    if (!await deliver(rejectedBody(login, renderRejections(decision.rejections, proposed)))) return 2;
     err("The writer's proposal was rejected; nothing can be approved.");
     return 1;
   }
@@ -195,14 +221,14 @@ export async function runReview(
   const mandate = decision.mandate;
   const proof = proofOf(mandate);
   const digest = approvalDigest(mandate, proof.ceilingSha256, mandate.requestedBy);
-  await deliver(approvalBody({
+  const delivered = await deliver(approvalBody({
     login, level, repo: args.repo, digest,
     ceilingLabel: proof.ceilingId, ceilingSha256: proof.ceilingSha256,
     diff: renderPermissionDiff(proposed, { color: false }),
     // JSON first: it drops the ValidatedMandate's symbol brand.
     yaml: stringify(JSON.parse(JSON.stringify(mandate))),
   }));
-  return 0;
+  return delivered ? 0 : 2;
 }
 
 /**
