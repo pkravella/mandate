@@ -125,9 +125,16 @@ describe("examples/workflows/mandate-review.yml", () => {
   const reviewJob = Object.values(workflow.jobs).find((j) => j.steps.some((s) => s.uses?.includes("/review@") || s.uses === "./review"));
   const runJob = Object.values(workflow.jobs).find((j) => j.steps.some((s) => s.with?.["approved-digest"] !== undefined));
 
-  it("runs on new comments only, with no GITHUB_TOKEN permissions", () => {
+  // Found by the live run: with permissions: {} there is no token for
+  // actions/checkout, and a private repository refuses the clone. Each job gets
+  // contents: read and nothing else; checkout keeps it out of .git/config and
+  // no step puts it in the environment the Actions check.
+  it("runs on new comments only, with contents: read for checkout and nothing more", () => {
     expect(workflow.on).toEqual({ issue_comment: { types: ["created"] } });
     expect(workflow.permissions).toEqual({});
+    for (const job of Object.values(workflow.jobs)) {
+      expect((job as { permissions?: unknown }).permissions).toEqual({ contents: "read" });
+    }
   });
 
   it("reviews a /mandate request from a person, never an approval or a bot", () => {

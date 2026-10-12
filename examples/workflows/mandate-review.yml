@@ -28,8 +28,11 @@ on:
   issue_comment:
     types: [created]
 
-# No GITHUB_TOKEN at all: every GitHub call goes through the App, and the
-# Actions refuse to run if a GITHUB_TOKEN reaches them.
+# No permissions by default: every GitHub call goes through the App. Each job
+# below takes contents: read, which actions/checkout needs to clone a private
+# repository (with permissions: {} the clone is refused). Checkout does not
+# leave it in .git/config, and no step puts it in the environment -- where the
+# Actions look for a GITHUB_TOKEN and refuse to run if they find one.
 permissions: {}
 
 jobs:
@@ -40,6 +43,8 @@ jobs:
       && startsWith(github.event.comment.body, '/mandate ')
       && !startsWith(github.event.comment.body, '/mandate approve ')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     # The hourly limit is read and then written, so two reviews at once could
     # both pass it. One at a time per repository, queued rather than cancelled.
     concurrency:
@@ -72,6 +77,8 @@ jobs:
       github.event.comment.user.type == 'User'
       && startsWith(github.event.comment.body, '/mandate approve ')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
