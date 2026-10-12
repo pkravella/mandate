@@ -63,6 +63,13 @@ describe("action.yml, used from another repository", () => {
     expect(steps[build]?.env?.["ACTION_PATH"]).toBe("${{ github.action_path }}");
   });
 
+  // The self-build runs in a job holding the App key: pnpm itself is checked
+  // against a hash, as corepack enforces (probed: a wrong hash refuses to run).
+  it("pins pnpm by integrity, which corepack checks", () => {
+    const pkg = JSON.parse(readFileSync(root("package.json"), "utf8")) as { packageManager?: string };
+    expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+\+sha512\.[0-9a-f]{128}$/);
+  });
+
   it("builds from the lockfile, and not again when the CLI is already built", () => {
     expect(buildScript).toContain("--frozen-lockfile");
     expect(buildScript).toMatch(/packages\/cli\/dist\/index\.js/);
@@ -137,10 +144,27 @@ describe("examples/workflows/mandate-review.yml", () => {
     }
   });
 
-  it("reviews a /mandate request from a person, never an approval or a bot", () => {
+  // A commenter with no tie to the repository never starts a job: GitHub keeps
+  // one pending job per concurrency group, so a stranger's comments could
+  // cancel a requester's queued review (found in review). The level check in
+  // the CLI is still the gate; this keeps strangers off the runner.
+  const ASSOCIATED = "contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)";
+
+  it("reviews a /mandate request from a person tied to the repository, never an approval or a bot", () => {
     expect(reviewJob?.if).toContain("github.event.comment.user.type == 'User'");
+    expect(reviewJob?.if).toContain(ASSOCIATED);
     expect(reviewJob?.if).toContain("startsWith(github.event.comment.body, '/mandate ')");
-    expect(reviewJob?.if).toContain("!startsWith(github.event.comment.body, '/mandate approve ')");
+    // No trailing space: a bare "/mandate approve" is a mistyped approval, not
+    // a task to pay a writer for.
+    expect(reviewJob?.if).toContain("!startsWith(github.event.comment.body, '/mandate approve')");
+  });
+
+  it("pins Mandate to a commit the copier must fill in, and the agent to a version", () => {
+    const uses = Object.values(workflow.jobs).flatMap((j) => j.steps).map((s) => s.uses ?? "")
+      .filter((u) => u.startsWith("pkravella/mandate"));
+    expect(uses).toHaveLength(2);
+    for (const u of uses) expect(u).toMatch(/@(?:[0-9a-f]{40}|PIN-TO-A-MANDATE-COMMIT-SHA)$/);
+    expect(workflowText).toMatch(/npm install -g @anthropic-ai\/claude-code@\d+\.\d+\.\d+/);
   });
 
   // The rate limit is read-then-write (7.1b review): two reviews at once could
@@ -152,7 +176,8 @@ describe("examples/workflows/mandate-review.yml", () => {
 
   it("runs an approved mandate with the approval it must check", () => {
     expect(runJob?.if).toContain("github.event.comment.user.type == 'User'");
-    expect(runJob?.if).toContain("startsWith(github.event.comment.body, '/mandate approve ')");
+    expect(runJob?.if).toContain(ASSOCIATED);
+    expect(runJob?.if).toContain("startsWith(github.event.comment.body, '/mandate approve')");
     const run = runJob?.steps.find((s) => s.with?.["approved-digest"] !== undefined);
     expect(String(run?.with?.["approval"])).toBe("${{ github.repository }}#${{ github.event.issue.number }}");
     expect(String(run?.with?.["as"])).toBe("${{ github.event.comment.user.login }}");

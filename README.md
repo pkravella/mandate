@@ -291,9 +291,9 @@ runs this on comments:
 
 There is also an [Action](action.yml) and an
 [example workflow](.github/workflows/mandate.yml). Both Actions build Mandate
-from source on first use, because the CLI is not published yet. That adds
+from source on every run, because the CLI is not published yet. That adds
 about a minute to a run, and it is why `uses: pkravella/mandate@<sha>` works
-from another repository. The workflow sets
+from another repository. pnpm itself is pinned by hash, which corepack checks. The workflow sets
 `permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
 because a second credential is authority no mandate bounds.
 

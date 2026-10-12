@@ -38,10 +38,15 @@ permissions: {}
 jobs:
   review:
     # A person's request, never an approval and never a bot's comment.
+    # From someone tied to the repository: GitHub keeps one pending job per
+    # concurrency group, so a stranger's comments could otherwise cancel a
+    # requester's queued review. The level check in `review` is still the gate.
+    # And a bare "/mandate approve" is a mistyped approval, not a task to pay for.
     if: >-
       github.event.comment.user.type == 'User'
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
       && startsWith(github.event.comment.body, '/mandate ')
-      && !startsWith(github.event.comment.body, '/mandate approve ')
+      && !startsWith(github.event.comment.body, '/mandate approve')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -55,8 +60,10 @@ jobs:
         with:
           persist-credentials: false
 
-      # Pin this to a commit of pkravella/mandate rather than a branch.
-      - uses: pkravella/mandate/review@main
+      # Replace with a commit of pkravella/mandate. The job holds the App key and
+      # the model key, so it runs a commit you chose, never a moving branch;
+      # this placeholder fails until you do.
+      - uses: pkravella/mandate/review@PIN-TO-A-MANDATE-COMMIT-SHA
         with:
           # The requester's text. The Action reads it from env and writes it to a
           # file; it is never a shell word.
@@ -75,7 +82,8 @@ jobs:
   run:
     if: >-
       github.event.comment.user.type == 'User'
-      && startsWith(github.event.comment.body, '/mandate approve ')
+      && contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      && startsWith(github.event.comment.body, '/mandate approve')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -100,10 +108,10 @@ jobs:
           echo "digest=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
 
       - name: Install the agent
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.273
 
-      # Pin this to a commit of pkravella/mandate rather than a branch.
-      - uses: pkravella/mandate@main
+      # The same commit as above.
+      - uses: pkravella/mandate@PIN-TO-A-MANDATE-COMMIT-SHA
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         with:
