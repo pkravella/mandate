@@ -245,6 +245,24 @@ describe("compileGhAw: what it refuses rather than widen", () => {
     refuse(validated([read, write, pr]), /branch\.create/);
   });
 
+  // gh-aw v0.89.21 bug, found by the live run: when PR creation is refused
+  // for permissions, it opens a fallback issue before it checks
+  // fallback-as-issue (create_pull_request.cjs:2815-2875). Only a token
+  // without issues: write stops it, and add-comment on issues grants that.
+  it("a pull request together with issue comments, while gh-aw ignores fallback-as-issue", () => {
+    refuse(validated([
+      ...fixGrants(),
+      { action: "issue.comment", enforcedBy: "token", resources: ["acme/api"], max: 1 },
+    ]), /issue\.comment.*fallback issue/s);
+  });
+
+  it("but a pull request with pull-request comments, which grant no issues: write", () => {
+    ok(compileGhAw(validated([
+      ...fixGrants(),
+      { action: "pull_request.comment", enforcedBy: "token", resources: ["acme/api"], max: 1 },
+    ])));
+  });
+
   it("contents.write without pull_request.create", () => {
     refuse(validated(fixGrants().slice(0, 3)), /contents\.write.*pull_request\.create/s);
   });

@@ -199,7 +199,10 @@ passed as updates.
 `mandate export gh-aw` writes the limits and gh-aw enforces them. gh-aw
 prefers a PAT secret over the workflow token when one exists, and a PAT ignores
 `permissions:`, so the export pins both of gh-aw's tokens to `GITHUB_TOKEN`.
-Removing those lines quietly widens everything. `allowed-branches` is checked
+Removing those lines quietly widens everything, and at v0.89.21 they are also
+what stops a gh-aw bug: refused permission to open a pull request, gh-aw opens
+a fallback issue whatever `fallback-as-issue` says. The export refuses the one
+combination, a pull request with issue comments, whose token could let it. `allowed-branches` is checked
 only in gh-aw's safe-outputs MCP server, so that limit rests on gh-aw keeping
 the agent away from its request file. Once committed, the workflow file is the policy, and an
 edit to it is not re-checked against the mandate. [gh-aw.md](gh-aw.md) says

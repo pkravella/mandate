@@ -32,6 +32,21 @@ its sha256, whether the requester's level was verified or asserted, the gh-aw
 version it was written for, where it is narrower than the mandate, and what it
 carries that the mandate does not grant.
 
+### Before the first run
+
+- **Let Actions open pull requests.** The write job uses the workflow's
+  `GITHUB_TOKEN` (see below), so the repository must allow it: Settings →
+  Actions → General → Workflow permissions → "Allow GitHub Actions to create
+  and approve pull requests". That setting also lets workflows approve pull
+  requests, which no exported workflow asks to do. Without it, the branch is
+  pushed and the pull request is refused.
+- **An engine model gh-aw's proxy does not price is refused.** gh-aw's API
+  proxy keeps an AI-credits budget and returns 400 for a model missing from
+  its pricing table (at v0.89.21, `claude-haiku-5-5` was one). If you pin
+  such a model, add `models: { default-ai-credits-pricing: { input: …,
+  output: … } }` in $ per million tokens. The proxy counts its budget with
+  it; it does not change what you are billed.
+
 ## One workflow per kind of task, not per task
 
 gh-aw compiles these limits into the workflow's lock file when the workflow is
@@ -83,6 +98,7 @@ Switched off, because each one writes something the mandate does not grant:
 | A base given as a pattern | gh-aw takes one base branch |
 | A read limited by path or branch | gh-aw allows a tool or not; it cannot limit what the tool reads |
 | `contents.write` or `branch.create` without `pull_request.create` | gh-aw writes code only through a pull request |
+| `pull_request.create` together with `issue.comment` | A gh-aw v0.89.21 bug: refused permission to create the pull request, it opens a fallback issue before it reads `fallback-as-issue` (`create_pull_request.cjs` 2815-2875). Only a token without `issues: write` stops that, and issue comments need it. Found by the live run |
 | `pull_request.create` without `contents.write` or `branch.create` | gh-aw's pull request commits whatever the agent changed, on a new branch. Without `contents.write` there is no file limit at all. Found in review: an earlier version exported it |
 | Any other write (`issue.create`, `issue.label`, …) | Not mapped yet. Refused, not dropped |
 | A mandate that writes nothing | gh-aw adds a `create-issue` output to any workflow without a write output. The published triage mandate (`repo.read` alone) is one |
@@ -165,4 +181,17 @@ by hand, it checks that every file gh-aw would commit and every branch it would
 push is one the mandate allows. It also checks every key the export writes
 against gh-aw's schema at that tag, which rejects unknown keys.
 
-Not done: a live gh-aw run. That needs a real agent, which costs money.
+**Run live** on 2026-10-12 against a private sandbox repository: the published
+`retry-swallows-last-error` mandate with its branch renamed, Claude Code on
+Haiku 5.5, about $0.01.
+- gh-aw pushed the fix to exactly the named branch with no suffix, changing
+  only `src/retry.js`, based on `main`, and overrode the agent's request for a
+  non-draft pull request.
+- The pull request itself was refused, because the repository did not yet
+  allow Actions to open one.
+- gh-aw then tried to open a fallback issue despite `fallback-as-issue: false`.
+  The pinned token had no `issues: write`, so the attempt failed (the bug
+  above).
+- No issue, comment or label was written. Compiling it with `gh aw compile`
+  also found the two rules the schema does not show (`min-integrity`,
+  `tools.bash`).
