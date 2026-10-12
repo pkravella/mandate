@@ -87,6 +87,9 @@ const fakeUpstream = async (): Promise<Client> => {
     tools: [
       { name: "get_file_contents", description: "reads", inputSchema: { type: "object" } },
       { name: "merge_pull_request", description: "merges", inputSchema: { type: "object" } },
+      // The mandate grants contents.write, and a session refuses a grant the
+      // upstream has no tool for.
+      { name: "create_or_update_file", description: "writes", inputSchema: { type: "object" } },
     ],
   }));
   server.setRequestHandler(CallToolRequestSchema, async () => ({
@@ -545,7 +548,10 @@ describe("leastpilot serve --audit-log", () => {
     const hanging = async (): Promise<Client> => {
       const server = new Server({ name: "fake", version: "0" }, { capabilities: { tools: {} } });
       server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: [{ name: "get_file_contents", description: "reads", inputSchema: { type: "object" } }],
+        tools: [
+          { name: "get_file_contents", description: "reads", inputSchema: { type: "object" } },
+          { name: "create_or_update_file", description: "writes", inputSchema: { type: "object" } },
+        ],
       }));
       server.setRequestHandler(CallToolRequestSchema, () => new Promise<never>(() => undefined));
       const [a, b] = InMemoryTransport.createLinkedPair();
@@ -762,7 +768,7 @@ describe("leastpilot serve --listen", () => {
     const port = await readyPort(readyFile);
     const [, list] = await rpcOver(port, relaySecret, [INIT, LIST]) as [unknown, { result: { tools: { name: string }[] } }];
     // Filtered by the mandate: the fake upstream also offers merge_pull_request.
-    expect(list.result.tools.map((t) => t.name)).toEqual(["get_file_contents"]);
+    expect(list.result.tools.map((t) => t.name)).toEqual(["get_file_contents", "create_or_update_file"]);
     expect(await done).toBe(0);
     expect(gh.mints()).toBe(1);
     // The session ended because the client went away, and the token went back.
@@ -852,7 +858,7 @@ describe("leastpilot serve --listen", () => {
     stdin.emit("close");
     await new Promise((r) => setTimeout(r, 30));
     const [, list] = await rpcOver(port, relaySecret, [INIT, LIST]) as [unknown, { result: { tools: unknown[] } }];
-    expect(list.result.tools).toHaveLength(1);
+    expect(list.result.tools).toHaveLength(2); // the two granted tools, not merge_pull_request
     await done;
   });
 });

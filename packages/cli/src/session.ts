@@ -3,11 +3,15 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { proofOf, type ValidatedMandate } from "@leastpilot/schema";
 import {
+  GITHUB_MCP_SERVER_IMAGE, TOOLSET_REQUIRED, toolsetsFor, unreachableOperations,
+} from "@leastpilot/catalog";
+import {
   capToCredential, compileRules, mintToken, revokeToken,
   type MintDeps, type MintedToken, type ProxyRules,
 } from "@leastpilot/compiler";
 import {
-  createProxyServer, makeArgumentEnforcer, Recorder, type Decision, type GraphSink,
+  createProxyServer, listAllUpstreamTools, makeArgumentEnforcer, Recorder,
+  type Decision, type GraphSink,
 } from "@leastpilot/proxy";
 
 /**
@@ -32,14 +36,14 @@ export interface SessionOptions {
   readonly github: MintDeps;
   /**
    * Connects the upstream MCP server the proxy sits in front of, given the
-   * minted token.
+   * minted token and the `GITHUB_TOOLSETS` value the grants need.
    *
    * Injectable, and that is the point: it was a hardcoded `docker run` inside
    * `runBench`, which is the single reason the harness that produces the
    * published metrics had no offline test. A fake upstream here makes the whole
    * loop testable for nothing.
    */
-  readonly upstream?: (token: string) => Promise<Client>;
+  readonly upstream?: (token: string, toolsets: string) => Promise<Client>;
   readonly onDecision?: (d: Decision) => void;
   /**
    * The proxy's `toolVisibility`. The benchmark's measurement mode offers
@@ -80,16 +84,31 @@ export interface Session {
   close(): Promise<void>;
 }
 
+/**
+ * The `docker run` that starts the upstream, less the token. Both values reach
+ * the container through the environment, never through argv: the token
+ * because argv is world-readable in a process list, the toolsets to keep one
+ * way in.
+ */
+export function dockerUpstreamCommand(
+  toolsets: string, image = GITHUB_MCP_SERVER_IMAGE,
+): { command: string; args: string[]; env: Record<string, string> } {
+  return {
+    command: "docker",
+    args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "-e", "GITHUB_TOOLSETS", image],
+    env: { GITHUB_TOOLSETS: toolsets },
+  };
+}
+
 /** The real upstream: `github-mcp-server` in Docker, holding only this token. */
-export const dockerUpstream = (image = "ghcr.io/github/github-mcp-server:latest") =>
-  async (token: string): Promise<Client> => {
+export const dockerUpstream = (image = GITHUB_MCP_SERVER_IMAGE) =>
+  async (token: string, toolsets: string): Promise<Client> => {
+    const c = dockerUpstreamCommand(toolsets, image);
     const transport = new StdioClientTransport({
-      command: "docker",
-      // The token reaches the container through the environment, never through
-      // argv, which is world-readable in a process list.
-      args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", image],
+      command: c.command,
+      args: c.args,
       env: {
-        ...process.env, GITHUB_PERSONAL_ACCESS_TOKEN: token,
+        ...process.env, ...c.env, GITHUB_PERSONAL_ACCESS_TOKEN: token,
       } as Record<string, string>,
     });
     const client = new Client({ name: "mandate-upstream", version: "0.1.0" });
@@ -109,7 +128,25 @@ export async function openSession(opts: SessionOptions): Promise<Session> {
     // ends a margin before the token does, rather than allowing calls the
     // upstream can only answer with a 401. See capToCredential.
     const rules = capToCredential(compileRules(opts.mandate), minted.expiresAt);
-    upstream = await (opts.upstream ?? dockerUpstream())(minted.token);
+    const actions = opts.mandate.grants.map((g) => g.action);
+    upstream = await (opts.upstream ?? dockerUpstream())(minted.token, toolsetsFor(actions));
+
+    // A grant whose tools the upstream does not list can never be used: the
+    // proxy offers only what upstream offers, so the agent would not see the
+    // tool and the task would fail with nothing saying why. Refuse instead,
+    // before the agent starts, naming what is missing.
+    const exposed = (await listAllUpstreamTools(upstream)).map((t) => t.name);
+    const unreachable = unreachableOperations(actions, exposed);
+    if (unreachable.length > 0) {
+      const named = unreachable.map((id) => {
+        const ts = TOOLSET_REQUIRED[id];
+        return ts === undefined ? id : `${id} (toolset ${ts})`;
+      });
+      throw new Error(
+        `the GitHub MCP server exposes no tool for ${named.join(", ")}, so the agent could never `
+        + "use what the mandate grants. Nothing was run; the token was revoked.",
+      );
+    }
 
     // The proof's first reader: which ceiling the mandate was proved against,
     // by label and by content, goes in the one record that persists.

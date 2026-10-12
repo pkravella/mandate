@@ -19,7 +19,7 @@ import { runReviewFetch } from "./reviewFetch.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
-  openSession, dockerUpstream, type Session, type SessionOptions,
+  openSession, dockerUpstream, dockerUpstreamCommand, type Session, type SessionOptions,
 } from "./session.js";
 export { runServe, type ServeArgs, type ServeDeps } from "./commands/serve.js";
 export {
