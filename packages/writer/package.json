@@ -21,7 +21,7 @@
   "dependencies": {
     "@leastpilot/catalog": "workspace:*",
     "@leastpilot/schema": "workspace:*",
-    "@anthropic-ai/sdk": "^0.132.1",
+    "@anthropic-ai/sdk": "^0.133.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
