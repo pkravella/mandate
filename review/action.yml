@@ -1,0 +1,133 @@
+name: Mandate review
+description: >-
+  Write a mandate for a requester's task and post its permission diff, with the
+  line that approves it, on the issue or pull request (R5).
+author: Mandate contributors
+
+# Read action.yml's two notes first: they hold here too. Every value reaches
+# the scripts below through env and is never interpolated into a run block,
+# and `permissions: {}` belongs to the calling job, which this action checks.
+#
+# `task` is the requester's comment. It is written to a file and handed to the
+# CLI by path; it never becomes a shell word. `mandate review` refuses before
+# any model call unless the requester's level, read from GitHub, is at least
+# `min-level`, and the App has written fewer than `max-per-hour` mandates on the
+# repository this hour. That count is read and then written, so the calling
+# job must run one review at a time per repository (a concurrency group).
+
+inputs:
+  task:
+    description: The request, normally the comment's body. A leading "/mandate " is removed.
+    required: true
+  "on":
+    description: The issue or pull request the request came from, as owner/repo#number.
+    required: true
+  as:
+    description: The requester's GitHub login (the comment's author).
+    required: true
+  repo:
+    description: The repository (owner/name) the requester's level is read on. Must be the one `on` is in.
+    required: true
+  ceiling:
+    description: Path to the Cedar org ceiling policy.
+    required: true
+  schema:
+    description: Path to the Cedar schema.
+    required: true
+  ceiling-destinations:
+    description: Path to the ceiling's allowed-destination list.
+    required: true
+  min-level:
+    description: The least level that may request a mandate. Default push.
+    required: false
+  max-per-hour:
+    description: Mandates the App may write on the repository per hour. Default 10.
+    required: false
+  app-id:
+    description: GitHub App id.
+    required: true
+  installation-id:
+    description: GitHub App installation id.
+    required: true
+  private-key:
+    description: The App's private key (PKCS#1 PEM). Pass a secret.
+    required: true
+  anthropic-api-key:
+    description: The key the mandate writer calls the model with. Pass a secret.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Refuse a GITHUB_TOKEN
+      shell: bash
+      run: |
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+          echo "::error::GITHUB_TOKEN is set in this job. Set 'permissions: {}' on the job;" \
+               "Mandate uses the App for every GitHub call."
+          exit 1
+        fi
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+
+    - name: Build Mandate
+      shell: bash
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/..
+      run: bash "$ACTION_ROOT/scripts/build-action.sh"
+
+    - name: Write the App key
+      id: key
+      shell: bash
+      env:
+        PRIVATE_KEY: ${{ inputs.private-key }}
+      run: |
+        set -euo pipefail
+        dir="$(mktemp -d)"
+        printf '%s\n' "$PRIVATE_KEY" > "$dir/app.pem"
+        chmod 600 "$dir/app.pem"
+        echo "path=$dir/app.pem" >> "$GITHUB_OUTPUT"
+
+    - name: Write the mandate and post the review
+      shell: bash
+      env:
+        MANDATE_APP_ID: ${{ inputs.app-id }}
+        MANDATE_INSTALLATION_ID: ${{ inputs.installation-id }}
+        MANDATE_APP_KEY_PATH: ${{ steps.key.outputs.path }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        IN_TASK: ${{ inputs.task }}
+        IN_ON: ${{ inputs.on }}
+        IN_AS: ${{ inputs.as }}
+        IN_REPO: ${{ inputs.repo }}
+        IN_CEILING: ${{ inputs.ceiling }}
+        IN_SCHEMA: ${{ inputs.schema }}
+        IN_DESTINATIONS: ${{ inputs.ceiling-destinations }}
+        IN_MIN_LEVEL: ${{ inputs.min-level }}
+        IN_MAX_PER_HOUR: ${{ inputs.max-per-hour }}
+        ACTION_ROOT: ${{ github.action_path }}/..
+      run: |
+        set -euo pipefail
+        task_file="$(mktemp)"
+        printf '%s' "${IN_TASK#/mandate }" > "$task_file"
+        extra=()
+        [ -n "$IN_MIN_LEVEL" ] && extra+=(--min-level "$IN_MIN_LEVEL")
+        [ -n "$IN_MAX_PER_HOUR" ] && extra+=(--max-per-hour "$IN_MAX_PER_HOUR")
+        node "$ACTION_ROOT/packages/cli/dist/index.js" review \
+          --task-file "$task_file" \
+          --on "$IN_ON" \
+          --as "$IN_AS" \
+          --repo "$IN_REPO" \
+          --ceiling "$IN_CEILING" \
+          --schema "$IN_SCHEMA" \
+          --ceiling-destinations "$IN_DESTINATIONS" \
+          "${extra[@]}" \
+          --post
+
+    - name: Shred the App key
+      if: always()
+      shell: bash
+      env:
+        KEY_PATH: ${{ steps.key.outputs.path }}
+      run: rm -f "$KEY_PATH"

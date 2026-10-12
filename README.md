@@ -281,8 +281,19 @@ written, so the result is a template for a kind of task, not one task's
 mandate. A conformance test runs gh-aw's own matcher code against Mandate's.
 [docs/gh-aw.md](docs/gh-aw.md) has the mapping and every refusal.
 
+In a repository, [examples/workflows/mandate-review.yml](examples/workflows/mandate-review.yml)
+runs this on comments:
+1. `/mandate <task>` from someone with at least `push` posts the review.
+2. `/mandate approve <digest>` from the same person runs the agent under that
+   exact mandate. [review/action.yml](review/action.yml) posts the review, and
+   the main Action's `approved-digest` and `approval` inputs run it.
+3. Reviews run one at a time per repository, so the hourly limit holds.
+
 There is also an [Action](action.yml) and an
-[example workflow](.github/workflows/mandate.yml). The workflow sets
+[example workflow](.github/workflows/mandate.yml). Both Actions build Mandate
+from source on every run, because the CLI is not published yet. That adds
+about a minute to a run, and it is why `uses: pkravella/mandate@<sha>` works
+from another repository. pnpm itself is pinned by hash, which corepack checks. The workflow sets
 `permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
 because a second credential is authority no mandate bounds.
 
@@ -516,11 +527,13 @@ check.
 
 Stated here rather than left to be discovered.
 
-**R5's review flow is not yet wired into a workflow.** `mandate review` writes
-and posts the diff, and `--approval` refuses to mint without the requester's
-approval (both below). What is not built is the GitHub Actions workflow that
-runs `review` on a `/mandate <task>` comment and `run --approval` on the
-approval, so today an operator runs them.
+**R5 has no auto-approval.** There is no template library (R13) for an
+auto-approval policy to name. The review flow itself,
+[examples/workflows/mandate-review.yml](examples/workflows/mandate-review.yml),
+has run end to end in a private test repository:
+1. A `/mandate` comment produced a review.
+2. The App's own reply re-triggered the workflow, and that run was skipped.
+3. The requester's approval ran the agent under that exact mandate.
 
 **No `app:` requesters.** A mandate requested by an automation account is
 refused: GitHub reveals what another App may do only to that App, so Mandate
