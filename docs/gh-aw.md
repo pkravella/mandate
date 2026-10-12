@@ -82,7 +82,7 @@ Switched off, because each one writes something the mandate does not grant:
 | gh-aw option | What its default would do |
 | --- | --- |
 | `fallback-as-issue: false` | Open an issue holding the patch when the pull request fails |
-| `auto-close-issue: false` | Add "Fixes #N", which closes the issue when someone merges |
+| `auto-close-issue: false` | Add "Fixes #N", which closes the issue when someone merges. The agent can still write one in its own pull-request body (the live run's did), as it can under Mandate's proxy, which does not read bodies either; the issue closes only if a person merges |
 | `auto-merge: false`, `close-older-pull-requests: false` | Merge, or close other pull requests |
 | `activation-comments: false` | Comment on the triggering issue or PR when the run starts and ends |
 | `report-failed-jobs`, `report-failure-as-issue`, `report-incomplete`, `missing-tool`, `missing-data` | File issues about the run |
@@ -195,3 +195,9 @@ Haiku 5.5, about $0.01.
 - No issue, comment or label was written. Compiling it with `gh aw compile`
   also found the two rules the schema does not show (`min-integrity`,
   `tools.bash`).
+- With the setting turned on, a third run opened draft pull request #34 from
+  the named branch into `main`, changing `src/retry.js` only, with no label,
+  reviewer, comment or auto-merge. The agent wrote "Fixes #7" in the body
+  itself. gh-aw's firewall refused one direct call to `api.anthropic.com`,
+  since model calls go through its key-holding proxy. Cost about $0.01;
+  Claude Code reported $0.56, its Opus 5 rates applied to Haiku's tokens.
