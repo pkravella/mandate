@@ -96,7 +96,7 @@ since. Whether that rules out the agent depends on where the key was:
 
 | | The agent can read the key | The agent can write the log |
 | --- | --- | --- |
-| `run --sandbox` | No. The key path stays on the host, and `--pass-env` refuses every `MANDATE_*` name. | No. serve writes it on the host. |
+| `run --sandbox` | No. The key path stays on the host, and `--pass-env` refuses every `LEASTPILOT_*` and `MANDATE_*` name. | No. serve writes it on the host. |
 | `run` without `--sandbox`, or `serve` spawned by an agent | **Yes.** It runs as your user, and serve's environment is its environment. | **Yes.** |
 | The GitHub Action | `--audit-log` is not wired into the Action, for this reason: the agent runs on the runner beside the key. | |
 

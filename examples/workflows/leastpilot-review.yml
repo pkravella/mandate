@@ -19,7 +19,7 @@
 # App's PEM) and ANTHROPIC_API_KEY. The App needs contents, pull_requests and
 # issues on the repository, and must be installed on it.
 #
-# Read the notes in mandate.yml too. Without --sandbox, which these Linux
+# Read the notes in .github/workflows/leastpilot.yml too. Without --sandbox, which these Linux
 # runners cannot use, the agent can read the App key (threat model §3.1):
 # install the App only where that is acceptable.
 name: LeastPilot review (example)

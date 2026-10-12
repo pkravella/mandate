@@ -93,4 +93,19 @@ describe("no product name left over from Mandate", () => {
     expect(hits(new RegExp(`\\bmandate (${commands})\\b`))).toEqual([]);
     expect(hits(/\/mandate (approve|<|\{|')|'\/mandate |#\/mandate |<!-- mandate-review/)).toEqual([]);
   });
+
+  // Found by the final review: prose naming the binary, a security claim
+  // citing only the old prefix, and a pointer to a workflow file this rename
+  // moved -- none of them a command or a variable the checks above can see.
+  it("names the binary leastpilot in prose", () => {
+    expect(hits(/(binary|CLI)[^`.]*`mandate`(?![\w-])|`mandate` (entry point|binary)/)).toEqual([]);
+  });
+
+  it("never cites the MANDATE_ prefix without the LEASTPILOT_ one", () => {
+    expect(hits(/`MANDATE_\*`/).filter((h) => !h.includes("LEASTPILOT_"))).toEqual([]);
+  });
+
+  it("points at the workflow files by their new names", () => {
+    expect(hits(/(^|[^-\w])mandate\.yml\b|\bmandate-review\.yml\b/)).toEqual([]);
+  });
 });

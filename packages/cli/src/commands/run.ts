@@ -68,7 +68,7 @@ export interface RunDeps extends AuthorityDeps {
     command: string, argv: readonly string[], env: Readonly<Record<string, string>>,
     abort?: AbortSignal,
   ) => Promise<number>;
-  /** Path to the `mandate` entry point the config should point at. */
+  /** Path to the `leastpilot` entry point the config should point at. */
   readonly selfPath?: string;
   /** Starts `leastpilot serve --listen` on the host, for --sandbox. Injected so tests mint nothing. */
   readonly startServe?: StartServe;

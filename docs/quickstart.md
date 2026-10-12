@@ -9,7 +9,7 @@ tokens.
 pnpm install && pnpm build
 ```
 
-Node 22.12 or later. The CLI binary is `mandate`; the examples below call
+Node 22.12 or later. The CLI binary is `leastpilot`; the examples below call
 `packages/cli/dist/index.js` directly so they work in a checkout without a
 global install.
 

@@ -525,9 +525,8 @@ tools the upstream advertises, the agent never sees it and the task fails with
 nothing explaining why. `TOOLSET_REQUIRED` in the catalog names the toolset each
 one needs, and `unreachableOperations()` reports the gap for a running server.
 
-The npm scope is `@leastpilot` because `@mandate` is already taken; the CLI
-binary is still `mandate`. The project name is provisional pending a trademark
-check.
+The npm scope is `@leastpilot`; `@mandate` and the `mandate-dev` scope belong
+to unrelated projects.
 
 <a id="not-built"></a>
 ## Not built in v0.1
