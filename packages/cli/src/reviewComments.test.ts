@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { githubReviewComments } from "./reviewComments.js";
 
-const ENV = { MANDATE_APP_ID: "1", MANDATE_INSTALLATION_ID: "2", MANDATE_APP_KEY_PATH: "/k" };
+const ENV = { LEASTPILOT_APP_ID: "1", LEASTPILOT_INSTALLATION_ID: "2", LEASTPILOT_APP_KEY_PATH: "/k" };
 
 const fake = (opts: { pages?: number[]; postStatus?: number } = {}) => {
   const calls: { route: string; params?: Record<string, unknown> }[] = [];

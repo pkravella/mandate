@@ -1,8 +1,8 @@
 import { callClass } from "./attribution.js";
-import { getOperation } from "@mandate-dev/catalog";
+import { getOperation } from "@leastpilot/catalog";
 import {
   mandateHash, unwrap, type EnforcedBy, type Grant, type ValidatedMandate,
-} from "@mandate-dev/schema";
+} from "@leastpilot/schema";
 
 export interface ToolRule {
   readonly tool: string;
@@ -254,7 +254,7 @@ export function enforcementReport(m: ValidatedMandate): readonly EnforcementRow[
  * Implementing one showed what the shape needed: a backend must be able to
  * refuse. gh-aw cannot hold a branch pattern or a read limited by path, and an
  * export that silently dropped such a limit would be wider than the mandate --
- * a breach with Mandate's name on it. So its `T` is a result that is either the
+ * a breach with LeastPilot's name on it. So its `T` is a result that is either the
  * configuration or the reasons it refused, never a best effort.
  *
  * The constraint that matters is the argument type. A backend compiles a

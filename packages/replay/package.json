@@ -1,5 +1,5 @@
 {
-  "name": "@mandate-dev/replay",
+  "name": "@leastpilot/replay",
   "version": "0.1.0",
   "type": "module",
   "license": "Apache-2.0",
@@ -17,10 +17,10 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "@mandate-dev/catalog": "workspace:*",
-    "@mandate-dev/compiler": "workspace:*",
-    "@mandate-dev/proxy": "workspace:*",
-    "@mandate-dev/schema": "workspace:*"
+    "@leastpilot/catalog": "workspace:*",
+    "@leastpilot/compiler": "workspace:*",
+    "@leastpilot/proxy": "workspace:*",
+    "@leastpilot/schema": "workspace:*"
   },
   "engines": {
     "node": ">=22.12.0"

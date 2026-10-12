@@ -3,7 +3,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { rulesForTool, type ProxyRules, type ToolRule } from "@mandate-dev/compiler";
+import { rulesForTool, type ProxyRules, type ToolRule } from "@leastpilot/compiler";
 import { attributeCall } from "./attribution.js";
 import { extractArgs } from "./enforce.js";
 import type { Recorder } from "./graph.js";

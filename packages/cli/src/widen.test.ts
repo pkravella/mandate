@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   MandateSchema, type Mandate, type ProposedMandate, type WidenRequest,
-} from "@mandate-dev/schema";
-import { loadCeiling, validate } from "@mandate-dev/validator";
+} from "@leastpilot/schema";
+import { loadCeiling, validate } from "@leastpilot/validator";
 import { applyWiden, runWiden, type WidenArgs } from "./commands/widen.js";
 
 const fixturePath = (name: string): string =>

@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { ProxyRules } from "@mandate-dev/compiler";
+import type { ProxyRules } from "@leastpilot/compiler";
 import { createProxyServer, type Decision, type ProxyDeps } from "./proxy.js";
 import { Recorder, parseJsonl } from "./graph.js";
 import { makeArgumentEnforcer } from "./enforce.js";

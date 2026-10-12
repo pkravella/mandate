@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { getOperation } from "@mandate-dev/catalog";
+import { getOperation } from "@leastpilot/catalog";
 import {
   DestinationListError, parseDestinationList,
   type CeilingDigest, type CeilingRule,
-} from "@mandate-dev/schema";
+} from "@leastpilot/schema";
 import {
   CedarError, checkParse, checkParseSchema, isAuthorized, policyJson,
   splitPolicies, validatePolicies, type PatternToken,
@@ -16,7 +16,7 @@ export class CeilingProfileError extends Error {
   }
 }
 
-// CeilingRule moved to @mandate-dev/schema: the writer needs the same shape to
+// CeilingRule moved to @leastpilot/schema: the writer needs the same shape to
 // propose anything the ceiling will accept, and passing it as data is what
 // keeps the untrusted writer from importing this package. Re-exported here
 // because this module is where it was first published.

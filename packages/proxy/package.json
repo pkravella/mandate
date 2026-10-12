@@ -1,5 +1,5 @@
 {
-  "name": "@mandate-dev/proxy",
+  "name": "@leastpilot/proxy",
   "version": "0.1.0",
   "type": "module",
   "license": "Apache-2.0",
@@ -19,10 +19,10 @@
     "dist"
   ],
   "dependencies": {
-    "@mandate-dev/catalog": "workspace:*",
-    "@mandate-dev/compiler": "workspace:*",
-    "@mandate-dev/schema": "workspace:*",
-    "@mandate-dev/validator": "workspace:*",
+    "@leastpilot/catalog": "workspace:*",
+    "@leastpilot/compiler": "workspace:*",
+    "@leastpilot/schema": "workspace:*",
+    "@leastpilot/validator": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "zod": "^4.6.5"
   },

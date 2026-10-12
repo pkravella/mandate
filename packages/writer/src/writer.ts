@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { MandateSchema, type CeilingDigest, type ProposedMandate } from "@mandate-dev/schema";
+import { MandateSchema, type CeilingDigest, type ProposedMandate } from "@leastpilot/schema";
 import { coverGrants, coverPrompt, type ProposedGrant } from "./cover.js";
 import { applyPrune, prunePrompt } from "./prune.js";
 import { WriterError } from "./errors.js";

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { permittedActions, SENSITIVE_PATHS, type CeilingDigest } from "@mandate-dev/schema";
-import { loadCeiling } from "@mandate-dev/validator";
+import { permittedActions, SENSITIVE_PATHS, type CeilingDigest } from "@leastpilot/schema";
+import { loadCeiling } from "@leastpilot/validator";
 import {
   closeUnderPrerequisites, coverGrants, coverPrompt, enforcementFor,
 } from "./cover.js";

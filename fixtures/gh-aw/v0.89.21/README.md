@@ -1,6 +1,6 @@
 # gh-aw v0.89.21: the matchers the gh-aw export is tested against
 
-`mandate export gh-aw` turns a mandate into gh-aw safe-outputs. Its conformance
+`leastpilot export gh-aw` turns a mandate into gh-aw safe-outputs. Its conformance
 test does not trust a description of how gh-aw matches paths and branch names:
 it runs gh-aw's own code, copied here unmodified from
 [github/gh-aw](https://github.com/github/gh-aw) at tag `v0.89.21` (commit

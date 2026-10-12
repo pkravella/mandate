@@ -1,14 +1,14 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { proofOf, type ValidatedMandate } from "@mandate-dev/schema";
+import { proofOf, type ValidatedMandate } from "@leastpilot/schema";
 import {
   capToCredential, compileRules, mintToken, revokeToken,
   type MintDeps, type MintedToken, type ProxyRules,
-} from "@mandate-dev/compiler";
+} from "@leastpilot/compiler";
 import {
   createProxyServer, makeArgumentEnforcer, Recorder, type Decision, type GraphSink,
-} from "@mandate-dev/proxy";
+} from "@leastpilot/proxy";
 
 /**
  * Opens an enforced session around a validated mandate: mint, compile, connect
@@ -16,7 +16,7 @@ import {
  *
  * This exists because there were about to be two of it. The whole sequence
  * already lived inside `runBench`, entangled with corpus iteration, ground
- * truth and cost accounting, and `mandate run` needs exactly the same five
+ * truth and cost accounting, and `leastpilot run` needs exactly the same five
  * steps. Writing a second copy is the mistake that invalidated a $0.97
  * benchmark sweep in Phase 3 — two copies of the task prompt, one of which
  * asked for a pull request — and here the stakes are higher than a prompt: if
@@ -24,7 +24,7 @@ import {
  * other than what the command enforces.
  *
  * The caller connects the returned `Server` to whatever transport it needs. The
- * benchmark pairs it with an in-memory client; `mandate serve` serves it on
+ * benchmark pairs it with an in-memory client; `leastpilot serve` serves it on
  * stdio, because that is how an agent spawns an MCP server.
  */
 export interface SessionOptions {

@@ -1,4 +1,4 @@
-import type { UserLevel } from "@mandate-dev/catalog";
+import type { UserLevel } from "@leastpilot/catalog";
 
 export interface UserAuthority {
   readonly login: string;

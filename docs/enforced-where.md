@@ -4,7 +4,7 @@ A mandate says more than any single control can enforce. This page says which
 control enforces which part, what each one does **not** bound, and what defeats
 it. R7 requires documenting this; keeping it honest is the point.
 
-**Status column:** Mandate is mid-build. A row marked *planned* describes a
+**Status column:** LeastPilot is mid-build. A row marked *planned* describes a
 control that does not exist yet, and nothing in the repository enforces it
 today.
 
@@ -17,7 +17,7 @@ today.
 | Sandbox egress allowlist | All network egress from the `agent` user: the proxy is the only route out, and it tunnels only to an allowed host on 443 | Data sent to an **allowed** destination | Running the agent outside the sandbox, or starting it without `--cap-add=NET_ADMIN` (which the entrypoint refuses to do) | **built** |
 | Mandate expiry | Call acceptance after `expiresAt` | Work already done | Nothing | **built** |
 | GitHub rulesets (backstop) | Pushes to protected branches, required reviews | Anything outside branch rules | An admin token | planned |
-| gh-aw, via `mandate export gh-aw` | The workflow's repository, read tools, the pull request's count, branch, base and files, the comment count, the run's length; token permissions, with both tokens pinned to `GITHUB_TOKEN` | Reads by path or branch (refused, not exported); per-task limits (it is a template); issue versus pull-request comments (one merged token, as at the proxy); destinations (`network` is the agent's own egress) | gh-aw's own boundary: `allowed-branches` is checked only in its MCP server. Editing the committed workflow, including its `github-token` lines | **built**: the export. gh-aw enforces it ([gh-aw.md](gh-aw.md)) |
+| gh-aw, via `leastpilot export gh-aw` | The workflow's repository, read tools, the pull request's count, branch, base and files, the comment count, the run's length; token permissions, with both tokens pinned to `GITHUB_TOKEN` | Reads by path or branch (refused, not exported); per-task limits (it is a template); issue versus pull-request comments (one merged token, as at the proxy); destinations (`network` is the agent's own egress) | gh-aw's own boundary: `allowed-branches` is checked only in its MCP server. Editing the committed workflow, including its `github-token` lines | **built**: the export. gh-aw enforces it ([gh-aw.md](gh-aw.md)) |
 
 ## The asymmetry that matters
 
@@ -53,19 +53,19 @@ token request naming a permission the installation was never granted comes back
 `422 The permissions requested are not granted to this installation.`, and one
 asking for `write` where the installation holds `read` comes back `422 The level
 of access for permissions requested are not granted to this installation.`
-Mandate surfaces GitHub's own wording, because the fix is either installing the
+LeastPilot surfaces GitHub's own wording, because the fix is either installing the
 app with that permission or narrowing the mandate, and the message says which.
 
 **Omitting the permission set asks for everything.** A request that sends
 `repositories` but no `permissions` mints a token carrying *every* permission
-the installation holds. Mandate therefore always sends an explicit permission
+the installation holds. LeastPilot therefore always sends an explicit permission
 set and refuses to mint with an empty one — an absent set would be read as "all
 of them", which is the opposite of what an empty one means.
 
 **The repository list takes bare names.** `repositories: ["api"]`, not
 `["acme/api"]`; a full name is refused as *"does not exist or is not accessible
 to the parent installation"*, which reads like a permissions problem and is not
-one. Because the owner has to be dropped, Mandate refuses a mandate whose grants
+one. Because the owner has to be dropped, LeastPilot refuses a mandate whose grants
 span two owners rather than let `acme/api` and `other/api` collapse to one name.
 
 **Revocation is real but not instant.** `DELETE /installation/token` answers
@@ -243,16 +243,16 @@ rather than a gap: **not every denial is widenable.**
 | `mandate.grants` | no | the operation is not granted at all, so granting it is a new mandate |
 | `mandate.expiry` | no | the answer to an expired mandate is a new one, not a wider one |
 | `destinations.allow` | no | where data may go is a review of its own |
-| `mandate.internal` | no | this is a Mandate bug, not a scope decision |
+| `mandate.internal` | no | this is a LeastPilot bug, not a scope decision |
 
 A one-click button next to "add `.github/workflows/**` to your paths" would make
 the deny list decorative, and one next to an ungranted operation would make the
 grant list decorative.
 
 **The refusal list governs the act, not just the suggestion.** The proxy
-declines to *offer* a widen for those clauses, and `mandate widen` refuses to
+declines to *offer* a widen for those clauses, and `leastpilot widen` refuses to
 *apply* one — including for a pause record edited by hand to attach a request.
-That is why the list and the pause-record format live in `@mandate-dev/schema`
+That is why the list and the pause-record format live in `@leastpilot/schema`
 rather than in the proxy: one definition, read by the layer that offers and the
 layer that applies.
 
@@ -275,7 +275,7 @@ about it or the disagreement is either a false pause or an open channel:
 | MCP proxy | refuse a tool call whose destination-bearing field is outside it | R9a |
 | Egress compiler | build the sandbox's allowlist | R9b |
 
-So there is one predicate, `destinationWithin` in `@mandate-dev/schema`, and the
+So there is one predicate, `destinationWithin` in `@leastpilot/schema`, and the
 validator and the proxy both call it. It lives in `schema` for the same reason
 `SENSITIVE_PATHS` does: packages on both sides of the trust boundary need it,
 and a second copy is a chance to drift. The egress compiler is the exception:
@@ -333,13 +333,13 @@ page claims the layer holds would be worse than having no sandbox.
 tracked: a public pull request body is a valid exfiltration channel, and the
 bytes travel to GitHub either way. That is R14's taint tracking, which is P1 and
 absent. The sandbox also does nothing at all if the agent is run outside it,
-which `mandate run` without `--sandbox` is.
+which `leastpilot run` without `--sandbox` is.
 
 The container is verified against a real Docker daemon rather than reviewed as a
 recipe, with negative controls that widen the ACL and strip the firewall rules to
 confirm the checks can actually fail. Three gated suites: the egress itself
-(`compiler/src/sandbox.docker.test.ts`), the relay to `mandate serve`
-(`cli/src/relay.docker.test.ts`), and `mandate run --sandbox` end to end with
+(`compiler/src/sandbox.docker.test.ts`), the relay to `leastpilot serve`
+(`cli/src/relay.docker.test.ts`), and `leastpilot run --sandbox` end to end with
 credentials planted on the host side (`cli/src/sandbox.docker.test.ts`).
 
 ## What the action graph proves, and what it does not
@@ -365,14 +365,14 @@ for the same reason it is not enforced as one. The trace and the enforcer use
 one extraction function, so a destination in the trace is exactly a destination
 the proxy decided on.
 
-## What Mandate does not attempt
+## What LeastPilot does not attempt
 
-- **Prompt-injection detection.** Mandate does not try to notice that an agent's
+- **Prompt-injection detection.** LeastPilot does not try to notice that an agent's
   context has been poisoned. It bounds what an injected agent can *do*. An
   injection that stays inside the mandate is out of scope by design.
 - **Data-flow tracking.** Repository data sent to a destination the mandate
   allows is not tracked further. A public pull request body is a valid
   exfiltration channel. Taint tracking is a post-v0.1 requirement (R14).
-- **Being a credential vault or an identity provider.** Mandate mints
+- **Being a credential vault or an identity provider.** LeastPilot mints
   short-lived, task-scoped tokens from controls GitHub already has. It stores
   nothing long-lived.

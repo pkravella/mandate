@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProxyRules, ToolRule } from "@mandate-dev/compiler";
+import type { ProxyRules, ToolRule } from "@leastpilot/compiler";
 import { extractArgs, makeArgumentEnforcer } from "./enforce.js";
 
 const writeRule: ToolRule = {

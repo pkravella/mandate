@@ -103,8 +103,8 @@ The unconstrained trace is ground truth and is recorded **once** per task; it
 does not change when a mandate changes. Scoring a candidate mandate against an
 existing trace is offline and free.
 
-Re-recording is therefore its own gate, `MANDATE_GROUND_TRUTH=1`, separate from
-the mandated sweep's `MANDATE_BENCH=1`. It overwrites the committed traces, so
+Re-recording is therefore its own gate, `LEASTPILOT_GROUND_TRUTH=1`, separate from
+the mandated sweep's `LEASTPILOT_BENCH=1`. It overwrites the committed traces, so
 re-record only when the corpus or the shared task prompt changes — a trace
 recorded against a different question is not ground truth for this one.
 

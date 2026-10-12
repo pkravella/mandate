@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
  *
  * The command runs the agent's own files -- the source and tests it pushed --
  * so it is untrusted code. It used to run on the host, with the harness's whole
- * environment (ANTHROPIC_API_KEY, MANDATE_APP_KEY_PATH) and the App's private
+ * environment (ANTHROPIC_API_KEY, LEASTPILOT_APP_KEY_PATH) and the App's private
  * key readable on disk: an injected agent, the attacker the threat model
  * assumes, could take the key through a "test" it wrote. Found reviewing
  * Phase 6.

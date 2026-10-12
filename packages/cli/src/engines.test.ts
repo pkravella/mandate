@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
  * The Node version the project claims to run on, checked against what it ships
  * and what it depends on.
  *
- * Only the private root declared `engines`, so `npm install @mandate-dev/cli`
+ * Only the private root declared `engines`, so `npm install @leastpilot/cli`
  * on an older Node warned about nothing. And commander 15 needs Node 22.12
  * while the root said 22.0, which CI could not notice: it runs the latest 22.
  */
@@ -53,7 +53,7 @@ describe("engines", () => {
     const floor = minimum(ours);
     for (const { dir, pkg } of published) {
       for (const dep of Object.keys(pkg.dependencies ?? {})) {
-        if (dep.startsWith("@mandate-dev/")) continue;
+        if (dep.startsWith("@leastpilot/")) continue;
         const manifest = read(realpathSync(join(dir, "node_modules", dep, "package.json")));
         const theirs = manifest.engines?.node;
         if (theirs === undefined) continue;

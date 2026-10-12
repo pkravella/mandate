@@ -1,8 +1,8 @@
 // The sandbox end of the agent's MCP channel. Runs as uid `relay`, the only
-// uid with a route to the host, and only to `mandate serve`'s one port.
+// uid with a route to the host, and only to `leastpilot serve`'s one port.
 //
 //   agent --stdio--> mandate-mcp.mjs --/run/mandate/mcp.sock--> this
-//         --TCP + secret--> mandate serve --listen, on the host
+//         --TCP + secret--> leastpilot serve --listen, on the host
 //
 // The agent never sees the secret: it is in this process's environment, which
 // another uid cannot read, and the entrypoint strips it before the agent starts.
@@ -43,7 +43,7 @@ const server = net.createServer((agent) => {
   const drop = () => { agent.destroy(); upstream.destroy(); };
   agent.on("error", drop);
   upstream.on("error", (e) => {
-    console.error(`mandate-relay: cannot reach mandate serve at ${host}:${port}: ${e.code ?? e.message}`);
+    console.error(`mandate-relay: cannot reach leastpilot serve at ${host}:${port}: ${e.code ?? e.message}`);
     drop();
   });
   agent.on("close", drop);

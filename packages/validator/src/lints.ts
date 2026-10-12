@@ -1,7 +1,7 @@
-import { getOperation } from "@mandate-dev/catalog";
+import { getOperation } from "@leastpilot/catalog";
 import {
   SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles, type Mandate,
-} from "@mandate-dev/schema";
+} from "@leastpilot/schema";
 import { globMatches, globSetContains } from "./glob/contains.js";
 import { type WorkBudget } from "./glob/budget.js";
 import { GlobParseError } from "./glob/parse.js";
@@ -31,7 +31,7 @@ export const LINT_RULES = [
 const DEFAULT_BRANCHES = ["main", "master", "develop", "release", "release/1.0"];
 
 // SENSITIVE_PATHS, SIDE_EFFECTING and writesFiles() moved to
-// @mandate-dev/schema so the writer can conform to the same contract rather
+// @leastpilot/schema so the writer can conform to the same contract rather
 // than keeping a second copy of it. Re-exported here because this module is
 // where they were first published.
 export { SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles };

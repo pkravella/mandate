@@ -4,17 +4,17 @@ import { dirname, join } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { Ceiling, UserAuthority } from "@mandate-dev/validator";
-import { validate } from "@mandate-dev/validator";
-import { revokeToken, type MintDeps } from "@mandate-dev/compiler";
+import type { Ceiling, UserAuthority } from "@leastpilot/validator";
+import { validate } from "@leastpilot/validator";
+import { revokeToken, type MintDeps } from "@leastpilot/compiler";
 import {
   pauseRecord, parseJsonl,
   type ActionGraph, type Decision,
-} from "@mandate-dev/proxy";
-import { WriterError, writeMandate } from "@mandate-dev/writer";
-import { scoreMandate, type Score } from "@mandate-dev/replay";
-import type { ValidatedMandate } from "@mandate-dev/schema";
-import { openSession } from "@mandate-dev/cli";
+} from "@leastpilot/proxy";
+import { WriterError, writeMandate } from "@leastpilot/writer";
+import { scoreMandate, type Score } from "@leastpilot/replay";
+import type { ValidatedMandate } from "@leastpilot/schema";
+import { openSession } from "@leastpilot/cli";
 import { dockerAcceptance, type AcceptanceRunner } from "./acceptance.js";
 import { branchFor, taskPrompt } from "./prompt.js";
 import type { BenchResult, CorpusMeta, ToolVisibility } from "./report.js";
@@ -361,7 +361,7 @@ async function runOnce(deps: BenchDeps, run: RunInput, log: (s: string) => void)
   // outage — used to abort the sweep and lose every result before it. The
   // run is recorded as failed and the sweep goes on, because five measured
   // tasks and one error are worth more than nothing.
-  // One seam, shared with `mandate run` and `mandate serve`. The benchmark
+  // One seam, shared with `leastpilot run` and `leastpilot serve`. The benchmark
   // and the command must enforce the same thing or the published numbers
   // describe something nobody can run.
   const decisions: Decision[] = [];
@@ -657,14 +657,14 @@ export async function runBench(
 }
 
 /**
- * The live sweep's modes, from `MANDATE_BENCH_MODES`. Both by default: the
+ * The live sweep's modes, from `LEASTPILOT_BENCH_MODES`. Both by default: the
  * point of Task 6.1 is the difference between them. Anything unrecognised
  * stops the sweep before it spends.
  */
 export function parseModes(raw: string | undefined): readonly ToolVisibility[] {
   if (raw === undefined) return ["granted", "all"];
   const modes = raw.split(",").map((m) => m.trim()).filter((m) => m.length > 0);
-  if (modes.length === 0) throw new Error("MANDATE_BENCH_MODES names no mode");
+  if (modes.length === 0) throw new Error("LEASTPILOT_BENCH_MODES names no mode");
   return modes.map((m) => {
     if (m !== "granted" && m !== "all") {
       throw new Error(`unknown tool-visibility mode ${JSON.stringify(m)}; use granted or all`);
@@ -674,7 +674,7 @@ export function parseModes(raw: string | undefined): readonly ToolVisibility[] {
 }
 
 /**
- * The tasks to run, from `MANDATE_BENCH_TASKS`, in corpus order. A subset is
+ * The tasks to run, from `LEASTPILOT_BENCH_TASKS`, in corpus order. A subset is
  * said to be one, so its report does not replace the published report.
  */
 export function selectTasks(
@@ -690,7 +690,7 @@ export function selectTasks(
 
 /**
  * An earlier sweep's results, reused rather than paid for again
- * (`MANDATE_BENCH_PRIOR`). A task is done only if they cover it in every mode
+ * (`LEASTPILOT_BENCH_PRIOR`). A task is done only if they cover it in every mode
  * this sweep runs; a partial task runs again and its earlier results are
  * dropped, so no task mixes runs from two sweeps.
  */

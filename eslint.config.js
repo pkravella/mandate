@@ -32,10 +32,10 @@ export default tseslint.config(
         {
           paths: [
             {
-              name: "@mandate-dev/schema",
+              name: "@leastpilot/schema",
               importNames: ["ProposedMandate"],
               message:
-                "ProposedMandate is the writer's untrusted output. Only @mandate-dev/writer and @mandate-dev/validator may import it; everything downstream takes a ValidatedMandate.",
+                "ProposedMandate is the writer's untrusted output. Only @leastpilot/writer and @leastpilot/validator may import it; everything downstream takes a ValidatedMandate.",
             },
           ],
         },

@@ -1,8 +1,8 @@
-import { getOperation, OPERATIONS, type ConstraintKind, type Operation } from "@mandate-dev/catalog";
+import { getOperation, OPERATIONS, type ConstraintKind, type Operation } from "@leastpilot/catalog";
 import {
   digestRulesFor, GrantSchema, isUnconstrained, permittedActions, SENSITIVE_PATHS,
   SIDE_EFFECTING, writesFiles, type CeilingDigest, type EnforcedBy, type Grant,
-} from "@mandate-dev/schema";
+} from "@leastpilot/schema";
 import { WriterError } from "./errors.js";
 import type { WriteRequest } from "./writer.js";
 

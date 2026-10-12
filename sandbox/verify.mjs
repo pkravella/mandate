@@ -71,7 +71,7 @@ const checks = [
     : [["direct.ipv6", () => direct(v6Addr, Number(v6Port))]]),
 ];
 
-// The relay to `mandate serve`, when the sandbox was started with one. The
+// The relay to `leastpilot serve`, when the sandbox was started with one. The
 // entrypoint rewrites MANDATE_RELAY_TARGET to the resolved `ip:port`, because
 // neither the agent nor the relay has a resolver.
 const relayTarget = process.env["MANDATE_RELAY_TARGET"];

@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { githubAppDeps, type MintDeps } from "@mandate-dev/compiler";
+import { githubAppDeps, type MintDeps } from "@leastpilot/compiler";
 import type { RecentComment, ReviewComments } from "./commands/review.js";
 
 /**
@@ -17,9 +17,9 @@ export function githubReviewComments(
   readKey: (path: string) => string = (path) => readFileSync(path, "utf8"),
   makeDeps: typeof githubAppDeps = githubAppDeps,
 ): ReviewComments | undefined {
-  const appId = env["MANDATE_APP_ID"];
-  const installationId = env["MANDATE_INSTALLATION_ID"];
-  const keyPath = env["MANDATE_APP_KEY_PATH"];
+  const appId = env["LEASTPILOT_APP_ID"];
+  const installationId = env["LEASTPILOT_INSTALLATION_ID"];
+  const keyPath = env["LEASTPILOT_APP_KEY_PATH"];
   if (appId === undefined || installationId === undefined || keyPath === undefined) return undefined;
   const id = Number(installationId);
   if (!Number.isInteger(id) || id <= 0) return undefined;

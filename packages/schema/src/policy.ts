@@ -1,4 +1,4 @@
-import { getOperation } from "@mandate-dev/catalog";
+import { getOperation } from "@leastpilot/catalog";
 
 // Contract-level facts about what a mandate must restrict. These live in
 // `schema` rather than in the validator's lint module because two packages

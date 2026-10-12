@@ -4,7 +4,7 @@ A mandate is a short-lived contract for one task: what an agent may touch, what
 it may do, where data may go, and when it all expires. Anything not granted is
 denied.
 
-The schema is the contract — `MandateSchema` in `@mandate-dev/schema` — and it
+The schema is the contract — `MandateSchema` in `@leastpilot/schema` — and it
 is `.strict()`, so an unknown key is a parse error rather than a field silently
 ignored.
 
@@ -85,9 +85,9 @@ calls in this session, counted when the proxy allows one -- so a call that then
 fails upstream still spends it, which errs the safe way -- and reset by a new
 session. Who can start a new session is the part that matters:
 
-- With `mandate run --sandbox`, serve accepts one connection and ends with it,
+- With `leastpilot run --sandbox`, serve accepts one connection and ends with it,
   so only the operator can start another, by running again.
-- Without it, the agent spawns `mandate serve` from its own MCP config, so the
+- Without it, the agent spawns `leastpilot serve` from its own MCP config, so the
   agent can reset the count by restarting its MCP server.
 
 Where operations share an MCP tool, `max` is decided by what the call is, as far

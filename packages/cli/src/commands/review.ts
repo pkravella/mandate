@@ -1,16 +1,16 @@
 import { readFileSync } from "node:fs";
 import { stringify } from "yaml";
-import { atLeast, type UserLevel } from "@mandate-dev/catalog";
-import { approvalDigest, approvalLine, proofOf, type ProposedMandate } from "@mandate-dev/schema";
-import { loadCeiling, validate, type Ceiling } from "@mandate-dev/validator";
-import { WriterError, type WriteRequest } from "@mandate-dev/writer";
+import { atLeast, type UserLevel } from "@leastpilot/catalog";
+import { approvalDigest, approvalLine, proofOf, type ProposedMandate } from "@leastpilot/schema";
+import { loadCeiling, validate, type Ceiling } from "@leastpilot/validator";
+import { WriterError, type WriteRequest } from "@leastpilot/writer";
 import { parseApprovalRef, type ApprovalRef } from "../approval.js";
 import { resolveAuthority, USER_LEVELS, type ResolveAuthority } from "../authority.js";
 import { renderPermissionDiff, renderRejections } from "../diff.js";
 import { ceilingLabel } from "../prepare.js";
 
 /**
- * `mandate review` -- R5's other half: a requester asks for a mandate, the
+ * `leastpilot review` -- R5's other half: a requester asks for a mandate, the
  * writer proposes one, the validator proves it, and the permission diff is
  * posted on the issue or pull request with the line that approves it
  * (`serve --approval` checks that line before anything is minted).
@@ -70,7 +70,7 @@ export interface ReviewDeps {
 }
 
 /** Opens every comment `review` posts, so the rate limit can count them. */
-export const REVIEW_MARKER = "<!-- mandate-review";
+export const REVIEW_MARKER = "<!-- leastpilot-review";
 
 export const DEFAULT_MIN_LEVEL: UserLevel = "push";
 export const DEFAULT_MAX_PER_HOUR = 10;
@@ -116,7 +116,7 @@ export async function runReview(
     return 2;
   }
   if (deps.resolve === undefined || deps.comments === undefined) {
-    err("review reads the commenter's level and posts to GitHub: set MANDATE_APP_ID, MANDATE_INSTALLATION_ID and MANDATE_APP_KEY_PATH.");
+    err("review reads the commenter's level and posts to GitHub: set LEASTPILOT_APP_ID, LEASTPILOT_INSTALLATION_ID and LEASTPILOT_APP_KEY_PATH.");
     return 2;
   }
   if (deps.write === undefined) {

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
+import { MandateSchema, markValidated, type ValidatedMandate } from "@leastpilot/schema";
 import { compileEgress } from "./egress.js";
 
 /**
@@ -19,9 +19,9 @@ import { compileEgress } from "./egress.js";
  *
  * Needs Docker and a network, so it is gated. It spends no money:
  *
- *   MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/compiler test sandbox
+ *   LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/compiler test sandbox
  */
-const enabled = process.env["MANDATE_SANDBOX"] === "1";
+const enabled = process.env["LEASTPILOT_SANDBOX"] === "1";
 
 const SANDBOX_DIR = fileURLToPath(new URL("../../../sandbox", import.meta.url));
 const IMAGE = "mandate-sandbox-test";

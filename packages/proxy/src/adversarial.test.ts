@@ -5,9 +5,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import type { ProxyRules, ToolRule } from "@mandate-dev/compiler";
-import { compileEgress } from "@mandate-dev/compiler";
-import { MandateSchema, markValidated } from "@mandate-dev/schema";
+import type { ProxyRules, ToolRule } from "@leastpilot/compiler";
+import { compileEgress } from "@leastpilot/compiler";
+import { MandateSchema, markValidated } from "@leastpilot/schema";
 import { createProxyServer } from "./proxy.js";
 import { extractArgs, makeArgumentEnforcer } from "./enforce.js";
 
@@ -21,7 +21,7 @@ import { extractArgs, makeArgumentEnforcer } from "./enforce.js";
  * Two cases here assert that the proxy ALLOWS the call, which is not an
  * oversight: both are measured, documented decisions whose control is a
  * different layer. A suite that asserted a denial there would be asserting
- * Mandate's docs are wrong. The index records why for each.
+ * LeastPilot's docs are wrong. The index records why for each.
  */
 const root = (p: string): string => fileURLToPath(new URL(`../../../${p}`, import.meta.url));
 const read = (p: string): string => readFileSync(root(p), "utf8");

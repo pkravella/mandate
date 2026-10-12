@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { Recorder } from "@mandate-dev/proxy";
+import { Recorder } from "@leastpilot/proxy";
 import { loadGroundTruth } from "./harness.js";
 import { branchFor, taskPrompt } from "./prompt.js";
 import { loadCorpus } from "./tasks.js";

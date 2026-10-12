@@ -1,12 +1,12 @@
 {
-  "name": "@mandate-dev/cli",
+  "name": "@leastpilot/cli",
   "version": "0.1.0",
   "type": "module",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "mandate": "./dist/index.js"
+    "leastpilot": "./dist/index.js"
   },
   "exports": {
     ".": {
@@ -23,12 +23,12 @@
   ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.1",
-    "@mandate-dev/catalog": "workspace:*",
-    "@mandate-dev/compiler": "workspace:*",
-    "@mandate-dev/proxy": "workspace:*",
-    "@mandate-dev/schema": "workspace:*",
-    "@mandate-dev/validator": "workspace:*",
-    "@mandate-dev/writer": "workspace:*",
+    "@leastpilot/catalog": "workspace:*",
+    "@leastpilot/compiler": "workspace:*",
+    "@leastpilot/proxy": "workspace:*",
+    "@leastpilot/schema": "workspace:*",
+    "@leastpilot/validator": "workspace:*",
+    "@leastpilot/writer": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "commander": "^15.0.0",
     "yaml": "^2.9.1"

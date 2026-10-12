@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import { parseMandateYaml, type ProposedMandate, type ValidatedMandate } from "@mandate-dev/schema";
-import { loadCeiling, validate, type Ceiling, type Rejection } from "@mandate-dev/validator";
+import { parseMandateYaml, type ProposedMandate, type ValidatedMandate } from "@leastpilot/schema";
+import { loadCeiling, validate, type Ceiling, type Rejection } from "@leastpilot/validator";
 import { resolveAuthority, type AuthorityDeps } from "./authority.js";
 
 /**

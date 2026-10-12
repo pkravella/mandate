@@ -35,7 +35,7 @@ interface Job {
 
 const action = parse(readFileSync(root("action.yml"), "utf8")) as Action;
 const review = parse(readFileSync(root("review/action.yml"), "utf8")) as Action;
-const workflowText = readFileSync(root("examples/workflows/mandate-review.yml"), "utf8");
+const workflowText = readFileSync(root("examples/workflows/leastpilot-review.yml"), "utf8");
 const workflow = parse(workflowText) as { on: unknown; permissions?: unknown; jobs: Record<string, Job> };
 const buildScript = readFileSync(root("scripts/build-action.sh"), "utf8");
 
@@ -50,10 +50,10 @@ const noInterpolation = (steps: readonly Step[], where: string): void => {
 describe("action.yml, used from another repository", () => {
   // dist/ is never committed, so `uses: pkravella/mandate@<sha>` from any other
   // repository had no CLI to run. The Action builds itself.
-  it("sets up Node from a pinned action and builds Mandate before running it", () => {
+  it("sets up Node from a pinned action and builds LeastPilot before running it", () => {
     const steps = action.runs.steps;
     const node = steps.findIndex((s) => s.uses?.startsWith("actions/setup-node@"));
-    const build = steps.findIndex((s) => s.name === "Build Mandate");
+    const build = steps.findIndex((s) => s.name === "Build LeastPilot");
     const run = steps.findIndex((s) => s.name?.includes("run the agent"));
     expect(steps[node]?.uses).toMatch(PINNED);
     expect(node).toBeGreaterThan(-1);
@@ -116,19 +116,19 @@ describe("review/action.yml", () => {
     expect(shred?.if).toBe("always()");
   });
 
-  it("builds Mandate, then posts a review with the task read from a file", () => {
-    const build = steps.findIndex((s) => s.name === "Build Mandate");
+  it("builds LeastPilot, then posts a review with the task read from a file", () => {
+    const build = steps.findIndex((s) => s.name === "Build LeastPilot");
     const post = steps.findIndex((s) => s.name?.includes("post the review"));
     expect(build).toBeGreaterThan(-1);
     expect(post).toBeGreaterThan(build);
     const run = steps[post];
     expect(Object.keys(run?.env ?? {})).toEqual(expect.arrayContaining(["IN_TASK", "IN_ON", "IN_AS", "IN_REPO", "ANTHROPIC_API_KEY"]));
-    expect(run?.run).toContain('printf \'%s\' "${IN_TASK#/mandate }" >');
+    expect(run?.run).toContain('printf \'%s\' "${IN_TASK#/leastpilot }" >');
     expect(run?.run).toMatch(/review[\s\S]*--task-file[\s\S]*--post/);
   });
 });
 
-describe("examples/workflows/mandate-review.yml", () => {
+describe("examples/workflows/leastpilot-review.yml", () => {
   const reviewJob = Object.values(workflow.jobs).find((j) => j.steps.some((s) => s.uses?.includes("/review@") || s.uses === "./review"));
   const runJob = Object.values(workflow.jobs).find((j) => j.steps.some((s) => s.with?.["approved-digest"] !== undefined));
 
@@ -150,16 +150,16 @@ describe("examples/workflows/mandate-review.yml", () => {
   // the CLI is still the gate; this keeps strangers off the runner.
   const ASSOCIATED = "contains(fromJSON('[\"OWNER\",\"MEMBER\",\"COLLABORATOR\"]'), github.event.comment.author_association)";
 
-  it("reviews a /mandate request from a person tied to the repository, never an approval or a bot", () => {
+  it("reviews a /leastpilot request from a person tied to the repository, never an approval or a bot", () => {
     expect(reviewJob?.if).toContain("github.event.comment.user.type == 'User'");
     expect(reviewJob?.if).toContain(ASSOCIATED);
-    expect(reviewJob?.if).toContain("startsWith(github.event.comment.body, '/mandate ')");
-    // No trailing space: a bare "/mandate approve" is a mistyped approval, not
+    expect(reviewJob?.if).toContain("startsWith(github.event.comment.body, '/leastpilot ')");
+    // No trailing space: a bare "/leastpilot approve" is a mistyped approval, not
     // a task to pay a writer for.
-    expect(reviewJob?.if).toContain("!startsWith(github.event.comment.body, '/mandate approve')");
+    expect(reviewJob?.if).toContain("!startsWith(github.event.comment.body, '/leastpilot approve')");
   });
 
-  it("pins Mandate to a commit the copier must fill in, and the agent to a version", () => {
+  it("pins LeastPilot to a commit the copier must fill in, and the agent to a version", () => {
     const uses = Object.values(workflow.jobs).flatMap((j) => j.steps).map((s) => s.uses ?? "")
       .filter((u) => u.startsWith("pkravella/mandate"));
     expect(uses).toHaveLength(2);
@@ -177,7 +177,7 @@ describe("examples/workflows/mandate-review.yml", () => {
   it("runs an approved mandate with the approval it must check", () => {
     expect(runJob?.if).toContain("github.event.comment.user.type == 'User'");
     expect(runJob?.if).toContain(ASSOCIATED);
-    expect(runJob?.if).toContain("startsWith(github.event.comment.body, '/mandate approve')");
+    expect(runJob?.if).toContain("startsWith(github.event.comment.body, '/leastpilot approve')");
     const run = runJob?.steps.find((s) => s.with?.["approved-digest"] !== undefined);
     expect(String(run?.with?.["approval"])).toBe("${{ github.repository }}#${{ github.event.issue.number }}");
     expect(String(run?.with?.["as"])).toBe("${{ github.event.comment.user.login }}");

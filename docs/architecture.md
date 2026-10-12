@@ -136,13 +136,13 @@ sandbox's egress allowlist. One artifact decides all three, which is the
 "merge" the PRD is named for — the policy that mints the token is the policy
 that pauses the run.
 
-**During:** the agent never holds the token — `mandate serve` does — and its
+**During:** the agent never holds the token — `leastpilot serve` does — and its
 GitHub tool calls go through the proxy. With `--sandbox` the agent also holds no
 other GitHub credential and reaches the network only through the egress
 allowlist; without it, the agent runs on the host as the operator.
 
 ```
-agent ──MCP──► mandate serve ──MCP──► github-mcp-server ──REST──► GitHub
+agent ──MCP──► leastpilot serve ──MCP──► github-mcp-server ──REST──► GitHub
                     │
                     ├─ filters tools/list to what the mandate reaches
                     ├─ decides every call against the compiled rules
@@ -150,9 +150,9 @@ agent ──MCP──► mandate serve ──MCP──► github-mcp-server ─�
                     └─ refuses out of scope, naming the clause (R10)
 ```
 
-`mandate serve` is an MCP server on stdio, which is what every MCP client
+`leastpilot serve` is an MCP server on stdio, which is what every MCP client
 already knows how to spawn. That is the whole agent integration: no per-vendor
-adapter, and `mandate run` just writes a config pointing at it and launches the
+adapter, and `leastpilot run` just writes a config pointing at it and launches the
 command the operator gives it.
 
 The token is minted inside the `serve` process, so the config the agent reads
@@ -164,7 +164,7 @@ start serve:
 
 ```
 host                                       container (agent uid: no network)
-mandate run ─starts─► mandate serve        agent ──stdio──► mandate-mcp.mjs
+leastpilot run ─starts─► leastpilot serve        agent ──stdio──► mandate-mcp.mjs
                       --listen 127.0.0.1            │
                          ▲                          ▼ /run/mandate/mcp.sock
                          └──TCP + secret──── mandate-relay.mjs (relay uid,
@@ -178,7 +178,7 @@ whichever is first.
 
 **One enforced session, shared.** `openSession` in `cli/src/session.ts` does the
 five steps — mint, compile, connect upstream, build the proxy, give the token
-back — and both `mandate serve` and the benchmark harness call it. If they had
+back — and both `leastpilot serve` and the benchmark harness call it. If they had
 separate copies, the published numbers would describe something other than what
 the command enforces. The benchmark's one difference is a proxy option,
 `toolVisibility: "all"`, that offers every upstream tool and refuses on call so

@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createPublicKey, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { AuditLog, auditKeyId, loadAuditKey, Recorder } from "@mandate-dev/proxy";
-import { mandateHash, type Mandate } from "@mandate-dev/schema";
+import { AuditLog, auditKeyId, loadAuditKey, Recorder } from "@leastpilot/proxy";
+import { mandateHash, type Mandate } from "@leastpilot/schema";
 import { runAuditKeygen, runAuditVerify } from "./audit.js";
 
 const tmp = mkdtempSync(join(tmpdir(), "mandate-audit-cli-"));
@@ -47,7 +47,7 @@ async function keyAndLog(opts: { seal?: boolean; inFlight?: boolean } = {}) {
   return { key, pub, log };
 }
 
-describe("mandate audit keygen", () => {
+describe("leastpilot audit keygen", () => {
   it("writes an Ed25519 private key only its owner can read, and the public key beside it", async () => {
     const key = fresh("k.pem");
     const pub = fresh("k.pub");
@@ -58,7 +58,7 @@ describe("mandate audit keygen", () => {
     expect(auditKeyId(readFileSync(pub, "utf8"))).toBe(loaded.keyId);
     expect(createPublicKey(readFileSync(pub, "utf8")).asymmetricKeyType).toBe("ed25519");
     expect(out).toContain(loaded.keyId);
-    expect(out).toContain("MANDATE_AUDIT_KEY_PATH");
+    expect(out).toContain("LEASTPILOT_AUDIT_KEY_PATH");
   });
 
   it("never overwrites an existing key", async () => {
@@ -80,7 +80,7 @@ describe("mandate audit keygen", () => {
   });
 });
 
-describe("mandate audit verify", () => {
+describe("leastpilot audit verify", () => {
   it("exits 0 for an intact, sealed log and says what it records", async () => {
     const { pub, log } = await keyAndLog();
     const { code, out } = await run(runAuditVerify, { file: log, publicKey: pub });

@@ -8,7 +8,7 @@ import { ACCEPTANCE_IMAGE, ACCEPTANCE_TIMEOUT_S, acceptanceArgv, interpretAccept
  *
  * It runs the agent's own files: the test and source the agent pushed to its
  * branch. It ran them on the host, with the harness's whole environment
- * (ANTHROPIC_API_KEY, MANDATE_APP_KEY_PATH) and the App's private key readable
+ * (ANTHROPIC_API_KEY, LEASTPILOT_APP_KEY_PATH) and the App's private key readable
  * on disk -- so an injected agent, the attacker the threat model assumes, could
  * take the key through a "test" it wrote. Found reviewing Phase 6. It now runs
  * in a container with no network, no capabilities, a read-only root and only

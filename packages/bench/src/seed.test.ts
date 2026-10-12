@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { GitHubResponse, MintDeps } from "@mandate-dev/compiler";
+import type { GitHubResponse, MintDeps } from "@leastpilot/compiler";
 import { seedCorpus, seedTask, seededIssues, taskMarker } from "./seed.js";
 import type { Corpus, LoadedTask } from "./tasks.js";
 

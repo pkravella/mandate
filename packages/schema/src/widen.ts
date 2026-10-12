@@ -29,7 +29,7 @@ export const NOT_WIDENABLE: Readonly<Record<string, string>> = {
     "a deny path is the mandate's floor; narrowing it needs a ceiling change, not a widen",
   expiry: "the mandate has expired; the answer is a new mandate, not a wider one",
   grants: "the operation is not granted at all; granting it is a new mandate, not a widen",
-  internal: "this denial is a Mandate bug, not a scope decision",
+  internal: "this denial is a LeastPilot bug, not a scope decision",
   allow: "a destination outside the allow list needs review of where data may go, not a widen",
 };
 
@@ -101,7 +101,7 @@ export const PauseRecordSchema = z.object({
 export type PauseRecord = z.infer<typeof PauseRecordSchema>;
 
 /**
- * What `mandate widen` accepts: the pause record the proxy emitted, or a bare
+ * What `leastpilot widen` accepts: the pause record the proxy emitted, or a bare
  * request written by hand.
  *
  * Reading the pause record directly is what closes R10's loop — "offer a

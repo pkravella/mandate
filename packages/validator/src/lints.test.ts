@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { MandateSchema } from "@mandate-dev/schema";
+import { MandateSchema } from "@leastpilot/schema";
 import { runLints, hasLintErrors, LINT_RULES, SIDE_EFFECTING } from "./lints.js";
-import { requireOperation } from "@mandate-dev/catalog";
+import { requireOperation } from "@leastpilot/catalog";
 
 const mandate = (grants: unknown[], over: Record<string, unknown> = {}) =>
   MandateSchema.parse({

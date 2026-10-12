@@ -5,7 +5,7 @@ import {
   createHash, createPublicKey, generateKeyPairSync, sign, type KeyObject,
 } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import { mandateHash, type Mandate } from "@mandate-dev/schema";
+import { mandateHash, type Mandate } from "@leastpilot/schema";
 import {
   AUDIT_FORMAT, AuditKeyError, AuditLog, auditKeyId, loadAuditKey, verifyAuditLog,
 } from "./audit.js";
@@ -102,7 +102,7 @@ describe("loadAuditKey", () => {
   });
 
   // The App's key is RSA, and node's sign(null, ...) signs with RSA without
-  // complaint -- so pointing MANDATE_AUDIT_KEY_PATH at the App key would sign
+  // complaint -- so pointing LEASTPILOT_AUDIT_KEY_PATH at the App key would sign
   // the log with the one credential that mints installation tokens.
   it("refuses an RSA key, which is what a GitHub App key is", () => {
     const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });

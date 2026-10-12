@@ -3,41 +3,41 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
-import { parseJsonl } from "@mandate-dev/proxy";
+import { parseJsonl } from "@leastpilot/proxy";
 import { githubResolver } from "./authority.js";
 import { runRun } from "./commands/run.js";
 
 /**
- * `mandate run` and `mandate serve` against real everything, once.
+ * `leastpilot run` and `leastpilot serve` against real everything, once.
  *
  * The offline tests prove the wiring with fakes. This proves the thing the
- * fakes stand in for: that an agent which knows nothing about Mandate — it is
+ * fakes stand in for: that an agent which knows nothing about LeastPilot — it is
  * handed an MCP config and spawns what the config names, exactly as Claude Code
  * and Codex do — reaches GitHub only through the enforced proxy, with a real
  * App token, the real `github-mcp-server`, and a real model deciding what to
  * call.
  *
- * The "agent" here is a script that reads `MANDATE_MCP_CONFIG`, starts the
+ * The "agent" here is a script that reads `LEASTPILOT_MCP_CONFIG`, starts the
  * server it names over stdio, and drives the Anthropic API against the tools it
  * is offered. That is deliberately the same shape as a real MCP client and
  * deliberately not an import of anything in this repository: a test that
  * reached into `openSession` would prove the session works, not that the
  * integration does.
  *
- * Costs money and writes to a real repository. Needs MANDATE_LIVE=1, an API
+ * Costs money and writes to a real repository. Needs LEASTPILOT_LIVE=1, an API
  * key, and the App's details. Budgeted at roughly $0.25: one writer call is not
  * made (the mandate is a committed fixture, because what is under test is the
  * run path and not the writer) and the agent's turns are capped.
  */
 const env = (n: string): string | undefined => process.env[n];
-const live = env("MANDATE_LIVE") === "1"
+const live = env("LEASTPILOT_LIVE") === "1"
   && env("ANTHROPIC_API_KEY") !== undefined
-  && env("MANDATE_APP_ID") !== undefined
-  && env("MANDATE_INSTALLATION_ID") !== undefined
-  && env("MANDATE_APP_KEY_PATH") !== undefined
-  && env("MANDATE_TEST_REPO") !== undefined;
+  && env("LEASTPILOT_APP_ID") !== undefined
+  && env("LEASTPILOT_INSTALLATION_ID") !== undefined
+  && env("LEASTPILOT_APP_KEY_PATH") !== undefined
+  && env("LEASTPILOT_TEST_REPO") !== undefined;
 
-const REPO = env("MANDATE_TEST_REPO") ?? "";
+const REPO = env("LEASTPILOT_TEST_REPO") ?? "";
 
 /**
  * The agent script has to live INSIDE the repository tree.
@@ -75,14 +75,14 @@ const fixture = (n: string): string =>
 /** What the agent is asked to do. Read-only, so the sandbox needs no reset. */
 const TASK = `Read src/retry.js in ${REPO} and say in one sentence what it does.`;
 
-/** The agent: an MCP client that knows nothing about Mandate. */
+/** The agent: an MCP client that knows nothing about LeastPilot. */
 const AGENT = `
 import { readFileSync, writeFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-const config = JSON.parse(readFileSync(process.env.MANDATE_MCP_CONFIG, "utf8"));
+const config = JSON.parse(readFileSync(process.env.LEASTPILOT_MCP_CONFIG, "utf8"));
 const server = config.mcpServers.github;
 
 // Exactly what an MCP client does: spawn what the config names.
@@ -132,7 +132,7 @@ flush();
 await client.close();
 `;
 
-describe.skipIf(!live)("mandate run, live", () => {
+describe.skipIf(!live)("leastpilot run, live", () => {
   afterAll(() => {
     rmSync(fileURLToPath(new URL("../.live-agent", import.meta.url)), { recursive: true, force: true });
   });
@@ -247,7 +247,7 @@ destinations:
 import { readFileSync, writeFileSync } from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-const config = JSON.parse(readFileSync(process.env.MANDATE_MCP_CONFIG, "utf8"));
+const config = JSON.parse(readFileSync(process.env.LEASTPILOT_MCP_CONFIG, "utf8"));
 const s = config.mcpServers.github;
 const c = new Client({ name: "deny-probe", version: "0.1.0" });
 await c.connect(new StdioClientTransport({

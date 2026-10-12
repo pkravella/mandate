@@ -1,4 +1,4 @@
-# Mandate v0.1 benchmark report
+# LeastPilot v0.1 benchmark report
 
 ## What this measures, and what it does not
 
@@ -34,7 +34,7 @@ Ground truth: six unconstrained runs recorded 2026-10-06 against the live github
 
 ## Metrics
 
-Baseline for the authority cut (D7): a token holding the permissions the GitHub MCP server's default toolsets require (contents: write, issues: write, pull_requests: write, actions: read, metadata: read), counted as reachable (operation × repository) pairs, and reported against two repository counts. **One repository** is the conservative figure: it is reproducible and credits Mandate with nothing for choosing the repository. **63 repositories** is the PRD's baseline, the agent's usual static token: the repositories pkravella's own GitHub token reaches as owner, collaborator or organization member (`gh api /user/repos`, 2026-10-10). Neither is the authority cut; each is labelled.
+Baseline for the authority cut (D7): a token holding the permissions the GitHub MCP server's default toolsets require (contents: write, issues: write, pull_requests: write, actions: read, metadata: read), counted as reachable (operation × repository) pairs, and reported against two repository counts. **One repository** is the conservative figure: it is reproducible and credits LeastPilot with nothing for choosing the repository. **63 repositories** is the PRD's baseline, the agent's usual static token: the repositories pkravella's own GitHub token reaches as owner, collaborator or organization member (`gh api /user/repos`, 2026-10-10). Neither is the authority cut; each is labelled.
 
 ### Tools filtered (the product: a tool no grant reaches is not offered)
 
@@ -84,7 +84,7 @@ The authority cut is two numbers because a GitHub App token cannot express branc
 
 The baseline reaches 31 operations × 63 repositories = 1953 pairs. Medians across the 6 minted mandates, three things narrow it:
 
-1. **Repository scoping**, 63 repositories to 1. Any installation token limited to the task's repository gets this without Mandate; what Mandate adds is choosing that repository per task. It is most of the cut against 63 repositories.
+1. **Repository scoping**, 63 repositories to 1. Any installation token limited to the task's repository gets this without LeastPilot; what LeastPilot adds is choosing that repository per task. It is most of the cut against 63 repositories.
 2. **Permission narrowing**, the token layer: 31 to 21 operations per repository, from the permissions the mandate's grants need.
 3. **Operation narrowing**, the proxy layer: 21 to 4 operations per repository, the ones the mandate actually granted.
 

@@ -1,9 +1,9 @@
 import { EventEmitter } from "node:events";
 import { renameSync, writeFileSync } from "node:fs";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import type { MintDeps } from "@mandate-dev/compiler";
-import { proofOf } from "@mandate-dev/schema";
-import { AuditLog, AuditLogError, type AuditKey, type Decision } from "@mandate-dev/proxy";
+import type { MintDeps } from "@leastpilot/compiler";
+import { proofOf } from "@leastpilot/schema";
+import { AuditLog, AuditLogError, type AuditKey, type Decision } from "@leastpilot/proxy";
 import { auditInputs } from "./audit.js";
 import {
   approvalInputs, requireApproval, type ApprovalReader, type ApprovalRecord,
@@ -17,12 +17,12 @@ import {
 } from "../listen.js";
 
 /**
- * `mandate serve` — the enforced MCP server an agent spawns.
+ * `leastpilot serve` — the enforced MCP server an agent spawns.
  *
  * This is the integration point. Claude Code, Codex and every other MCP client
  * start their servers as subprocesses speaking JSON-RPC over stdio, so the way
- * to put Mandate between an agent and GitHub is to *be* the server it starts.
- * The agent needs no adapter and Mandate needs no agent-specific code, which is
+ * to put LeastPilot between an agent and GitHub is to *be* the server it starts.
+ * The agent needs no adapter and LeastPilot needs no agent-specific code, which is
  * also what makes PRD goal 5 — vendor neutrality — true rather than aspirational.
  *
  * **stdout belongs to the protocol.** Every diagnostic goes to stderr. A single
@@ -39,7 +39,7 @@ export interface ServeArgs extends PrepareArgs {
   readonly trace?: string | undefined;
   /**
    * `ip:port` to serve one sandboxed agent on, instead of stdio. The agent is
-   * in a container and cannot spawn this process, so `mandate run --sandbox`
+   * in a container and cannot spawn this process, so `leastpilot run --sandbox`
    * starts it on the host and the container's relay connects. See listen.ts.
    */
   readonly listen?: string | undefined;
@@ -77,7 +77,7 @@ export interface ServeDeps extends AuthorityDeps {
   readonly stdin?: NodeJS.EventEmitter;
   /** Where SIGINT and SIGTERM arrive. Defaults to the process. */
   readonly signals?: NodeJS.EventEmitter;
-  /** The audit signing key, for `auditLog`. From MANDATE_AUDIT_KEY_PATH. */
+  /** The audit signing key, for `auditLog`. From LEASTPILOT_AUDIT_KEY_PATH. */
   readonly auditKeyPath?: string | undefined;
   /** Reads an issue's comments, for `approval`. Defaults to none: --approval then refuses. */
   readonly approvals?: ApprovalReader | undefined;
@@ -277,7 +277,7 @@ export async function runServe(
           renameSync(`${args.readyFile}.tmp`, args.readyFile);
         }
         log(`Listening on ${listener.host}:${listener.port} for the sandbox relay.`);
-        // Not stdin: a serve started by `mandate run` has no agent on it, and
+        // Not stdin: a serve started by `leastpilot run` has no agent on it, and
         // waiting for it to end would shut the session down at once.
         const l = listener;
         await (deps.until ?? (() => Promise.race([l.ended, stopping])))();

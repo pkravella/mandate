@@ -1,5 +1,5 @@
 {
-  "name": "@mandate-dev/bench",
+  "name": "@leastpilot/bench",
   "version": "0.1.0",
   "type": "module",
   "private": true,
@@ -17,14 +17,14 @@
     "typecheck": "tsc --build"
   },
   "dependencies": {
-    "@mandate-dev/compiler": "workspace:*",
-    "@mandate-dev/schema": "workspace:*",
+    "@leastpilot/compiler": "workspace:*",
+    "@leastpilot/schema": "workspace:*",
     "zod": "^4.6.5",
-    "@mandate-dev/cli": "workspace:*",
-    "@mandate-dev/replay": "workspace:*",
-    "@mandate-dev/validator": "workspace:*",
-    "@mandate-dev/writer": "workspace:*",
-    "@mandate-dev/proxy": "workspace:*"
+    "@leastpilot/cli": "workspace:*",
+    "@leastpilot/replay": "workspace:*",
+    "@leastpilot/validator": "workspace:*",
+    "@leastpilot/writer": "workspace:*",
+    "@leastpilot/proxy": "workspace:*"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.132.1",

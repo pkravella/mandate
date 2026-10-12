@@ -1,15 +1,15 @@
-name: Mandate review
+name: LeastPilot review
 description: >-
   Write a mandate for a requester's task and post its permission diff, with the
   line that approves it, on the issue or pull request (R5).
-author: Mandate contributors
+author: LeastPilot contributors
 
 # Read action.yml's two notes first: they hold here too. Every value reaches
 # the scripts below through env and is never interpolated into a run block,
 # and `permissions: {}` belongs to the calling job, which this action checks.
 #
 # `task` is the requester's comment. It is written to a file and handed to the
-# CLI by path; it never becomes a shell word. `mandate review` refuses before
+# CLI by path; it never becomes a shell word. `leastpilot review` refuses before
 # any model call unless the requester's level, read from GitHub, is at least
 # `min-level`, and the App has written fewer than `max-per-hour` mandates on the
 # repository this hour. That count is read and then written, so the calling
@@ -17,7 +17,7 @@ author: Mandate contributors
 
 inputs:
   task:
-    description: The request, normally the comment's body. A leading "/mandate " is removed.
+    description: The request, normally the comment's body. A leading "/leastpilot " is removed.
     required: true
   "on":
     description: The issue or pull request the request came from, as owner/repo#number.
@@ -64,7 +64,7 @@ runs:
       run: |
         if [ -n "${GITHUB_TOKEN:-}" ]; then
           echo "::error::GITHUB_TOKEN is set in this job. Set 'permissions: {}' on the job;" \
-               "Mandate uses the App for every GitHub call."
+               "LeastPilot uses the App for every GitHub call."
           exit 1
         fi
 
@@ -72,7 +72,7 @@ runs:
       with:
         node-version: 24
 
-    - name: Build Mandate
+    - name: Build LeastPilot
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}/..
@@ -93,9 +93,9 @@ runs:
     - name: Write the mandate and post the review
       shell: bash
       env:
-        MANDATE_APP_ID: ${{ inputs.app-id }}
-        MANDATE_INSTALLATION_ID: ${{ inputs.installation-id }}
-        MANDATE_APP_KEY_PATH: ${{ steps.key.outputs.path }}
+        LEASTPILOT_APP_ID: ${{ inputs.app-id }}
+        LEASTPILOT_INSTALLATION_ID: ${{ inputs.installation-id }}
+        LEASTPILOT_APP_KEY_PATH: ${{ steps.key.outputs.path }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
         IN_TASK: ${{ inputs.task }}
         IN_ON: ${{ inputs.on }}
@@ -110,7 +110,7 @@ runs:
       run: |
         set -euo pipefail
         task_file="$(mktemp)"
-        printf '%s' "${IN_TASK#/mandate }" > "$task_file"
+        printf '%s' "${IN_TASK#/leastpilot }" > "$task_file"
         extra=()
         [ -n "$IN_MIN_LEVEL" ] && extra+=(--min-level "$IN_MIN_LEVEL")
         [ -n "$IN_MAX_PER_HOUR" ] && extra+=(--max-per-hour "$IN_MAX_PER_HOUR")

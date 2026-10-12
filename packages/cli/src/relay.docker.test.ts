@@ -8,12 +8,12 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { compileEgress } from "@mandate-dev/compiler";
-import { MandateSchema, markValidated } from "@mandate-dev/schema";
+import { compileEgress } from "@leastpilot/compiler";
+import { MandateSchema, markValidated } from "@leastpilot/schema";
 import { listenForAgent, type AgentListener } from "./listen.js";
 
 /**
- * The sandboxed agent reaching `mandate serve` on the host, against a real
+ * The sandboxed agent reaching `leastpilot serve` on the host, against a real
  * container (Task 5.1, PR a).
  *
  * The path is: agent (uid `agent`, no network) -> `mandate-mcp.mjs` over stdio
@@ -29,9 +29,9 @@ import { listenForAgent, type AgentListener } from "./listen.js";
  * bind the bridge address. That is unprobed, and a path nobody has run is not
  * one to claim.
  *
- *   MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/cli test relay
+ *   LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/cli test relay
  */
-const enabled = process.env["MANDATE_SANDBOX"] === "1" && process.platform === "darwin";
+const enabled = process.env["LEASTPILOT_SANDBOX"] === "1" && process.platform === "darwin";
 
 const SANDBOX_DIR = fileURLToPath(new URL("../../../sandbox", import.meta.url));
 const IMAGE = "mandate-sandbox-test";

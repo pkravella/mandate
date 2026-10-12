@@ -11,10 +11,10 @@ import { listenForAgent } from "./listen.js";
 import type { ServeHandle } from "./sandbox.js";
 
 /**
- * `mandate run --sandbox`, end to end against a real container (Task 5.1 b).
+ * `leastpilot run --sandbox`, end to end against a real container (Task 5.1 b).
  *
  * Real: git, the workspace clone, docker, the entrypoint, squid, iptables, the
- * relay, and `mandate run`'s own argv and environment. Stood in: `mandate
+ * relay, and `leastpilot run`'s own argv and environment. Stood in: `mandate
  * serve`, replaced by the real listener in front of a fake server, so nothing
  * is minted and nothing costs money.
  *
@@ -23,9 +23,9 @@ import type { ServeHandle } from "./sandbox.js";
  * environment, a credential in the checkout's remote, an ignored `.env`, a
  * hook -- and the script reports whether any of them reached it.
  *
- *   MANDATE_SANDBOX=1 pnpm --filter @mandate-dev/cli test sandbox.docker
+ *   LEASTPILOT_SANDBOX=1 pnpm --filter @leastpilot/cli test sandbox.docker
  */
-const enabled = process.env["MANDATE_SANDBOX"] === "1" && process.platform === "darwin";
+const enabled = process.env["LEASTPILOT_SANDBOX"] === "1" && process.platform === "darwin";
 
 const SANDBOX_DIR = fileURLToPath(new URL("../../../sandbox", import.meta.url));
 const IMAGE = "mandate-sandbox-test";
@@ -70,7 +70,7 @@ destinations:
 
 /**
  * What the "agent" reports, one `name=value` per line. `$1` is the MCP config
- * path, substituted for {mcpConfig} by `mandate run`.
+ * path, substituted for {mcpConfig} by `leastpilot run`.
  */
 const AGENT_SCRIPT = `
 echo "ws.pwd=$(pwd)"
@@ -81,10 +81,10 @@ grep -q PLANTED .git/config && echo ws.config-credential=PRESENT || echo ws.conf
 test -e .git/hooks/post-checkout && echo ws.hook=PRESENT || echo ws.hook=absent
 touch written-by-agent && echo ws.writable=yes || echo ws.writable=no
 test -n "$GITHUB_TOKEN" && echo env.github-token=PRESENT || echo env.github-token=absent
-test -n "$MANDATE_APP_KEY_PATH" && echo env.app-key=PRESENT || echo env.app-key=absent
+test -n "$LEASTPILOT_APP_KEY_PATH" && echo env.app-key=PRESENT || echo env.app-key=absent
 echo "env.passed=$ANTHROPIC_API_KEY"
 test -f "$1" && echo config.arg=exists || echo config.arg=missing
-test "$1" = "$MANDATE_MCP_CONFIG" && echo config.env=matches || echo config.env=differs
+test "$1" = "$LEASTPILOT_MCP_CONFIG" && echo config.env=matches || echo config.env=differs
 node /usr/local/lib/mandate-verify.mjs
 `;
 
@@ -105,7 +105,7 @@ const fakeServe = (seen: { secret?: string; connects: number }) =>
     return { port: listener.port, stop: async () => { await listener.close(); return 0; } };
   };
 
-describe.skipIf(!enabled)("mandate run --sandbox, against a real container", { timeout: 180_000 }, () => {
+describe.skipIf(!enabled)("leastpilot run --sandbox, against a real container", { timeout: 180_000 }, () => {
   beforeAll(() => {
     execFileSync("docker", ["build", "-q", "-t", IMAGE, SANDBOX_DIR], { stdio: "pipe" });
   }, 600_000);
@@ -130,7 +130,7 @@ describe.skipIf(!enabled)("mandate run --sandbox, against a real container", { t
         ...process.env,
         ANTHROPIC_API_KEY: "sk-ant-e2e",
         GITHUB_TOKEN: "ghp_PLANTED_ENV",
-        MANDATE_APP_KEY_PATH: "/nonexistent/app.pem",
+        LEASTPILOT_APP_KEY_PATH: "/nonexistent/app.pem",
       },
       startServe: fakeServe(seen),
       // Real docker, with its output captured instead of inherited. Async: the

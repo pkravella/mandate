@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MandateSchema, type Mandate } from "@mandate-dev/schema";
+import { MandateSchema, type Mandate } from "@leastpilot/schema";
 import { TARGET_COMPOSITION } from "./tasks.js";
 import { renderReport, type BenchResult, type CorpusMeta } from "./report.js";
 
@@ -221,14 +221,14 @@ describe("renderReport authority cut", () => {
   });
 
   // Most of the cut against 63 repositories is repository scoping, which any
-  // installation token limited to one repository gets without Mandate.
+  // installation token limited to one repository gets without LeastPilot.
   it("breaks the larger cut into repository scoping, permission and operation narrowing", () => {
     expect(out).toContain("## Where the authority cut comes from");
     expect(out).toMatch(/31 operations × 63 repositories = 1953/);
     expect(out).toMatch(/63 repositories to 1/);
     expect(out).toMatch(/31 to 21 operations/);
     expect(out).toMatch(/21 to 3 operations/);
-    expect(out).toMatch(/without Mandate/);
+    expect(out).toMatch(/without LeastPilot/);
   });
 
   it("says the gap between layers cannot see branch and path limits", () => {

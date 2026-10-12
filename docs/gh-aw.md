@@ -1,6 +1,6 @@
 # Exporting to GitHub Agentic Workflows
 
-`mandate export gh-aw` turns a validated mandate into the frontmatter of a
+`leastpilot export gh-aw` turns a validated mandate into the frontmatter of a
 [GitHub Agentic Workflows](https://github.github.com/gh-aw/) (gh-aw) workflow.
 In gh-aw the agent runs read-only and asks for writes through `safe-outputs`.
 A separate job, holding its own token, carries those writes out, inside the
@@ -52,7 +52,7 @@ carries that the mandate does not grant.
 gh-aw compiles these limits into the workflow's lock file when the workflow is
 authored. `allowed-files` cannot be set when the workflow runs. So the export
 is a template you commit once for a kind of task, and every run of it gets the
-same limits. That is weaker than Mandate's own loop, where each task gets its
+same limits. That is weaker than LeastPilot's own loop, where each task gets its
 own mandate.
 
 One consequence: because branch patterns are refused (below), the template
@@ -62,7 +62,7 @@ branch is deleted.
 
 ## What maps to what
 
-| Mandate | gh-aw |
+| LeastPilot | gh-aw |
 | --- | --- |
 | The one repository every grant names | Where the workflow lives; `tools.github.allowed-repos` |
 | Read grants (`repo.read`, `contents.read`, `issue.read`, …) | `tools.github.allowed`: those operations' MCP tools; `read-only: true`; `permissions:` at `read` |
@@ -82,7 +82,7 @@ Switched off, because each one writes something the mandate does not grant:
 | gh-aw option | What its default would do |
 | --- | --- |
 | `fallback-as-issue: false` | Open an issue holding the patch when the pull request fails |
-| `auto-close-issue: false` | Add "Fixes #N", which closes the issue when someone merges. The agent can still write one in its own pull-request body (the live run's did), as it can under Mandate's proxy, which does not read bodies either; the issue closes only if a person merges |
+| `auto-close-issue: false` | Add "Fixes #N", which closes the issue when someone merges. The agent can still write one in its own pull-request body (the live run's did), as it can under LeastPilot's proxy, which does not read bodies either; the issue closes only if a person merges |
 | `auto-merge: false`, `close-older-pull-requests: false` | Merge, or close other pull requests |
 | `activation-comments: false` | Comment on the triggering issue or PR when the run starts and ends |
 | `report-failed-jobs`, `report-failure-as-issue`, `report-incomplete`, `missing-tool`, `missing-data` | File issues about the run |
@@ -138,7 +138,7 @@ Change it deliberately.
 
 ## What enforces it, and what that rests on
 
-gh-aw enforces it, not Mandate.
+gh-aw enforces it, not LeastPilot.
 
 **The tokens are pinned, and that is what makes the permissions mean
 anything.** Left to its defaults, gh-aw gives the agent's GitHub tools a PAT
@@ -151,7 +151,7 @@ from the safe outputs.
 
 That job's permissions are merged across outputs. A mandate granting
 `issue.comment` alongside a pull request therefore gets a token that can also
-comment on pull requests. That matches Mandate's own proxy, which cannot tell
+comment on pull requests. That matches LeastPilot's own proxy, which cannot tell
 the two apart either (one tool, combined allowance). `discussions: false` holds
 because the token has no discussions permission.
 
@@ -165,7 +165,7 @@ Read in gh-aw's handlers at v0.89.21:
 - `allowed-branches` is checked only in gh-aw's safe-outputs MCP server, while
   the agent's request is recorded. That holds because the agent's container
   mounts the request file read-only, and gh-aw's own steps copy and ingest it
-  only after the agent has exited. It is gh-aw's boundary, not Mandate's.
+  only after the agent has exited. It is gh-aw's boundary, not LeastPilot's.
 
 Once committed, the workflow file is the policy. Editing it afterwards changes
 what is enforced, and nothing re-checks it against the mandate.

@@ -17,7 +17,7 @@ import type { Mandate } from "./mandate.js";
 export const APPROVAL_FORMAT = "mandate-approval/1";
 
 /** The command an approver posts, followed by the digest. */
-export const APPROVE_COMMAND = "/mandate approve";
+export const APPROVE_COMMAND = "/leastpilot approve";
 
 export function approvalDigest(mandate: Mandate, ceilingSha256: string, requester: string): string {
   if (!requester.startsWith("user:")) {

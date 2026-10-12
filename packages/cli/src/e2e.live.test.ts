@@ -7,16 +7,16 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { unreachableOperations } from "@mandate-dev/catalog";
-import { loadCeiling, validate, type UserAuthority } from "@mandate-dev/validator";
+import { unreachableOperations } from "@leastpilot/catalog";
+import { loadCeiling, validate, type UserAuthority } from "@leastpilot/validator";
 import {
   compileRules, enforcementReport, githubAppDeps, mintToken, revokeToken,
-} from "@mandate-dev/compiler";
+} from "@leastpilot/compiler";
 import {
   createProxyServer, makeArgumentEnforcer, parseJsonl, pauseRecord, Recorder,
   type Decision,
-} from "@mandate-dev/proxy";
-import { writeMandate } from "@mandate-dev/writer";
+} from "@leastpilot/proxy";
+import { writeMandate } from "@leastpilot/writer";
 import { renderPermissionDiff, renderRejections } from "./diff.js";
 
 /**
@@ -25,21 +25,21 @@ import { renderPermissionDiff, renderRejections } from "./diff.js";
  * one repository, the real github-mcp-server sits behind the proxy, and the
  * model is handed only the tools the mandate reaches.
  *
- * Spends money and writes to a real repository, so it needs MANDATE_LIVE=1 plus
+ * Spends money and writes to a real repository, so it needs LEASTPILOT_LIVE=1 plus
  * the app's details and an API key.
  */
 const env = (n: string): string | undefined => process.env[n];
-const live = env("MANDATE_LIVE") === "1"
+const live = env("LEASTPILOT_LIVE") === "1"
   && env("ANTHROPIC_API_KEY") !== undefined
-  && env("MANDATE_APP_ID") !== undefined
-  && env("MANDATE_INSTALLATION_ID") !== undefined
-  && env("MANDATE_APP_KEY_PATH") !== undefined
-  && env("MANDATE_TEST_REPO") !== undefined;
+  && env("LEASTPILOT_APP_ID") !== undefined
+  && env("LEASTPILOT_INSTALLATION_ID") !== undefined
+  && env("LEASTPILOT_APP_KEY_PATH") !== undefined
+  && env("LEASTPILOT_TEST_REPO") !== undefined;
 
 const fixture = (n: string): string =>
   readFileSync(fileURLToPath(new URL(`../../../fixtures/ceilings/${n}`, import.meta.url)), "utf8");
 
-const REPO = env("MANDATE_TEST_REPO") ?? "";
+const REPO = env("LEASTPILOT_TEST_REPO") ?? "";
 const [OWNER = "", NAME = ""] = REPO.split("/");
 
 const ISSUE_BODY = `retry() in src/retry.js returns undefined when every attempt
@@ -54,9 +54,9 @@ const TASK = `Fix issue #1 in ${REPO}: ${ISSUE_BODY}\n`
 describe.skipIf(!live)("the whole loop, live", () => {
   it("fixes a real issue under a mandate, and the merge is blocked", async () => {
     const deps = githubAppDeps({
-      appId: env("MANDATE_APP_ID") ?? "",
-      installationId: Number(env("MANDATE_INSTALLATION_ID") ?? "0"),
-      privateKeyPath: env("MANDATE_APP_KEY_PATH") ?? "",
+      appId: env("LEASTPILOT_APP_ID") ?? "",
+      installationId: Number(env("LEASTPILOT_INSTALLATION_ID") ?? "0"),
+      privateKeyPath: env("LEASTPILOT_APP_KEY_PATH") ?? "",
     });
 
     // ---- 1. write -------------------------------------------------------

@@ -56,6 +56,6 @@ describe("approvalDigest", () => {
 
 describe("approvalLine", () => {
   it("is the exact line an approver posts", () => {
-    expect(approvalLine("a".repeat(64))).toBe(`/mandate approve ${"a".repeat(64)}`);
+    expect(approvalLine("a".repeat(64))).toBe(`/leastpilot approve ${"a".repeat(64)}`);
   });
 });

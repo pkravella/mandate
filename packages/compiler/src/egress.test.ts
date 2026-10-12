@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MandateSchema, markValidated, type ValidatedMandate } from "@mandate-dev/schema";
+import { MandateSchema, markValidated, type ValidatedMandate } from "@leastpilot/schema";
 import { compileEgress } from "./egress.js";
 
 const m = (allow: string[]): ValidatedMandate => markValidated(MandateSchema.parse({
@@ -179,7 +179,7 @@ describe("the generated squid config", () => {
   });
 });
 
-// Task 5.1 (b). In a sandboxed run, `mandate serve` and the GitHub MCP server
+// Task 5.1 (b). In a sandboxed run, `leastpilot serve` and the GitHub MCP server
 // both stay on the host, so the agent never needs the GitHub API itself -- and
 // squid sees only the CONNECT host, so any credential that did reach the
 // container would get every repository it can touch through an always-allowed

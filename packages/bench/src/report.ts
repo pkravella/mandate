@@ -1,6 +1,6 @@
-import { authorityCut, BASELINE_TOKEN } from "@mandate-dev/cli";
-import type { Score } from "@mandate-dev/replay";
-import type { Mandate } from "@mandate-dev/schema";
+import { authorityCut, BASELINE_TOKEN } from "@leastpilot/cli";
+import type { Score } from "@leastpilot/replay";
+import type { Mandate } from "@leastpilot/schema";
 import { CATEGORIES, TARGET_COMPOSITION, type Category } from "./tasks.js";
 
 /**
@@ -127,7 +127,7 @@ export function renderReport(
   const modesRun = MODES.filter((m) => results.some((r) => r.visibility === m));
   const multi = modesRun.length > 1;
 
-  say("# Mandate v0.1 benchmark report");
+  say("# LeastPilot v0.1 benchmark report");
   say();
 
   // ---- what this report is, before any number ------------------------
@@ -172,7 +172,7 @@ export function renderReport(
     + `(${Object.entries(BASELINE_TOKEN).map(([k, v]) => `${k}: ${v}`).join(", ")}), `
     + `counted as reachable (operation × repository) pairs, and reported against two `
     + `repository counts. **One repository** is the conservative figure: it is reproducible `
-    + `and credits Mandate with nothing for choosing the repository. `
+    + `and credits LeastPilot with nothing for choosing the repository. `
     + (wide === undefined || wide.count <= 1
       ? `No repository count was given for the PRD's baseline, the agent's usual static `
         + `token, so only the one-repository figure is reported.`
@@ -308,7 +308,7 @@ export function renderReport(
     say();
     if (b > 1) {
       say(`1. **Repository scoping**, ${repos(b)} to ${mRepos}. Any installation token `
-        + `limited to the task's repository gets this without Mandate; what Mandate adds is `
+        + `limited to the task's repository gets this without LeastPilot; what LeastPilot adds is `
         + `choosing that repository per task. It is most of the cut against ${repos(b)}.`);
     } else {
       say(`1. **Repository scoping** is not measured against a one-repository baseline.`);

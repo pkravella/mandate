@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { getOperation, type GhPermission } from "@mandate-dev/catalog";
-import { unwrap, type ValidatedMandate } from "@mandate-dev/schema";
+import { getOperation, type GhPermission } from "@leastpilot/catalog";
+import { unwrap, type ValidatedMandate } from "@leastpilot/schema";
 
 export type PermissionSet = Partial<Record<GhPermission, "read" | "write">>;
 
