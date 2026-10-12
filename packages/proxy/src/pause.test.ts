@@ -8,6 +8,7 @@ const deny = (clause: string, reason = "because"): Extract<Decision, { kind: "de
 const record = (clause: string, observed: Record<string, string> = {}) =>
   pauseRecord({
     mandateId: "fix-issue-42",
+    mandateHash: "b".repeat(64),
     decision: deny(clause),
     observed,
     now: new Date("2026-10-04T05:00:00.000Z"),
@@ -108,5 +109,16 @@ describe("pauseRecord", () => {
 
   it("survives a malformed max without proposing NaN", () => {
     expect(record("pull_request.create.max", { max: "lots" }).widenRequest?.addGrant.max).toBe(1);
+  });
+});
+
+describe("pauseRecord names the exact mandate", () => {
+  it("carries the mandate's hash, and so does its widen request", () => {
+    const r = pauseRecord({
+      mandateId: "fix-issue-42", mandateHash: "c".repeat(64),
+      decision: deny("contents.write.branches"), observed: { branch: "hotfix/x" },
+    });
+    expect(r.mandateHash).toBe("c".repeat(64));
+    expect(r.widenRequest?.mandateHash).toBe("c".repeat(64));
   });
 });

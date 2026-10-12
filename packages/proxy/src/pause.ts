@@ -24,6 +24,7 @@ export { widenRefusal } from "@leastpilot/schema";
  */
 export function pauseRecord(args: {
   readonly mandateId: string;
+  readonly mandateHash: string;
   readonly decision: Extract<Decision, { kind: "deny" }>;
   readonly observed: Readonly<Record<string, string>>;
   readonly now?: Date;
@@ -35,6 +36,7 @@ export function pauseRecord(args: {
   const base = {
     at: (args.now ?? new Date()).toISOString(),
     mandateId: args.mandateId,
+    mandateHash: args.mandateHash,
     tool,
     clause,
     reason,
@@ -90,6 +92,7 @@ export function pauseRecord(args: {
     ...base,
     widenRequest: {
       mandateId: args.mandateId,
+      mandateHash: args.mandateHash,
       action: action.length > 0 ? action : tool,
       addGrant: delta.data,
       justification: `${tool} was denied by ${clause}: ${reason}`,

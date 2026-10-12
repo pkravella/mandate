@@ -5,6 +5,7 @@ import {
 
 const request = {
   mandateId: "fix-issue-42",
+  mandateHash: "a".repeat(64),
   action: "contents.write",
   addGrant: { action: "contents.write", paths: ["tests/**"] },
   justification: "the fix needs a test",
@@ -93,6 +94,7 @@ describe("widenRequestOf", () => {
     const r = widenRequestOf(WidenInputSchema.parse({
       at: "2026-10-06T00:00:00.000Z",
       mandateId: "fix-issue-42",
+      mandateHash: "a".repeat(64),
       tool: "create_or_update_file",
       clause: "contents.write.paths",
       reason: "path tests/a.ts is outside the granted paths src/**",
@@ -111,6 +113,7 @@ describe("widenRequestOf", () => {
     const r = widenRequestOf(WidenInputSchema.parse({
       at: "2026-10-06T00:00:00.000Z",
       mandateId: "fix-issue-42",
+      mandateHash: "a".repeat(64),
       tool: "merge_pull_request",
       clause: "mandate.grants",
       reason: "merge_pull_request is not granted",
@@ -128,6 +131,7 @@ describe("widenRequestOf", () => {
     const r = widenRequestOf(WidenInputSchema.parse({
       at: "2026-10-06T00:00:00.000Z",
       mandateId: "fix-issue-42",
+      mandateHash: "a".repeat(64),
       tool: "create_or_update_file",
       clause: "contents.write.paths",
       reason: "path tests/a.ts is outside the granted paths src/**",
@@ -142,6 +146,7 @@ describe("widenRequestOf", () => {
     const r = widenRequestOf(WidenInputSchema.parse({
       at: "2026-10-06T00:00:00.000Z",
       mandateId: "fix-issue-42",
+      mandateHash: "a".repeat(64),
       tool: "create_or_update_file",
       clause: "contents.write.denyPaths",
       reason: "path .github/workflows/ci.yml is excluded",
@@ -154,5 +159,24 @@ describe("widenRequestOf", () => {
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error("expected a refusal");
     expect(r.refusal).toMatch(/floor|deny/i);
+  });
+});
+
+// Phase 8: a mandate id is a slug of the task's first words, so two tasks can
+// share one. The request names the exact mandate it was made for by hash.
+describe("a widen request names the exact mandate it was made for", () => {
+  const H = "a".repeat(64);
+  const { mandateHash: _drop, ...noHash } = { ...request, mandateHash: H };
+
+  it("accepts a request carrying the mandate's hash", () => {
+    expect(WidenRequestSchema.safeParse({ ...request, mandateHash: H }).success).toBe(true);
+  });
+
+  it("refuses one without it", () => {
+    expect(WidenRequestSchema.safeParse(noHash).success).toBe(false);
+  });
+
+  it("refuses a hash that is not 64 hex characters", () => {
+    expect(WidenRequestSchema.safeParse({ ...request, mandateHash: "abc" }).success).toBe(false);
   });
 });

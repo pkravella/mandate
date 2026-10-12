@@ -8,6 +8,7 @@ import {
 } from "@leastpilot/compiler";
 import {
   createProxyServer, makeArgumentEnforcer, Recorder, type Decision, type GraphSink,
+  type PauseRecord,
 } from "@leastpilot/proxy";
 
 /**
@@ -54,6 +55,8 @@ export interface SessionOptions {
    * after `close`, so a call still in flight comes back before the seal.
    */
   readonly sink?: GraphSink;
+  /** Every denial as a pause record (R10). See the proxy's `onPause`. */
+  readonly onPause?: (p: PauseRecord) => void;
 }
 
 export interface Session {
@@ -124,6 +127,7 @@ export async function openSession(opts: SessionOptions): Promise<Session> {
       enforceArguments: makeArgumentEnforcer(rules),
       recorder,
       ...(opts.onDecision === undefined ? {} : { onDecision: opts.onDecision }),
+      ...(opts.onPause === undefined ? {} : { onPause: opts.onPause }),
       ...(opts.toolVisibility === undefined ? {} : { toolVisibility: opts.toolVisibility }),
     });
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  MandateSchema, type Mandate, type ProposedMandate, type WidenRequest,
+  MandateSchema, mandateHash, type Mandate, type ProposedMandate, type WidenRequest,
 } from "@leastpilot/schema";
 import { loadCeiling, validate } from "@leastpilot/validator";
 import { applyWiden, runWiden, type WidenArgs } from "./commands/widen.js";
@@ -36,6 +36,7 @@ const current: Mandate = MandateSchema.parse({
 
 const req = (over: Partial<WidenRequest> = {}): WidenRequest => ({
   mandateId: "fix-issue-42",
+  mandateHash: mandateHash(current),
   action: "contents.write",
   addGrant: { action: "contents.write", paths: ["tests/**"] },
   justification: "the fix needs a test",
@@ -104,6 +105,7 @@ describe("applyWiden", () => {
     let caught: unknown;
     try {
       applyWiden(withRead, req({
+      mandateHash: mandateHash(withRead),
         action: "repo.read",
         addGrant: { action: "repo.read", paths: ["src/**"] },
       }));
@@ -147,11 +149,13 @@ describe("applyWiden", () => {
       ],
     });
     const up = applyWiden(withMax, req({
+      mandateHash: mandateHash(withMax),
       action: "pull_request.create",
       addGrant: { action: "pull_request.create", max: 3 },
     }));
     expect(up.grants.find((g) => g.action === "pull_request.create")?.max).toBe(3);
     const down = applyWiden(withMax, req({
+      mandateHash: mandateHash(withMax),
       action: "pull_request.create",
       addGrant: { action: "pull_request.create", max: 1 },
     }));
@@ -241,6 +245,7 @@ destinations:
     const r = run({
       at: "2026-10-06T00:00:00.000Z",
       mandateId: "fix-issue-42",
+      mandateHash: mandateHash(current),
       tool: "create_or_update_file",
       clause: "contents.write.paths",
       reason: "path tests/a.ts is outside the granted paths src/**",
@@ -255,6 +260,7 @@ destinations:
     const r = run({
       at: "2026-10-06T00:00:00.000Z",
       mandateId: "fix-issue-42",
+      mandateHash: mandateHash(current),
       tool: "create_or_update_file",
       clause: "contents.write.denyPaths",
       reason: "path .github/workflows/ci.yml is excluded",
@@ -292,5 +298,14 @@ destinations:
       (s) => chunks.push(s),
     );
     expect(code).toBe(2);
+  });
+});
+
+describe("applyWiden: the mandate the request was made for", () => {
+  // Two tasks opening with the same words get the same id; the hash tells
+  // their mandates apart.
+  it("refuses a request made for another mandate that shares this one's id", () => {
+    expect(() => applyWiden(current, req({ mandateHash: "d".repeat(64) })))
+      .toThrow(/different mandate/);
   });
 });
