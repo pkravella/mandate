@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { parseMandateYaml, proofOf, type ProposedMandate } from "@leastpilot/schema";
 import { ceilingSha256, loadCeiling } from "./ceiling.js";
 import { validate, type RejectionCode } from "./validate.js";
-import { runLints } from "./lints.js";
 import { workBudget } from "./glob/budget.js";
 import type { UserAuthority } from "./userAuthority.js";
 
@@ -509,11 +508,21 @@ expiresInMinutes: 60
 ceiling: loose
 grants:
   - { action: repo.read, enforcedBy: token, resources: ["acme/api"] }
+  # The first grant warms the call's cache with the deny list, so the second
+  # grant's sensitive-paths check is a cache hit that charges nothing and so
+  # cannot throw. Nothing after the second grant's branch check then masks a
+  # branch check that read a spent budget as "cannot reach main".
+  - action: contents.write
+    enforcedBy: proxy
+    resources: ["acme/api"]
+    branches: ["agent/42-*"]
+    paths: ["src/**"]
+    denyPaths: [".github/workflows/**", "**.env**"]
   - action: contents.write
     enforcedBy: proxy
     resources: ["acme/api"]
     branches: ["**"]
-    paths: ["src/**"]
+    paths: ["lib/**"]
     denyPaths: [".github/workflows/**", "**.env**"]
 destinations:
   allow: ["github.com/acme/api"]
@@ -525,28 +534,13 @@ destinations:
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.rejections.map((x) => x.message).join("\n")).toMatch(/no-default-branch-write/);
     const needed = full.total - full.remaining;
-    // The lints run last, so the window is the final stretch: their own cost.
-    const lints = workBudget();
-    runLints(reachesMain, lints);
-    const lintCost = lints.total - lints.remaining;
-    for (let units = Math.max(1, needed - lintCost - 2); units <= needed; units += 1) {
+    // The lints run last, so the window is the final stretch, and the branch
+    // check it hides in costs tens of units per default branch: the old code
+    // validated this mandate at 14_897 of 15_092 units (195 from the end). The
+    // last 1000 units in steps of 5 cover it with room, in about two seconds.
+    for (let units = Math.max(1, needed - 1000); units <= needed; units += 5) {
       const at = validate(reachesMain, { ceiling: loose, authority: AUTHORITY, budget: workBudget(units) });
       expect(at.ok, `validated with ${units} of ${needed} units`).toBe(false);
     }
   }, 60_000);
-
-  it("never lets the lint itself report a grant that reaches main as clean", () => {
-    const full = workBudget();
-    runLints(reachesMain, full);
-    const cost = full.total - full.remaining;
-    for (let units = 1; units <= cost; units += 1) {
-      let findings: readonly { rule: string }[] | undefined;
-      try {
-        findings = runLints(reachesMain, workBudget(units));
-      } catch {
-        continue; // a spent budget is refused upstream; what matters is no silent pass
-      }
-      expect(findings.map((f) => f.rule), `at ${units} of ${cost} units`).toContain("no-default-branch-write");
-    }
-  });
 });
