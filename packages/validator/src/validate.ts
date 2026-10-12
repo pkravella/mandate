@@ -1,11 +1,11 @@
 import { atLeast, requireOperation, UnknownOperationError } from "@leastpilot/catalog";
 import {
-  destinationsWithin, markValidated,
+  destinationsWithin, markValidated, SENSITIVE_PATHS,
   type ContainmentProof, type Grant, type GrantProof,
   type ProposedMandate, type ValidatedMandate,
 } from "@leastpilot/schema";
-import { globMatches, globSetContains } from "./glob/contains.js";
-import { charge, workBudget, type WorkBudget } from "./glob/budget.js";
+import { dfaCache, globSetContains, memberOf, type DfaCache } from "./glob/contains.js";
+import { charge, workBudget, WorkBudgetError, type WorkBudget } from "./glob/budget.js";
 import { GlobParseError } from "./glob/parse.js";
 import { cedarAllows, rulesFor, type Ceiling, type CeilingRule } from "./ceiling.js";
 import { runLints } from "./lints.js";
@@ -59,6 +59,7 @@ export function validate(
   // Cedar witness draws on it, so a mandate cannot buy unbounded work by
   // spreading it across grants that each stay under the per-automaton cap.
   const budget = ctx.budget ?? workBudget();
+  const cache = sharedAutomata(proposed, ctx.ceiling);
 
   // ---- check 0: the requester is the identity whose authority is checked --
   // `requestedBy` used to be a label nothing compared with `ctx.authority`, so
@@ -102,7 +103,7 @@ export function validate(
       continue;
     }
 
-    const outcome = containedByAny(grant, candidates, budget);
+    const outcome = containedByAny(grant, candidates, budget, cache);
     if (outcome.kind === "undecidable") {
       rejections.push({ code: "undecidable", grantIndex: i, message: outcome.message });
       continue;
@@ -123,7 +124,7 @@ export function validate(
     // ---- layer 2: the independent Cedar cross-check ----------------------
     let cross: CrossCheck;
     try {
-      cross = crossCheck(ctx.ceiling, grant, outcome.rule, budget);
+      cross = crossCheck(ctx.ceiling, grant, outcome.rule, budget, cache);
     } catch (e) {
       if (e instanceof GlobParseError) {
         rejections.push({ code: "undecidable", grantIndex: i, message: e.message });
@@ -185,7 +186,16 @@ export function validate(
   // R4's lints run last: they catch a mandate that is technically inside a
   // loose ceiling but obviously wrong. A lint error is a rejection, not a
   // warning -- the point of the ceiling is that it may be loose and still safe.
-  for (const finding of runLints(proposed, budget)) {
+  // A budget spent inside a lint is a refusal as too complex, never a pass and
+  // never a lint finding: an undecided lint has found nothing either way.
+  let findings: ReturnType<typeof runLints> = [];
+  try {
+    findings = runLints(proposed, budget, cache);
+  } catch (e) {
+    if (!(e instanceof WorkBudgetError)) throw e;
+    rejections.push({ code: "undecidable", message: e.message });
+  }
+  for (const finding of findings) {
     if (finding.severity !== "error") continue;
     rejections.push({
       code: "lint",
@@ -267,9 +277,32 @@ function facetsFor(grant: Grant, rule: CeilingRule): FacetCheck[] {
   return facets;
 }
 
+/**
+ * One automaton cache for the call, over every pattern it can decide: the
+ * mandate's, the ceiling's, `**`, and the lint's sensitive paths. A pattern
+ * that does not parse means no cache; each grant then reports its own
+ * pattern as undecidable, as before.
+ */
+function sharedAutomata(proposed: ProposedMandate, ceiling: Ceiling): DfaCache | undefined {
+  const patterns: string[] = [...UNCONSTRAINED, ...SENSITIVE_PATHS];
+  for (const g of proposed.grants) {
+    patterns.push(...g.resources, ...(g.branches ?? []), ...(g.paths ?? []), ...(g.denyPaths ?? []));
+    if (g.base !== undefined) patterns.push(g.base);
+  }
+  for (const r of ceiling.rules) {
+    patterns.push(...r.resources, ...r.branches, ...r.paths, ...r.denyPaths, ...r.base);
+  }
+  try {
+    return dfaCache(patterns);
+  } catch (e) {
+    if (e instanceof GlobParseError) return undefined;
+    throw e;
+  }
+}
+
 /** A grant is contained if ANY single ceiling clause contains all of its facets. */
 function containedByAny(
-  grant: Grant, rules: readonly CeilingRule[], budget?: WorkBudget,
+  grant: Grant, rules: readonly CeilingRule[], budget?: WorkBudget, cache?: DfaCache,
 ): Outcome {
   let best: { readonly clause: string; readonly counterexample: string } | undefined;
 
@@ -281,6 +314,7 @@ function containedByAny(
           ...(facet.innerMinus !== undefined ? { innerMinus: facet.innerMinus } : {}),
           ...(facet.outerMinus !== undefined ? { outerMinus: facet.outerMinus } : {}),
           ...(budget !== undefined ? { budget } : {}),
+          ...(cache !== undefined ? { cache } : {}),
         });
         if (!verdict.ok) {
           failure = { counterexample: verdict.counterexample };
@@ -321,13 +355,13 @@ type CrossCheck =
  * the direction that over-grants.
  */
 function crossCheck(
-  ceiling: Ceiling, grant: Grant, rule: CeilingRule, budget?: WorkBudget,
+  ceiling: Ceiling, grant: Grant, rule: CeilingRule, budget?: WorkBudget, cache?: DfaCache,
 ): CrossCheck {
-  const repos = witnesses(grant.resources, [], budget);
+  const repos = witnesses(grant.resources, [], budget, cache);
   const branches = grant.branches !== undefined
-    ? witnesses(grant.branches, [], budget) : [undefined];
+    ? witnesses(grant.branches, [], budget, cache) : [undefined];
   const paths = grant.paths !== undefined
-    ? witnesses(grant.paths, grant.denyPaths, budget) : [undefined];
+    ? witnesses(grant.paths, grant.denyPaths, budget, cache) : [undefined];
   const permitted = new Set<string>();
 
   for (const repo of repos) {
@@ -367,13 +401,13 @@ function crossCheck(
  * it for the right reason and be misreported as layer disagreement.
  */
 function witnesses(
-  patterns: readonly string[], minus: readonly string[] = [], budget?: WorkBudget,
+  patterns: readonly string[], minus: readonly string[] = [], budget?: WorkBudget, cache?: DfaCache,
 ): string[] {
   const out: string[] = [];
   for (const p of patterns) {
     const candidate = p.replaceAll("**/", "w/").replaceAll("**", "w/w").replaceAll("*", "w");
-    if (!globMatches([p], candidate, budget)) continue;
-    if (minus.length > 0 && globMatches(minus, candidate, budget)) continue;
+    if (!memberOf([p], candidate, budget, cache)) continue;
+    if (minus.length > 0 && memberOf(minus, candidate, budget, cache)) continue;
     out.push(candidate);
   }
   return out.length > 0 ? out : ["w"];

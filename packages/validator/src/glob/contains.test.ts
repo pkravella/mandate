@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { globSetContains, globMatches } from "./contains.js";
+import { dfaCache, globSetContains, globMatches, memberOf } from "./contains.js";
 import { parseGlob, GlobParseError } from "./parse.js";
 
 const contains = (outer: string[], inner: string[]) => globSetContains(outer, inner);
@@ -242,6 +242,35 @@ describe("globMatches — cross-checked against a regex oracle", () => {
         const re = oracle(globs, s);
         if (dfa !== re) {
           disagreements.push(`${JSON.stringify(globs)} vs ${JSON.stringify(s)}: dfa=${dfa} regex=${re}`);
+        }
+      }
+    }
+    expect(disagreements.slice(0, 5)).toEqual([]);
+  });
+
+  // Phase 8: validate() decides over one alphabet shared by the whole call and
+  // reuses automata and verdicts. Every pair, with and without the deny sets,
+  // must decide the same way through the cache as without it, and through the
+  // cache's memberOf as through globMatches.
+  it("decides every pair the same through a call's shared cache", () => {
+    const minus = [[], ["**/.env*"], [".github/workflows/**", "a/b"]];
+    const cache = dfaCache([...PATTERN_SETS.flat(), ...minus.flat()]);
+    const disagreements: string[] = [];
+    for (const outer of PATTERN_SETS) {
+      for (const inner of PATTERN_SETS) {
+        for (const innerMinus of minus) {
+          for (const outerMinus of minus) {
+            const plain = globSetContains(outer, inner, { innerMinus, outerMinus });
+            const shared = globSetContains(outer, inner, { innerMinus, outerMinus, cache });
+            if (plain.ok !== shared.ok) {
+              disagreements.push(`${JSON.stringify([outer, inner, innerMinus, outerMinus])}`);
+            }
+          }
+        }
+      }
+      for (const v of SAMPLES.slice(0, 100)) {
+        if (memberOf(outer, v, undefined, cache) !== globMatches(outer, v)) {
+          disagreements.push(`memberOf ${JSON.stringify(outer)} ${JSON.stringify(v)}`);
         }
       }
     }

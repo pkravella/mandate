@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parseMandateYaml, proofOf, type ProposedMandate } from "@leastpilot/schema";
 import { ceilingSha256, loadCeiling } from "./ceiling.js";
 import { validate, type RejectionCode } from "./validate.js";
+import { runLints } from "./lints.js";
 import { workBudget } from "./glob/budget.js";
 import type { UserAuthority } from "./userAuthority.js";
 
@@ -312,7 +313,8 @@ destinations:
     expect(result.ok, JSON.stringify(result.ok ? [] : result.rejections)).toBe(true);
 
     const spent = budget.total - budget.remaining;
-    // Measured at 24_717 of 8_000_000. Asserting a share rather than the exact
+    // Measured at 24_717 of 8_000_000, 14_379 since Phase 8's per-call cache.
+    // Asserting a share rather than the exact
     // number, so a cheaper automaton is an improvement and not a failure.
     expect(spent).toBeGreaterThan(0);
     expect(spent / budget.total, `spent ${spent} of ${budget.total}`).toBeLessThan(0.01);
@@ -321,8 +323,8 @@ destinations:
   it("still validates a path-heavy mandate at the schema's 64-grant maximum", () => {
     // The worst legitimate case there is: every grant a separate package of a
     // monorepo, each with its own path and deny-path sets. Measured at 47% of
-    // the budget, which is the thinnest real headroom and the reason the
-    // constant is not lower.
+    // the budget, 6.7% since Phase 8's per-call cache; the deny-list cases
+    // below are now the thinnest.
     const grants = [
       { action: "repo.read", enforcedBy: "token", resources: ["acme/api"] },
       ...Array.from({ length: 63 }, (_, i) => ({
@@ -391,5 +393,160 @@ destinations:
 
     expect(result.ok, JSON.stringify(result.ok ? [] : result.rejections)).toBe(true);
     expect(elapsed, `took ${elapsed}ms`).toBeLessThan(2000);
+  });
+});
+
+// Phase 8: the headroom the plan worried about was on the wrong axis. Cost
+// grows with the deny list, and every grant rebuilt the same deny automaton:
+// a 19-grant monorepo with a six-pattern deny list spent 102% of the budget and
+// was refused as too complex; 63 such grants spent 341% (measured). A cache
+// scoped to one validate() call builds each shared automaton once.
+describe("the work budget and an ordinary deny list", () => {
+  const DENY = [".github/workflows/**", "**.env**", "**/secrets/**", "**/*.pem", "**/*.key", "infra/**"];
+  const monorepo = (packages: number): ProposedMandate => parseMandateYaml(JSON.stringify({
+    mandate: "monorepo-wide",
+    task: "Refactor the retry helper across every package",
+    requestedBy: "user:alice",
+    expiresInMinutes: 60,
+    ceiling: "org-policy@v12",
+    grants: [
+      { action: "repo.read", enforcedBy: "token", resources: ["acme/api"] },
+      ...Array.from({ length: packages }, (_, i) => ({
+        action: "contents.write",
+        enforcedBy: "proxy",
+        resources: ["acme/api"],
+        branches: ["agent/42-*"],
+        paths: [`packages/p${i}/src/**`, `packages/p${i}/test/**`],
+        denyPaths: DENY,
+      })),
+    ],
+    destinations: { allow: ["github.com/acme/api"] },
+  }));
+
+  it.each([19, 63])("validates %i grants sharing a six-pattern deny list within the default budget", (n) => {
+    const budget = workBudget();
+    const result = validate(monorepo(n), { ceiling, authority: AUTHORITY, budget });
+    expect(result.ok, JSON.stringify(result.ok ? [] : result.rejections)).toBe(true);
+    const spent = budget.total - budget.remaining;
+    expect(spent / budget.total, `spent ${spent} of ${budget.total}`).toBeLessThan(0.5);
+  });
+
+  it("spends exactly the same on the same mandate, whatever ran before", () => {
+    const spend = (): number => {
+      const budget = workBudget();
+      validate(monorepo(19), { ceiling, authority: AUTHORITY, budget });
+      return budget.total - budget.remaining;
+    };
+    const first = spend();
+    validate(monorepo(4), { ceiling, authority: AUTHORITY, budget: workBudget() });
+    expect(spend()).toBe(first);
+  });
+});
+
+// Found measuring the above: a budget that ran out inside the sensitive-paths
+// lint was caught as an undecidable pattern and reported as "contents.write
+// does not exclude **.env**" -- for a grant whose deny list names it. Refused
+// either way; the reason given was false.
+describe("a budget that runs out says so", () => {
+  it("never blames a deny list that is there, at any budget", () => {
+    const proposed = parseMandateYaml(`
+mandate: m
+task: t
+requestedBy: user:alice
+expiresInMinutes: 60
+ceiling: org-policy@v12
+grants:
+  - { action: repo.read, enforcedBy: token, resources: ["acme/api"] }
+  - action: contents.write
+    enforcedBy: proxy
+    resources: ["acme/api"]
+    branches: ["agent/42-*"]
+    paths: ["src/**"]
+    denyPaths: [".github/workflows/**", "**.env**"]
+destinations:
+  allow: ["github.com/acme/api"]
+`);
+    const full = workBudget();
+    expect(validate(proposed, { ceiling, authority: AUTHORITY, budget: full }).ok).toBe(true);
+    const needed = full.total - full.remaining;
+    for (let units = 1; units < needed; units += Math.max(1, Math.floor(needed / 97))) {
+      const r = validate(proposed, { ceiling, authority: AUTHORITY, budget: workBudget(units) });
+      expect(r.ok, `at ${units} units`).toBe(false);
+      if (r.ok) continue;
+      for (const rej of r.rejections) {
+        expect(rej.message, `at ${units} units`).not.toMatch(/does not exclude/);
+      }
+      expect(r.rejections.some((x) => x.code === "undecidable"), `at ${units} units`).toBe(true);
+    }
+  });
+});
+
+// Worse than a false reason: the default-branch lint's membership check
+// degraded to "no match" on any undecidable pattern, and a spent budget is
+// one. Under a ceiling loose enough to permit writes to main -- the case that
+// lint exists for -- a mandate sized to run the budget out at that lint would
+// validate. The budget is deterministic, so the size can be found.
+describe("a budget that runs out inside the default-branch lint", () => {
+  const loose = loadCeiling(
+    "loose.cedar",
+    `@id("allow-read")
+permit (principal, action == Mandate::Action::"repo.read", resource)
+when { resource.repo like "acme/*" };
+
+@id("allow-writes-anywhere")
+permit (principal, action == Mandate::Action::"contents.write", resource)
+when { resource.repo like "acme/*" }
+unless { context has path && (context.path like ".github/workflows/*" || context.path like "*.env*") };
+`,
+    CEILING_FILES[1],
+    CEILING_FILES[2],
+  );
+  const reachesMain = parseMandateYaml(`
+mandate: m
+task: t
+requestedBy: user:alice
+expiresInMinutes: 60
+ceiling: loose
+grants:
+  - { action: repo.read, enforcedBy: token, resources: ["acme/api"] }
+  - action: contents.write
+    enforcedBy: proxy
+    resources: ["acme/api"]
+    branches: ["**"]
+    paths: ["src/**"]
+    denyPaths: [".github/workflows/**", "**.env**"]
+destinations:
+  allow: ["github.com/acme/api"]
+`);
+
+  it("refuses a grant that reaches main, at every budget", () => {
+    const full = workBudget();
+    const r = validate(reachesMain, { ceiling: loose, authority: AUTHORITY, budget: full });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.rejections.map((x) => x.message).join("\n")).toMatch(/no-default-branch-write/);
+    const needed = full.total - full.remaining;
+    // The lints run last, so the window is the final stretch: their own cost.
+    const lints = workBudget();
+    runLints(reachesMain, lints);
+    const lintCost = lints.total - lints.remaining;
+    for (let units = Math.max(1, needed - lintCost - 2); units <= needed; units += 1) {
+      const at = validate(reachesMain, { ceiling: loose, authority: AUTHORITY, budget: workBudget(units) });
+      expect(at.ok, `validated with ${units} of ${needed} units`).toBe(false);
+    }
+  }, 60_000);
+
+  it("never lets the lint itself report a grant that reaches main as clean", () => {
+    const full = workBudget();
+    runLints(reachesMain, full);
+    const cost = full.total - full.remaining;
+    for (let units = 1; units <= cost; units += 1) {
+      let findings: readonly { rule: string }[] | undefined;
+      try {
+        findings = runLints(reachesMain, workBudget(units));
+      } catch {
+        continue; // a spent budget is refused upstream; what matters is no silent pass
+      }
+      expect(findings.map((f) => f.rule), `at ${units} of ${cost} units`).toContain("no-default-branch-write");
+    }
   });
 });
