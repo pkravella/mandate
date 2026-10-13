@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Command, CommanderError } from "commander";
 import { runValidate, type ValidateArgs } from "./commands/validate.js";
@@ -93,10 +93,21 @@ const PAUSES_HELP =
 const AUDIT_LOG_HELP = "write a signed log of the session here as it happens (R16), signed with "
   + "LEASTPILOT_AUDIT_KEY_PATH; never over an existing file";
 
+/**
+ * The CLI package's own version, read from the package.json beside `dist/`.
+ * Both a checkout and an npm install have it there, and npm always packs it.
+ */
+function packageVersion(): string {
+  const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  };
+  return manifest.version;
+}
+
 /** Only runs when this file is the entry point, so importing it is side-effect free. */
 export function main(argv: readonly string[]): void {
   const program = new Command();
-  program.name("leastpilot").description("Task-scoped authority for AI agents").version("0.1.0");
+  program.name("leastpilot").description("Task-scoped authority for AI agents").version(packageVersion());
   program.exitOverride();
 
   program
