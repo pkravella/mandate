@@ -7,7 +7,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { unreachableOperations } from "@leastpilot/catalog";
+import { toolsetsFor, unreachableOperations } from "@leastpilot/catalog";
+import { dockerUpstreamCommand } from "./session.js";
 import { loadCeiling, validate, type UserAuthority } from "@leastpilot/validator";
 import {
   compileRules, enforcementReport, githubAppDeps, mintToken, revokeToken,
@@ -108,11 +109,11 @@ describe.skipIf(!live)("the whole loop, live", () => {
 
     try {
       // ---- 4. the real github-mcp-server behind the proxy ---------------
+      const c = dockerUpstreamCommand(toolsetsFor(mandate.grants.map((g) => g.action)));
       const transport = new StdioClientTransport({
-        command: "docker",
-        args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
-          "ghcr.io/github/github-mcp-server:latest"],
-        env: { ...process.env, GITHUB_PERSONAL_ACCESS_TOKEN: minted.token } as Record<string, string>,
+        command: c.command,
+        args: c.args,
+        env: { ...process.env, ...c.env, GITHUB_PERSONAL_ACCESS_TOKEN: minted.token } as Record<string, string>,
       });
       upstream = new Client({ name: "mandate-upstream", version: "0.1.0" });
       await upstream.connect(transport);
