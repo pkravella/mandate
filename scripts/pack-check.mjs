@@ -96,8 +96,7 @@ try {
     cwd: inst, encoding: "utf8",
   });
   if (npm.status !== 0) {
-    fail(`npm install of the tarballs exited ${npm.status}:\n${npm.stderr}`);
-    throw new Error("cannot continue without an install");
+    throw new Error(`npm install of the tarballs exited ${npm.status}:\n${npm.stderr}`);
   }
   ok("installed outside the workspace");
   const BIN = join(inst, "node_modules", ".bin", "leastpilot");
@@ -148,11 +147,14 @@ try {
   const expected = join(inst, "node_modules", "@leastpilot", "cli", "sandbox");
   if (sb.status !== 0) fail(`leastpilot sandbox build exited ${sb.status}:\n${sb.stderr}`);
   else if (argv[0] !== "build" || !argv.includes("mandate-sandbox")) fail(`docker got ${JSON.stringify(argv)}`);
+  else if (!existsSync(join(context, "Dockerfile"))) fail(`docker's build context ${context} has no Dockerfile`);
   else if (realpathSync(context) !== realpathSync(expected)) {
     fail(`docker's build context is ${context}, not the installed package's ${expected}`);
   } else ok("sandbox build uses the installed package's sandbox");
 } catch (e) {
-  if (failures.length === 0) fail(String(e instanceof Error ? e.message : e));
+  // Always recorded: a throw after earlier failures still means a later check
+  // never ran, and that must not read as one that passed.
+  fail(`stopped early: ${e instanceof Error ? e.message : String(e)}`);
 } finally {
   if (keep) console.log(`kept ${work}`);
   else rmSync(work, { recursive: true, force: true });
