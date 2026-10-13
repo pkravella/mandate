@@ -5,7 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import type { MintDeps } from "@leastpilot/compiler";
 import { proofOf } from "@leastpilot/schema";
 import {
-  AuditLog, AuditLogError, type AuditKey, type Decision, type PauseRecord,
+  AuditLog, AuditLogError, widenRefusal, type AuditKey, type Decision, type PauseRecord,
 } from "@leastpilot/proxy";
 import { auditInputs } from "./audit.js";
 import {
@@ -354,7 +354,9 @@ function pauseWriter(args: ServeArgs, log: (s: string) => void): (p: PauseRecord
     // The tool name is the agent's: a `mandate.grants` denial carries whatever
     // it called. It never decides where the file goes.
     const tool = p.tool.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
-    const path = join(dir, `${p.at.replace(/[:.]/g, "-")}-${String(seq).padStart(3, "0")}-${tool}.json`);
+    // The pid keeps two serves sharing a directory from ever choosing one name.
+    const path = join(dir,
+      `${p.at.replace(/[:.]/g, "-")}-${process.pid}-${String(seq).padStart(3, "0")}-${tool}.json`);
     // Agent text reaches the operator's terminal JSON-quoted, so a newline or
     // an escape sequence in it cannot forge or erase a line.
     const said = `Paused ${JSON.stringify(p.tool)} at ${p.clause}: ${JSON.stringify(p.reason)}`;
@@ -367,10 +369,22 @@ function pauseWriter(args: ServeArgs, log: (s: string) => void): (p: PauseRecord
     }
     log(`${said}. Pause record: ${path}`);
     if (p.widenRequest !== undefined) {
-      log(`  To ask for more scope, review and run: leastpilot widen ${args.file} ${path} `
-        + `--ceiling ${args.ceiling} --schema ${args.schema} --ceiling-destinations ${args.destinations} `
-        + `--as ${args.as}${args.repo !== undefined ? ` --repo ${args.repo}` : ""}`
-        + `${args.level !== undefined ? ` --level ${args.level}` : ""}`);
+      const argv = [
+        "leastpilot", "widen", args.file, path,
+        "--ceiling", args.ceiling, "--schema", args.schema, "--ceiling-destinations", args.destinations,
+        "--as", args.as,
+        ...(args.repo !== undefined ? ["--repo", args.repo] : []),
+        ...(args.level !== undefined ? ["--level", args.level] : []),
+      ];
+      log(`  To ask for more scope, review and run: ${argv.map(shellQuote).join(" ")}`);
+    } else {
+      log(`  No widen offered: ${widenRefusal(p.clause) ?? "the call named nothing that can be proposed as "
+        + "a narrow pattern (several paths, a wildcard or a control character)"}.`);
     }
   };
+}
+
+/** One argument, quoted for a POSIX shell when it needs it. */
+function shellQuote(s: string): string {
+  return /^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`;
 }

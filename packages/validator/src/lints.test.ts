@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MandateSchema } from "@leastpilot/schema";
 import { runLints, hasLintErrors, LINT_RULES, SIDE_EFFECTING } from "./lints.js";
+import { workBudget, WorkBudgetError } from "./glob/budget.js";
 import { requireOperation } from "@leastpilot/catalog";
 
 const mandate = (grants: unknown[], over: Record<string, unknown> = {}) =>
@@ -217,5 +218,18 @@ describe("enforcement-overclaim on base and max", () => {
   it("still says nothing for a grant with no facets at all", () => {
     expect(rules([{ action: "repo.read", enforcedBy: "token", resources: ["acme/api"] }]))
       .toEqual([]);
+  });
+});
+
+// Phase 8: a spent budget is not an undecidable pattern. Read as one, the
+// default-branch lint passed a grant it had not decided; it now propagates,
+// and validate() refuses the mandate as too complex.
+describe("runLints on a spent budget", () => {
+  it("throws rather than reporting a finding it did not decide", () => {
+    const m = mandate([{
+      action: "contents.write", enforcedBy: "proxy", resources: ["acme/api"],
+      branches: ["agent/42-*"], paths: ["src/**"], denyPaths: SAFE_DENY,
+    }]);
+    expect(() => runLints(m, workBudget(1))).toThrow(WorkBudgetError);
   });
 });

@@ -44,6 +44,11 @@ export interface SessionOptions {
    * loop testable for nothing.
    */
   readonly upstream?: (token: string, toolsets: string) => Promise<Client>;
+  /**
+   * How long the upstream may take to list its tools at startup, across every
+   * page, while a minted token waits. Default 30 s.
+   */
+  readonly startupTimeoutMs?: number;
   readonly onDecision?: (d: Decision) => void;
   /**
    * The proxy's `toolVisibility`. The benchmark's measurement mode offers
@@ -137,7 +142,23 @@ export async function openSession(opts: SessionOptions): Promise<Session> {
     // proxy offers only what upstream offers, so the agent would not see the
     // tool and the task would fail with nothing saying why. Refuse instead,
     // before the agent starts, naming what is missing.
-    const exposed = (await listAllUpstreamTools(upstream)).map((t) => t.name);
+    const startup = opts.startupTimeoutMs ?? 30_000;
+    let listed: Awaited<ReturnType<typeof listAllUpstreamTools>>;
+    const deadline = AbortSignal.timeout(startup);
+    try {
+      listed = await listAllUpstreamTools(upstream, { signal: deadline, timeout: startup });
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      // The first run of a pinned image pulls it inside `docker run`, which is
+      // the usual reason a fresh machine is slow here.
+      throw new Error(deadline.aborted
+        ? `the GitHub MCP server did not list its tools within ${startup / 1000} s (${why}). `
+          + `If its image is still downloading, run \`docker pull ${GITHUB_MCP_SERVER_IMAGE}\` `
+          + "and try again. Nothing was run."
+        : `the GitHub MCP server could not list its tools: ${why}. Nothing was run.`,
+      { cause: e });
+    }
+    const exposed = listed.map((t) => t.name);
     const unreachable = unreachableOperations(actions, exposed);
     if (unreachable.length > 0) {
       const named = unreachable.map((id) => {

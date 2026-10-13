@@ -386,9 +386,19 @@ describe("globMatches: one automaton per glob set", () => {
 
   it("checks 256 paths against 64 patterns in well under a second", () => {
     const many = Array.from({ length: 64 }, (_, k) => `pkg${k}/src/**/module-${k}/*.ts`);
+    const before = globCacheSize();
     const t0 = performance.now();
     for (let i = 0; i < 256; i++) globMatches(many, `src/components/feature-${i}/index.test.tsx`);
     expect(performance.now() - t0).toBeLessThan(1000);
+    // Deterministic, unlike the clock: 256 checks, at most one automaton.
+    expect(globCacheSize() - before).toBeLessThanOrEqual(1);
+  });
+
+  // A mandate may hold 64 grants, and a grant compiles to at most five glob
+  // sets (resources, branches, base, paths, denyPaths). A smaller bound cycled
+  // a maximal mandate's working set through the LRU at a 100% miss rate.
+  it("holds every glob set a maximal mandate can compile", () => {
+    expect(GLOB_CACHE_LIMIT).toBeGreaterThanOrEqual(64 * 5);
   });
 
   it("keeps a bounded number of automata", () => {

@@ -9,7 +9,10 @@
 #
 #   docker build -t mandate-sandbox sandbox
 #   docker run --rm --cap-add=NET_ADMIN \
-#     -e MANDATE_SQUID_CONF="$(mandate egress --mandate m.yaml)" \
+#     -e MANDATE_SQUID_CONF="$(node -e '...compileEgress(m).squidConf...')" \
+#
+# (There is no egress subcommand; `leastpilot run --sandbox` builds this for
+# you. README.md here shows the node one-liner in full.)
 #     mandate-sandbox <command>
 #
 # --cap-add=NET_ADMIN is required. Without it the iptables rules cannot be

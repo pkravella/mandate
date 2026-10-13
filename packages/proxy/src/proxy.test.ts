@@ -856,3 +856,22 @@ describe("proxy pause records", () => {
     expect(seen).toEqual([]);
   });
 });
+
+// Found by review: `observed` is what the call stated. The rule's limit is not
+// something a branch denial observed.
+describe("proxy pause records: what was observed", () => {
+  it("reports a limit only for a denial of that limit", async () => {
+    const { client } = await fakeUpstream();
+    const pauses: PauseRecord[] = [];
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+      onPause: (p) => pauses.push(p),
+    }));
+    await agent.callTool({
+      name: "create_pull_request",
+      arguments: { owner: "acme", repo: "api", head: "hotfix/x", base: "main", title: "t" },
+    });
+    expect(pauses[0]?.clause).toBe("pull_request.create.branches");
+    expect(pauses[0]?.observed["max"]).toBeUndefined();
+  });
+});

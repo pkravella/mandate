@@ -107,7 +107,9 @@ function annotate<T extends { readonly name: string; readonly description?: stri
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 
 /** Every upstream tool, following `nextCursor`. */
-export async function listAllUpstreamTools(upstream: Client): Promise<readonly ListedTool[]> {
+export async function listAllUpstreamTools(
+  upstream: Client, options?: { readonly signal?: AbortSignal; readonly timeout?: number },
+): Promise<readonly ListedTool[]> {
   const all: ListedTool[] = [];
   let cursor: string | undefined;
   // A malicious or broken upstream could cycle cursors forever. Bound it: the
@@ -115,8 +117,8 @@ export async function listAllUpstreamTools(upstream: Client): Promise<readonly L
   // fault, and stopping early only ever hides tools.
   for (let page = 0; page < 50; page += 1) {
     const result = cursor === undefined
-      ? await upstream.listTools()
-      : await upstream.listTools({ cursor });
+      ? await upstream.listTools(undefined, options)
+      : await upstream.listTools({ cursor }, options);
     all.push(...result.tools);
     if (result.nextCursor === undefined) break;
     cursor = result.nextCursor;
@@ -205,7 +207,8 @@ export function createProxyServer(deps: ProxyDeps): Server {
         try {
           deps.onPause(pauseRecord({
             mandateId: deps.rules.mandateId, mandateHash: deps.rules.mandateHash,
-            decision: verdict, observed: observedFor(tool, args, rule), now: now(),
+            decision: verdict, observed: observedFor(tool, args, clause.endsWith(".max") ? rule : undefined),
+            now: now(),
           }));
         } catch {
           // The record is for the reviewer; the refusal is what protects.

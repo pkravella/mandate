@@ -80,6 +80,10 @@ export interface WorkBudget {
  * call-wide alphabet, tried first, let one 300-character CJK path take 62
  * ordinary grants past the budget.
  *
+ * Budgeted membership checks (the Cedar probes, the lints) also charge less
+ * since Phase 8: their automata are built over the globs' own characters, not
+ * the probe's as well.
+ *
  * The axis that mattered was the deny list, not the grant count. The table
  * below records the derivation of the unit; its figures predate the cache.
  *

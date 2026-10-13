@@ -31,7 +31,7 @@ export interface Operation {
    * Verified against github-mcp-server (then v1.14.0, now GITHUB_MCP_SERVER_IMAGE
    * below) by listing its tools, which found two names that do not exist and a dependency nothing
    * documented: **the server's default toolsets expose 46 tools, and
-   * `GITHUB_TOOLSETS=all` exposes 91.** Seven operations here name tools that
+   * `GITHUB_TOOLSETS=all` exposes 91.** Six operations here name tools that
    * only appear once extra toolsets are enabled — see TOOLSET_REQUIRED below.
    *
    * An operation whose tools the running server does not expose is silently
@@ -324,10 +324,12 @@ export const TOOLSET_REQUIRED: Readonly<Record<string, string>> = {
  * The github-mcp-server the session runs, by digest. The catalog's tool names
  * and the proxy's argument checks rest on what this server accepts, so it is
  * named once, here, and never by a moving tag: `:latest` went from v1.14.0 to
- * v2.0.0 on 2026-10-06 with nobody choosing it. v2.0.2's input schemas for
- * every tool above match v1.14.0's (diffed from the server's own tool
- * snapshots); what it added is output schemas, which it sends only to clients
- * on MCP 2026-07-28 or later, and the proxy's SDK speaks 2025-11-25.
+ * v2.0.0 on 2026-10-06 with nobody choosing it. Against v1.14.0, v2.0.2 keeps
+ * every catalog tool's argument names, types and required sets (diffed from
+ * the server's own tool snapshots). It adds an `x-mcp-header` annotation on
+ * some `owner`/`repo` arguments, which stdio cannot carry, and output schemas,
+ * which it sends only to clients on MCP 2026-07-28 or later; the proxy's SDK
+ * speaks 2025-11-25.
  */
 export const GITHUB_MCP_SERVER_IMAGE =
   "ghcr.io/github/github-mcp-server:v2.0.2@sha256:ffced0d76e77428532a2ced185516992d77fd146d69eec2f244e6237d1a97796";

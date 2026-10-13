@@ -279,7 +279,7 @@ function refIsSuspicious(ref: string): boolean {
  * array of 10000 individually-legal paths took 5.6 s inside a single call
  * against a grant with both `paths` and `denyPaths`. Nothing was over-granted —
  * the attack is cost, the same shape as the validator's pattern flood — and
- * nothing bounded the array. Each check then built its own automaton; since
+ * nothing bounded the array. At the time each check built its own automaton; since
  * Phase 8 `globMatches` keeps one per glob set, and 256 paths against a
  * 64-pattern grant fell from 4.7 s to milliseconds (measured). The cap stays:
  * it bounds the work an argument can ask for whatever a check costs.

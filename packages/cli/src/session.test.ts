@@ -103,7 +103,9 @@ interface FakeUpstream {
  * plus one ungranted tool, unless `tools` says otherwise: a session now refuses
  * a grant the upstream has no tool for.
  */
-const fakeUpstream = (opts: { connectFails?: boolean; tools?: readonly string[] } = {}): FakeUpstream => {
+const fakeUpstream = (opts: {
+  connectFails?: boolean; tools?: readonly string[]; listing?: "hang" | "throw" | "cycle";
+} = {}): FakeUpstream => {
   let tokenSeen: string | undefined;
   let toolsetsSeen: string | undefined;
   let closed = false;
@@ -119,9 +121,14 @@ const fakeUpstream = (opts: { connectFails?: boolean; tools?: readonly string[] 
       const server = new Server(
         { name: "fake-github", version: "0" }, { capabilities: { tools: {} } },
       );
-      server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: tools.map((name) => ({ name, description: name, inputSchema: { type: "object" as const } })),
-      }));
+      server.setRequestHandler(ListToolsRequestSchema, async () => {
+        if (opts.listing === "hang") await new Promise(() => undefined);
+        if (opts.listing === "throw") throw new Error("upstream fell over");
+        return {
+          tools: tools.map((name) => ({ name, description: name, inputSchema: { type: "object" as const } })),
+          ...(opts.listing === "cycle" ? { nextCursor: "same" } : {}),
+        };
+      });
       server.setRequestHandler(CallToolRequestSchema, async () => ({
         content: [{ type: "text" as const, text: "ok" }],
       }));
@@ -377,8 +384,45 @@ describe("no moving tag for the upstream", () => {
     expect(files.length).toBeGreaterThan(100);
     const hits = files.flatMap((f) => {
       const text = readFileSync(new URL(f, root), "utf8");
-      return new RegExp("github-mcp-server" + ":latest").test(text) ? [f] : [];
+      // Every reference to the image must carry a version and a digest: a bare
+      // name, :latest, :main or :v2 all float.
+      const refs = text.match(/ghcr\.io\/github\/github-mcp-server[^\s"'`)]*/g) ?? [];
+      return refs.some((r) => !/^ghcr\.io\/github\/github-mcp-server:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/.test(r))
+        ? [f] : [];
     });
     expect(hits).toEqual([]);
+  });
+});
+
+// Found by review of the pinned upstream: the startup listing waited on the
+// SDK's default 60 s per page, up to 50 pages, holding a minted token.
+describe("openSession — an upstream that misbehaves at startup", () => {
+  it("gives up on a tool listing that never answers, and gives the token back", async () => {
+    const gh = fakeGithub();
+    const up = fakeUpstream({ listing: "hang" });
+    const t0 = Date.now();
+    await expect(openSession({ mandate: mandate(), github: gh.deps, upstream: up.connect, startupTimeoutMs: 200 }))
+      .rejects.toThrow(/did not list its tools within/);
+    expect(Date.now() - t0).toBeLessThan(3000);
+    expect(gh.revoked()).toBe(true);
+    expect(up.closed()).toBe(true);
+  });
+
+  it("gives the token back when the listing fails", async () => {
+    const gh = fakeGithub();
+    const up = fakeUpstream({ listing: "throw" });
+    await expect(openSession({ mandate: mandate(), github: gh.deps, upstream: up.connect }))
+      .rejects.toThrow(/could not list its tools: .*upstream fell over/);
+    expect(gh.revoked()).toBe(true);
+    expect(up.closed()).toBe(true);
+  });
+
+  it("stops following a cursor that never ends", async () => {
+    const gh = fakeGithub();
+    const session = await openSession({
+      mandate: mandate(), github: gh.deps, upstream: fakeUpstream({ listing: "cycle" }).connect,
+    });
+    await session.close();
+    expect(gh.revoked()).toBe(true);
   });
 });

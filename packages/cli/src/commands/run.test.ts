@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1044,5 +1044,49 @@ describe("leastpilot serve --pauses, against the agent", () => {
     expect(out).toMatch(/--pauses/);
     expect(out).toMatch(/[Nn]othing was minted/);
     expect(revokes).toBe(0);
+  });
+});
+
+// Found by review of the pause writer, second round.
+describe("leastpilot serve --pauses, for the operator", () => {
+  const spaced = join(tmp, "my mandates", "good.yaml");
+  mkdirSync(join(tmp, "my mandates"), { recursive: true });
+  writeFileSync(spaced, readFileSync(GOOD, "utf8"));
+
+  it("prints a widen command a shell runs as written", async () => {
+    const dir = join(tmp, "pauses-quoted");
+    const { out } = await serveWith({ file: spaced, pauses: dir }, {}, async (agent) => {
+      await agent.callTool({
+        name: "create_or_update_file",
+        arguments: { owner: "acme", repo: "api", branch: "agent/42-fix", path: "tests/a.ts", content: "x", message: "m" },
+      });
+    });
+    const record = join(dir, readdirSync(dir)[0] ?? "");
+    const q = (s: string): string => (/^[A-Za-z0-9_./:@%+=,-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`);
+    expect(out).toContain(`  To ask for more scope, review and run: leastpilot widen ${q(spaced)} ${q(record)} `
+      + `--ceiling ${q(CEILING)} --schema ${q(SCHEMA)} --ceiling-destinations ${q(DESTINATIONS)} `
+      + "--as alice --level push");
+  });
+
+  it("says why when it offers no widen", async () => {
+    const dir = join(tmp, "pauses-why");
+    const { out } = await serveWith({ pauses: dir }, {}, async (agent) => {
+      await agent.callTool({
+        name: "create_or_update_file",
+        arguments: { owner: "acme", repo: "api", branch: "agent/42-fix", path: "src/.env", content: "x", message: "m" },
+      });
+    });
+    expect(out).toMatch(/No widen offered: .*(floor|deny)/i);
+  });
+
+  it("names each record with its process, so two serves never share a name", async () => {
+    const dir = join(tmp, "pauses-pid");
+    await serveWith({ pauses: dir }, {}, async (agent) => {
+      await agent.callTool({
+        name: "create_or_update_file",
+        arguments: { owner: "acme", repo: "api", branch: "agent/42-fix", path: "tests/a.ts", content: "x", message: "m" },
+      });
+    });
+    expect(readdirSync(dir)[0]).toContain(`-${process.pid}-`);
   });
 });

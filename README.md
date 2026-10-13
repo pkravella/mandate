@@ -15,7 +15,9 @@ MCP gateways already enforce, and watches the run against it.
 > `LEASTPILOT_*` variables are new names; the old `MANDATE_*` ones are no
 > longer read. What it writes is still a mandate, so the mandate YAML, the
 > Cedar namespace `Mandate::`, `mandate-audit/1` and `mandate-approval/1` are
-> unchanged: old logs still verify and old ceilings still load.
+> unchanged: old logs still verify and old ceilings still load. A review, or
+> an approval, posted under the old comment command is not read: request the
+> review again with `/leastpilot`.
 
 > **Status: v0.1 plus Phases 5 and 6 of the post-MVP plan. The loop runs end
 > to end from one command, and is measured — but completion, write latency and
@@ -105,7 +107,9 @@ as the claim it is.
 
 A paused call can be re-reviewed with more scope. Run `serve` or `run` with
 `--pauses <dir>` and every denial is written there as a pause record, with the
-command to ask for more scope printed beside it. `leastpilot widen` takes that
+command to ask for more scope printed beside it (on your terminal under
+`--sandbox`; otherwise wherever the agent sends its MCP server's output, so
+read the directory). `leastpilot widen` takes that
 record and re-validates the whole mandate from scratch, so the agent can never
 grant itself anything. The record names the mandate by hash, and `widen`
 refuses it against any other mandate, including one with the same id:

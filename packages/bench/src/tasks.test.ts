@@ -13,7 +13,7 @@ const task = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   seed: ["src/retry.js", "test/retry.test.js"],
   expectedPaths: ["src/retry.js", "test/retry.test.js"],
   acceptance: { kind: "test", command: "node --test test/retry.test.js" },
-  provenance: { kind: "synthetic", note: "hand-authored for the Mandate benchmark" },
+  provenance: { kind: "synthetic", note: "hand-authored for the LeastPilot benchmark" },
   ...over,
 });
 
