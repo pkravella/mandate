@@ -16,7 +16,8 @@ export interface GlobSetOptions {
    */
   readonly budget?: WorkBudget;
   /**
-   * Automata shared by every decision in one `validate()` call. See DfaCache.
+   * Automata shared by every decision in one `validate()` call. See DfaCache:
+   * never reuse one across calls.
    */
   readonly cache?: DfaCache;
 }
@@ -34,7 +35,13 @@ export interface GlobSetOptions {
  * past the budget.)
  *
  * Scoped to one call and never shared between calls, so the same mandate
- * costs the same units whatever was validated before.
+ * costs the same units whatever was validated before. Never reuse one across
+ * calls: a verdict is cached by its pattern lists alone.
+ *
+ * It holds every automaton the call built until validate() returns -- up to
+ * roughly what the work budget allows, a few hundred MB at the 8M ceiling.
+ * Only the CLI validates today, once per process. Cap it before anything
+ * long-lived validates; evicting would rebuild, and so recharge, the budget.
  */
 export interface DfaCache {
   readonly built: Map<string, Dfa>;
@@ -83,12 +90,15 @@ export function globSetContains(
 }
 
 /**
- * How many automata the unbudgeted path keeps. The proxy enforces one mandate,
- * so it meets a handful of glob sets (each rule's resources, branches, paths,
- * denyPaths); 64 is far above that, and the bound is what stops a cache keyed
- * on argument-derived input from being a leak.
+ * How many automata the unbudgeted path keeps. The keys are glob lists from
+ * the compiled rules of a validated mandate, never from a call's arguments. A
+ * mandate holds at most 64 grants and a grant compiles to at most five glob
+ * sets (resources, branches, base, paths, denyPaths), so 384 holds a maximal
+ * mandate's whole working set with room; 64 cycled it at a 100% miss rate.
+ * Memory stays bounded by what the validator already paid to build: every one
+ * of these automata was built once inside its work budget.
  */
-export const GLOB_CACHE_LIMIT = 64;
+export const GLOB_CACHE_LIMIT = 384;
 
 /** Most-recently-used last; Map keeps insertion order. */
 const cache = new Map<string, Dfa>();

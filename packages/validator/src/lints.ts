@@ -78,17 +78,18 @@ function containsSafely(
  * R4's lints. These run after containment and catch mandates that are
  * technically inside a loose ceiling but obviously wrong.
  *
- * Nothing here throws. A lint is never allowed to be the thing that crashes
- * validation: an undecidable pattern is already rejected by containment, and a
- * lint pass over one degrades to a finding.
+ * An undecidable pattern never throws here: containment has already rejected
+ * it, and a lint pass over one degrades to a finding. A spent work budget does
+ * throw (WorkBudgetError), because it decides nothing either way; validate()
+ * turns it into a refusal as too complex.
  */
 /**
  * `budget` is optional and shared with the containment decisions in the same
  * `validate()` call. The lints run even when a grant has already been rejected
  * -- more reasons are better than fewer -- so an unmetered lint pass over a
  * pattern flood would spend the time the budget just refused to spend. A
- * budget error degrades here the same way an unparseable pattern does, to "not
- * contained", which is still a lint error and still a rejection.
+ * budget error is not degraded: read as "no match", the default-branch lint
+ * passed a grant it had not decided (Phase 8). It propagates.
  */
 export function runLints(m: Mandate, budget?: WorkBudget, cache?: DfaCache): readonly LintFinding[] {
   const out: LintFinding[] = [];

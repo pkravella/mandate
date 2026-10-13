@@ -158,11 +158,16 @@ from `leastpilot audit keygen --out <path>`, and check it with
 
 ## 4. Widen, when a mandate was too small
 
-A refused call produces a pause record naming the clause it hit. If the task
-genuinely needs that operation, re-validate with the widen applied:
+Run `serve` or `run` with `--pauses <dir>` and each refused call is written
+there as a pause record naming the clause it hit; without the flag, no record
+is kept. `serve` also prints the `widen` command for each record, or why none
+is offered. Under `run --sandbox` that line reaches your terminal; without the
+sandbox, `serve` runs as the agent's MCP server and its output goes wherever
+the agent sends it, so read the directory instead. If the task genuinely needs
+that operation, re-validate with the widen applied:
 
 ```bash
-node packages/cli/dist/index.js widen mandate.yaml pause.json \
+node packages/cli/dist/index.js widen mandate.yaml pauses/<record>.json \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \

@@ -91,7 +91,8 @@ describe("no product name left over from Mandate", () => {
   it("documents no mandate command and no /mandate comment", () => {
     const commands = "validate|widen|serve|run|review|reviewed|export|audit|help|--help|--version";
     expect(hits(new RegExp(`\\bmandate (${commands})\\b`))).toEqual([]);
-    expect(hits(/\/mandate (approve|<|\{|')|'\/mandate |#\/mandate |<!-- mandate-review/)).toEqual([]);
+    // The bash form in the run job's digest gate escapes the spaces.
+    expect(hits(/\/mandate (approve|<|\{|')|'\/mandate |#\/mandate |\/mandate\\ approve|<!-- mandate-review/)).toEqual([]);
   });
 
   // Found by the final review: prose naming the binary, a security claim

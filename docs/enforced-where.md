@@ -174,8 +174,11 @@ digest) with `GITHUB_TOOLSETS` set from the grants (`TOOLSET_REQUIRED` names
 each one's toolset), then lists its tools. A grant with no tool on that list is
 refused before the agent starts, with the token revoked: the proxy filters
 `tools/list` to what the upstream offers, so the agent would never have seen
-it. v2.0.2's input schemas for every catalog tool match v1.14.0's; the upstream
-behaviour this table cites was measured at v1.14.0.
+it. Against v1.14.0, v2.0.2 keeps every catalog tool's argument names, types
+and required sets; it adds only annotations and output schemas. The upstream
+behaviour this table cites was measured at v1.14.0. The first session on a
+machine downloads the pinned image inside `docker run`; if that outlasts the
+30 s startup limit, the session says so, and `docker pull` beforehand avoids it.
 
 `get_me` is not in the catalog, and adding it would not help: it calls
 `GET /user`, which an installation token is refused (403 "Resource not

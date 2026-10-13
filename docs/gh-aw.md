@@ -62,7 +62,7 @@ branch is deleted.
 
 ## What maps to what
 
-| LeastPilot | gh-aw |
+| The mandate | gh-aw |
 | --- | --- |
 | The one repository every grant names | Where the workflow lives; `tools.github.allowed-repos` |
 | Read grants (`repo.read`, `contents.read`, `issue.read`, …) | `tools.github.allowed`: those operations' MCP tools; `read-only: true`; `permissions:` at `read` |
