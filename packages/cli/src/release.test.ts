@@ -117,6 +117,14 @@ describe("the pack check in CI", () => {
     const matrix = (job as unknown as { strategy?: { matrix?: { node?: unknown[] } } }).strategy?.matrix?.node;
     expect(matrix).toContain(22);
   });
+
+  // The Actions install the published CLI from a lockfile; a stale or broken
+  // one should fail a pull request, not the next user's workflow.
+  it("installs what the Actions install, signatures checked", () => {
+    const ci = workflow("ci.yml");
+    const runs = Object.values(ci.jobs).flatMap((j) => j.steps).map((s) => s.run ?? "");
+    expect(runs).toContain("bash scripts/install-action-cli.sh");
+  });
 });
 
 /**
