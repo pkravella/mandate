@@ -7,6 +7,7 @@ import { rulesForTool, type ProxyRules, type ToolRule } from "@leastpilot/compil
 import { attributeCall } from "./attribution.js";
 import { extractArgs } from "./enforce.js";
 import type { Recorder } from "./graph.js";
+import { pauseRecord, type PauseRecord } from "./pause.js";
 
 export type Decision =
   | { readonly kind: "allow"; readonly tool: string }
@@ -22,6 +23,13 @@ export interface ProxyDeps {
   readonly upstream: Client;
   readonly now?: () => Date;
   readonly onDecision?: (d: Decision) => void;
+  /**
+   * Every denial as a pause record (R10): the clause, the reason, what the
+   * call tried, and -- where widening is the right answer -- the request a
+   * reviewer can hand to `leastpilot widen`. Bound to the mandate by hash.
+   * A hook that throws is ignored: the call is refused either way.
+   */
+  readonly onPause?: (p: PauseRecord) => void;
   /**
    * Installed by Task 13. Called once per rule for the tool, because a tool can
    * be reached by several grants; the call is allowed if any rule accepts it.
@@ -99,7 +107,7 @@ function annotate<T extends { readonly name: string; readonly description?: stri
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 
 /** Every upstream tool, following `nextCursor`. */
-async function listAllUpstreamTools(upstream: Client): Promise<readonly ListedTool[]> {
+export async function listAllUpstreamTools(upstream: Client): Promise<readonly ListedTool[]> {
   const all: ListedTool[] = [];
   let cursor: string | undefined;
   // A malicious or broken upstream could cycle cursors forever. Bound it: the
@@ -114,6 +122,26 @@ async function listAllUpstreamTools(upstream: Client): Promise<readonly ListedTo
     cursor = result.nextCursor;
   }
   return all;
+}
+
+/**
+ * What a refused call tried, in the terms a widen is written in: the
+ * repository, branch, base and path it named, and the limit it ran into. A
+ * call naming several paths gets no path, because the record cannot say which
+ * one was refused, and an offer to add all of them would be wider than the
+ * denial.
+ */
+function observedFor(
+  tool: string, args: Record<string, unknown>, rule: ToolRule | undefined,
+): Record<string, string> {
+  const a = extractArgs(tool, args);
+  return {
+    ...(a.repo !== undefined ? { repo: a.repo } : {}),
+    ...(a.branch !== undefined ? { branch: a.branch } : {}),
+    ...(a.base !== undefined ? { base: a.base } : {}),
+    ...(a.paths.length === 1 && a.paths[0] !== undefined ? { path: a.paths[0] } : {}),
+    ...(rule?.max !== undefined ? { max: String(rule.max) } : {}),
+  };
 }
 
 const describeError = (e: unknown): string =>
@@ -166,13 +194,23 @@ export function createProxyServer(deps: ProxyDeps): Server {
      * catalog operation would put a value in the trace that is not one.
      */
     const refuse = (
-      clause: string, reason: string, action?: string,
+      clause: string, reason: string, action?: string, rule?: ToolRule,
     ): CallToolResult => {
       const verdict = { kind: "deny" as const, tool, clause, reason };
       report(verdict);
       deps.recorder?.recordDenial({
         tool, args, decision: verdict, ...(action !== undefined ? { action } : {}),
       });
+      if (deps.onPause !== undefined) {
+        try {
+          deps.onPause(pauseRecord({
+            mandateId: deps.rules.mandateId, mandateHash: deps.rules.mandateHash,
+            decision: verdict, observed: observedFor(tool, args, rule), now: now(),
+          }));
+        } catch {
+          // The record is for the reviewer; the refusal is what protects.
+        }
+      }
       return denial(tool, clause, reason);
     };
 
@@ -222,7 +260,10 @@ export function createProxyServer(deps: ProxyDeps): Server {
     if (permitted === undefined) {
       return lastDenial === undefined
         ? refuse("mandate.internal", "no rule reached a decision")
-        : refuse(lastDenial.decision.clause, lastDenial.decision.reason, lastDenial.rule.action);
+        : refuse(
+          lastDenial.decision.clause, lastDenial.decision.reason,
+          lastDenial.rule.action, lastDenial.rule,
+        );
     }
     report(permitted.decision);
 

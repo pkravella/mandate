@@ -50,6 +50,8 @@ export interface RunArgs extends PrepareArgs, SandboxArgs {
   readonly sandbox?: boolean | undefined;
   /** Where to write the action graph. R8. */
   readonly trace?: string | undefined;
+  /** R10: where serve writes pause records. Passed through as an absolute path. */
+  readonly pauses?: string | undefined;
   /** Print the permission diff before launching. */
   readonly diff?: boolean | undefined;
   /** R16: serve writes a signed log of the session here. See serve.ts. */
@@ -289,6 +291,7 @@ function serveArgvFor(args: RunArgs, self: string): string[] {
     ...(args.repo !== undefined ? ["--repo", args.repo] : []),
     ...(args.level !== undefined ? ["--level", args.level] : []),
     ...(args.trace !== undefined ? ["--trace", resolve(args.trace)] : []),
+    ...(args.pauses !== undefined ? ["--pauses", resolve(args.pauses)] : []),
     ...(args.auditLog !== undefined ? ["--audit-log", resolve(args.auditLog)] : []),
     ...(args.approval !== undefined ? ["--approval", args.approval] : []),
   ];

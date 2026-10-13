@@ -275,11 +275,14 @@ function refIsSuspicious(ref: string): boolean {
 /**
  * The most paths one call may name.
  *
- * Every path costs a containment decision, and a decision builds an automaton.
- * Measured before this cap: a `files` array of 10000 individually-legal paths
- * took 5.6 s inside a single call against a grant with both `paths` and
- * `denyPaths`. Nothing was over-granted — the attack is cost, the same shape as
- * the validator's pattern flood — and nothing bounded the array.
+ * Every path costs a membership check. Measured before this cap: a `files`
+ * array of 10000 individually-legal paths took 5.6 s inside a single call
+ * against a grant with both `paths` and `denyPaths`. Nothing was over-granted —
+ * the attack is cost, the same shape as the validator's pattern flood — and
+ * nothing bounded the array. Each check then built its own automaton; since
+ * Phase 8 `globMatches` keeps one per glob set, and 256 paths against a
+ * 64-pattern grant fell from 4.7 s to milliseconds (measured). The cap stays:
+ * it bounds the work an argument can ask for whatever a check costs.
  *
  * 256 is far above any real agent commit and the denial names the cap, so a
  * genuine bulk change is retried in batches rather than silently truncated.

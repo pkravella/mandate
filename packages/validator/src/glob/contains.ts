@@ -83,25 +83,56 @@ export function globSetContains(
 }
 
 /**
+ * How many automata the unbudgeted path keeps. The proxy enforces one mandate,
+ * so it meets a handful of glob sets (each rule's resources, branches, paths,
+ * denyPaths); 64 is far above that, and the bound is what stops a cache keyed
+ * on argument-derived input from being a leak.
+ */
+export const GLOB_CACHE_LIMIT = 64;
+
+/** Most-recently-used last; Map keeps insertion order. */
+const cache = new Map<string, Dfa>();
+
+/** The number of automata cached now. For tests. */
+export const globCacheSize = (): number => cache.size;
+
+/**
  * Whether a concrete string is matched by any of `globs`. This is the
  * membership primitive the proxy uses on real tool arguments, and the oracle
  * the containment tests check their counterexamples against.
+ *
+ * The automaton depends on the globs alone. The glob language has no
+ * character classes, so a character no glob names behaves exactly as
+ * `OTHER`, and `dfaAccepts` maps it there. (It used to add the value's own
+ * characters to the alphabet, which made every value build its own automaton:
+ * 18 ms a path under a 64-pattern grant, 4.7 s for one call at the proxy's
+ * 256-path cap.)
+ *
+ * Without a budget -- the proxy -- automata are cached by glob set, bounded by
+ * GLOB_CACHE_LIMIT. With one -- the validator -- they never are: a cache hit
+ * would skip the charge, and whether a mandate validates would then depend on
+ * what the process had decided before.
  */
 export function globMatches(
   globs: readonly string[], value: string, budget?: WorkBudget,
 ): boolean {
-  // Only the GLOBS are parsed for their alphabet. `value` is a concrete string,
-  // not a pattern, and passing it through alphabetOf meant parseGlob ran over
-  // it -- so any real filename containing a glob metacharacter threw
-  // GlobParseError from the middle of the proxy's enforcement path.
-  // `pages/[id].tsx` is an everyday filename in a Next.js repository.
-  //
-  // The value's literal characters are added directly below, which is what the
-  // alphabet actually needs; routing them through the parser was redundant as
-  // well as wrong.
-  const withValueChars = new Set(alphabetOf(globs));
-  for (const ch of value) withValueChars.add(ch);
-  return dfaAccepts(dfaFromGlobs(globs, [...withValueChars], budget), value);
+  if (budget !== undefined) {
+    return dfaAccepts(dfaFromGlobs(globs, alphabetOf(globs), budget), value);
+  }
+  const key = JSON.stringify(globs);
+  let dfa = cache.get(key);
+  if (dfa === undefined) {
+    // A throw (an undecidable pattern) caches nothing.
+    dfa = dfaFromGlobs(globs, alphabetOf(globs));
+    if (cache.size >= GLOB_CACHE_LIMIT) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
+  } else {
+    cache.delete(key);
+  }
+  cache.set(key, dfa);
+  return dfaAccepts(dfa, value);
 }
 
 /**

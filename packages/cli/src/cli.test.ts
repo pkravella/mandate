@@ -89,6 +89,10 @@ describe("leastpilot audit, through the binary", () => {
     },
   );
 
+  it.each(["serve --help", "run --help"])("offers --pauses: leastpilot %s", (line) => {
+    expect(leastpilot(...line.split(" ")).stdout).toContain("--pauses <dir>");
+  });
+
   it.each(["serve --help", "run --help"])("offers --audit-log: leastpilot %s", (line) => {
     expect(leastpilot(...line.split(" ")).stdout).toContain("--audit-log <path>");
   });

@@ -411,7 +411,7 @@ describe("proxy with argument enforcement — the phase 2 exit criterion", () =>
       onDecision: (d) => {
         if (d.kind !== "deny") return;
         pauses.push(pauseRecord({
-          mandateId: rules.mandateId, decision: d, observed: { branch: "main" },
+          mandateId: rules.mandateId, mandateHash: rules.mandateHash, decision: d, observed: { branch: "main" },
         }));
       },
     }));
@@ -434,7 +434,7 @@ describe("proxy with argument enforcement — the phase 2 exit criterion", () =>
       onDecision: (d) => {
         if (d.kind !== "deny") return;
         pauses.push(pauseRecord({
-          mandateId: rules.mandateId, decision: d,
+          mandateId: rules.mandateId, mandateHash: rules.mandateHash, decision: d,
           observed: { path: ".github/workflows/ci.yml" },
         }));
       },
@@ -808,5 +808,51 @@ describe("createProxyServer: a call is decided by the grant it actually is", () 
       expect((await write(agent, method)).isError, String(method)).toBe(true);
       expect(seen, String(method)).toEqual([]);
     }
+  });
+});
+
+// Phase 8: R10's offer was assembled only by the benchmark. The proxy now
+// builds the pause record itself, from the call it refused.
+describe("proxy pause records", () => {
+  const call = (agent: Client, branch: string) => agent.callTool({
+    name: "create_or_update_file",
+    arguments: { owner: "acme", repo: "api", branch, path: "src/a.ts", content: "x", message: "m" },
+  });
+
+  it("hands each denial to onPause, with what the call tried, bound to the mandate's hash", async () => {
+    const { client } = await fakeUpstream();
+    const pauses: PauseRecord[] = [];
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+      onPause: (p) => pauses.push(p),
+    }));
+    await call(agent, "hotfix/urgent");
+    expect(pauses).toHaveLength(1);
+    expect(pauses[0]?.clause).toBe("contents.write.branches");
+    expect(pauses[0]?.mandateHash).toBe(rules.mandateHash);
+    expect(pauses[0]?.widenRequest?.mandateHash).toBe(rules.mandateHash);
+    expect(pauses[0]?.widenRequest?.addGrant.branches).toEqual(["hotfix/urgent"]);
+  });
+
+  it("makes none for an allowed call", async () => {
+    const { client } = await fakeUpstream();
+    const pauses: PauseRecord[] = [];
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+      onPause: (p) => pauses.push(p),
+    }));
+    await call(agent, "agent/42-fix");
+    expect(pauses).toEqual([]);
+  });
+
+  it("still refuses the call when the pause hook throws", async () => {
+    const { client, seen } = await fakeUpstream();
+    const agent = await connectAgent(createProxyServer({
+      rules, upstream: client, enforceArguments: makeArgumentEnforcer(rules),
+      onPause: () => { throw new Error("disk full"); },
+    }));
+    const res = await call(agent, "hotfix/urgent");
+    expect(res.isError).toBe(true);
+    expect(seen).toEqual([]);
   });
 });

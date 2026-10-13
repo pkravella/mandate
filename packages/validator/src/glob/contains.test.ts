@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { dfaCache, globSetContains, globMatches, memberOf } from "./contains.js";
+import {
+  dfaCache, globSetContains, globMatches, globCacheSize, GLOB_CACHE_LIMIT, memberOf, workBudget,
+} from "./contains.js";
+import { alphabetOf, dfaAccepts, dfaFromGlobs } from "./dfa.js";
 import { parseGlob, GlobParseError } from "./parse.js";
 
 const contains = (outer: string[], inner: string[]) => globSetContains(outer, inner);
@@ -9,6 +12,14 @@ describe("parseGlob", () => {
     for (const bad of ["a?b", "a[bc]", "a{b,c}", "!a", "a(b)", "a|b", "a+b", "a@b", "a\\b"]) {
       expect(() => parseGlob(bad), bad).toThrow(GlobParseError);
     }
+  });
+  // U+0000 is the automaton's OTHER symbol, "any character no glob names". A
+  // glob naming it would match every unnamed character: `src/\0.ts` reads as
+  // one odd file and would allow every single-character `src/?.ts` in the
+  // proxy (found by the Phase 8 review of the glob cache).
+  it("rejects a NUL character, which the automaton reserves for every unnamed one", () => {
+    expect(() => parseGlob("src/\u0000.ts")).toThrow(GlobParseError);
+    expect(() => globMatches(["src/\u0000.ts"], "src/a.ts")).toThrow(GlobParseError);
   });
   it("rejects *** and empty patterns", () => {
     expect(() => parseGlob("a***b")).toThrow(GlobParseError);
@@ -319,5 +330,58 @@ describe("globMatches on values that are not patterns", () => {
   it("catches the deny-path case that matters", () => {
     expect(globMatches([".github/workflows/**"], ".github/workflows/[env].yml")).toBe(true);
     expect(globMatches(["**.env**"], "packages/[id]/.env.local")).toBe(true);
+  });
+});
+
+// Phase 8: the proxy rebuilt the automaton for every value it checked. Under a
+// mandate with 64 path patterns that was 18 ms per path and 4.7 s for one call
+// at the 256-path cap (measured). It now builds one per glob set and keeps a
+// bounded number of them; a budgeted call (the validator's) never uses them.
+describe("globMatches: one automaton per glob set", () => {
+  // The old construction: the value's own characters added to the alphabet.
+  const reference = (globs: readonly string[], value: string): boolean => {
+    const alphabet = new Set(alphabetOf(globs));
+    for (const ch of value) alphabet.add(ch);
+    return dfaAccepts(dfaFromGlobs(globs, [...alphabet]), value);
+  };
+  const globSets: readonly (readonly string[])[] = [
+    ["src/**"], ["**/.env*"], ["agent/*"], ["pages/*.tsx"], ["**/x/**", "a*b"], ["acme/api"],
+  ];
+  const values = [
+    "src/a.ts", "pages/[id].tsx", "src/\u00e9/\u00fc.ts", "a\u0000b", "agent/42", ".env",
+    "x/.env.local", "a/x/b", "ab", "aXb", "a/b", "acme/api", "acme/apiX", "", "/",
+  ];
+
+  it("decides every value exactly as an automaton built with the value's own characters", () => {
+    for (const globs of globSets) {
+      for (const value of values) {
+        expect(globMatches(globs, value), `${JSON.stringify(globs)} vs ${JSON.stringify(value)}`)
+          .toBe(reference(globs, value));
+      }
+    }
+  });
+
+  it("checks 256 paths against 64 patterns in well under a second", () => {
+    const many = Array.from({ length: 64 }, (_, k) => `pkg${k}/src/**/module-${k}/*.ts`);
+    const t0 = performance.now();
+    for (let i = 0; i < 256; i++) globMatches(many, `src/components/feature-${i}/index.test.tsx`);
+    expect(performance.now() - t0).toBeLessThan(1000);
+  });
+
+  it("keeps a bounded number of automata", () => {
+    expect(GLOB_CACHE_LIMIT).toBeGreaterThan(0);
+    for (let i = 0; i < GLOB_CACHE_LIMIT + 10; i++) globMatches([`p${i}/**`], "p1/x");
+    expect(globCacheSize()).toBeLessThanOrEqual(GLOB_CACHE_LIMIT);
+  });
+
+  it("charges a budget on every call, so a validation never depends on what ran before", () => {
+    globMatches(["src/**"], "src/a.ts");
+    const first = workBudget();
+    globMatches(["src/**"], "src/a.ts", first);
+    const second = workBudget();
+    globMatches(["src/**"], "src/a.ts", second);
+    const used = (b: { total: number; remaining: number }): number => b.total - b.remaining;
+    expect(used(first)).toBeGreaterThan(0);
+    expect(used(second)).toBe(used(first));
   });
 });

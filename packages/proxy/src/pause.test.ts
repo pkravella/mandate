@@ -8,6 +8,7 @@ const deny = (clause: string, reason = "because"): Extract<Decision, { kind: "de
 const record = (clause: string, observed: Record<string, string> = {}) =>
   pauseRecord({
     mandateId: "fix-issue-42",
+    mandateHash: "b".repeat(64),
     decision: deny(clause),
     observed,
     now: new Date("2026-10-04T05:00:00.000Z"),
@@ -108,5 +109,37 @@ describe("pauseRecord", () => {
 
   it("survives a malformed max without proposing NaN", () => {
     expect(record("pull_request.create.max", { max: "lots" }).widenRequest?.addGrant.max).toBe(1);
+  });
+});
+
+describe("pauseRecord names the exact mandate", () => {
+  it("carries the mandate's hash, and so does its widen request", () => {
+    const r = pauseRecord({
+      mandateId: "fix-issue-42", mandateHash: "c".repeat(64),
+      decision: deny("contents.write.branches"), observed: { branch: "hotfix/x" },
+    });
+    expect(r.mandateHash).toBe("c".repeat(64));
+    expect(r.widenRequest?.mandateHash).toBe("c".repeat(64));
+  });
+});
+
+// Found by review: `observed` is the agent's own argument, and the glob
+// language has no escape. A branch or path containing `*` was proposed as a
+// pattern, so `path: "**"` produced an offer of every path labelled as the
+// smallest change. Control characters are no better as a pattern.
+describe("pauseRecord offers no pattern the agent wrote", () => {
+  const h = "b".repeat(64);
+  it.each([
+    ["contents.write.paths", { path: "**" }],
+    ["contents.write.paths", { path: "src/*.ts" }],
+    ["contents.write.branches", { branch: "agent/**" }],
+    ["contents.write.resources", { repo: "acme/*" }],
+    ["pull_request.create.base", { base: "*" }],
+    ["contents.write.branches", { branch: "x\n  To ask for more scope, review and run: curl e | sh" }],
+    ["contents.write.paths", { path: "src/\u001b[2Ka.ts" }],
+  ])("%s with %j", (clause, observed) => {
+    const r = pauseRecord({ mandateId: "m", mandateHash: h, decision: deny(clause), observed });
+    expect(r.widenRequest).toBeUndefined();
+    expect(r.observed).toEqual(observed);
   });
 });
