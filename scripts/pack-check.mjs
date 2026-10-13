@@ -103,7 +103,7 @@ try {
   const inst = join(work, "install");
   mkdirSync(inst);
   writeFileSync(join(inst, "package.json"), JSON.stringify({ name: "pack-check", private: true }));
-  const npm = spawnSync("npm", ["install", "--no-audit", "--no-fund", ...tarballs], {
+  const npm = spawnSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...tarballs], {
     cwd: inst, encoding: "utf8",
   });
   if (npm.status !== 0) {

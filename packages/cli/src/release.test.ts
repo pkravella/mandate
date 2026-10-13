@@ -128,86 +128,143 @@ describe("the pack check in CI", () => {
 describe("the release workflow", () => {
   const release = workflow("release.yml");
   const jobs = Object.values(release.jobs);
-  const publishJob = jobs.find((j) => j.steps.some((s) => s.run?.includes("scripts/publish.mjs")));
-  const steps = publishJob?.steps ?? [];
+  const jobKey = (pred: (s: Step) => boolean): string | undefined =>
+    Object.entries(release.jobs).find(([, j]) => j.steps.some(pred))?.[0];
+  const buildKey = jobKey((s) => s.run?.includes("scripts/pack-check.mjs") ?? false);
+  const publishKey = jobKey((s) => s.run?.includes("scripts/publish.mjs") ?? false);
+  const buildJob = buildKey === undefined ? undefined : release.jobs[buildKey];
+  const publishJob = publishKey === undefined ? undefined : release.jobs[publishKey];
+  const build = buildJob?.steps ?? [];
+  const publish = publishJob?.steps ?? [];
 
   it("runs only on a version tag", () => {
     expect(Object.keys(release.on)).toEqual(["push"]);
     expect(release.on["push"]).toEqual({ tags: ["v*.*.*"] });
   });
 
-  // npm trusted publishing exchanges the job's OIDC token for a publish
-  // credential, so id-token: write is the one write this job needs.
-  it("grants nothing by default and the publish job exactly contents: read and id-token: write", () => {
+  // Every step of a job with id-token: write can mint the OIDC token, and the
+  // trusted publisher accepts it for the whole job. So the job that installs
+  // dependencies and runs 1400 tests must not hold it: a compromised
+  // dependency there could publish any version, with valid provenance. Found
+  // by the Task 9.1 review.
+  it("builds and checks in one job and publishes in another that needs it", () => {
+    expect(buildKey).toBeDefined();
+    expect(publishKey).toBeDefined();
+    expect(publishKey).not.toBe(buildKey);
+    const needs = (publishJob as unknown as { needs?: unknown }).needs;
+    expect([needs].flat()).toContain(buildKey);
+  });
+
+  it("grants nothing by default, the build job only contents: read", () => {
     expect(release.permissions).toEqual({});
+    expect(buildJob?.permissions).toEqual({ contents: "read" });
+  });
+
+  // npm trusted publishing exchanges the job's OIDC token for a publish
+  // credential, so id-token: write is the one write the publish job needs.
+  it("grants the publish job exactly contents: read and id-token: write", () => {
     expect(publishJob?.permissions).toEqual({ contents: "read", "id-token": "write" });
+  });
+
+  // The publish job runs no project code but publish.mjs, and installs nothing
+  // but a pinned npm: nothing from the dependency tree runs beside the token.
+  it("runs nothing in the publish job but a pinned npm and scripts/publish.mjs", () => {
+    const runs = publish.filter((s) => s.run !== undefined).map((s) => s.run!.trim());
+    expect(runs.length).toBe(2);
+    for (const r of runs) expect(r).toMatch(/^npm install -g npm@\S+$|^node scripts\/publish\.mjs \S+$/);
+    for (const s of publish.filter((x) => x.uses !== undefined)) {
+      expect(s.uses).toMatch(/^actions\/(checkout|setup-node|download-artifact)@/);
+    }
   });
 
   // The trusted publisher on npmjs.com names this environment, so a run
   // outside it gets no credential; protection rules on it are the owner's.
-  it("publishes from the npm environment", () => {
+  it("publishes from the npm environment, and builds outside it", () => {
     expect(publishJob?.environment).toBe("npm");
+    expect(buildJob?.environment).toBeUndefined();
   });
 
   it("pins every action to a commit", () => {
-    expect(steps.filter((s) => s.uses !== undefined).length).toBeGreaterThan(0);
-    for (const s of jobs.flatMap((j) => j.steps)) {
-      if (s.uses !== undefined) expect(s.uses, s.uses).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
-    }
+    const uses = jobs.flatMap((j) => j.steps).filter((s) => s.uses !== undefined);
+    expect(uses.length).toBeGreaterThan(0);
+    for (const s of uses) expect(s.uses, s.uses).toMatch(/^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/);
   });
 
   it("never interpolates an expression into a run block", () => {
-    expect(steps.filter((s) => s.run !== undefined).length).toBeGreaterThan(0);
-    for (const s of jobs.flatMap((j) => j.steps)) {
-      if (s.run !== undefined) expect(s.run, s.name ?? "?").not.toMatch(/\$\{\{/);
+    const runs = jobs.flatMap((j) => j.steps).filter((s) => s.run !== undefined);
+    expect(runs.length).toBeGreaterThan(0);
+    for (const s of runs) expect(s.run, s.name ?? "?").not.toMatch(/\$\{\{/);
+  });
+
+  it("checks out without leaving a credential in .git/config, in both jobs", () => {
+    for (const steps of [build, publish]) {
+      const checkout = steps.find((s) => s.uses?.startsWith("actions/checkout"));
+      expect(checkout?.with?.["persist-credentials"]).toBe(false);
     }
   });
 
-  it("checks out without leaving a credential in .git/config", () => {
-    const checkout = steps.find((s) => s.uses?.startsWith("actions/checkout"));
-    expect(checkout?.with?.["persist-credentials"]).toBe(false);
-  });
-
   it("refuses a tag that is not on main, and one that disagrees with the packages, before anything else", () => {
-    const onMain = indexOf(steps, (s) => s.run?.includes("merge-base --is-ancestor") ?? false);
-    const matches = indexOf(steps, (s) => s.run?.includes("scripts/release-version.mjs") ?? false);
-    const firstInstall = indexOf(steps, (s) => s.run?.includes("pnpm install") ?? false);
+    const onMain = indexOf(build, (s) => s.run?.includes("merge-base --is-ancestor") ?? false);
+    const matches = indexOf(build, (s) => s.run?.includes("scripts/release-version.mjs") ?? false);
+    const firstInstall = indexOf(build, (s) => s.run?.includes("pnpm install") ?? false);
     expect(onMain).toBeGreaterThan(-1);
     expect(matches).toBeGreaterThan(-1);
     expect(onMain).toBeLessThan(firstInstall);
     expect(matches).toBeLessThan(firstInstall);
   });
 
-  it("runs the gate and the pack check before it publishes", () => {
-    const publish = indexOf(steps, (s) => s.run?.includes("scripts/publish.mjs") ?? false);
+  it("runs the gate before the pack check", () => {
+    const pack = indexOf(build, (s) => s.run?.includes("scripts/pack-check.mjs") ?? false);
     for (const cmd of ["pnpm typecheck", "pnpm lint", "pnpm test", "pnpm build"]) {
-      const at = indexOf(steps, (s) => s.run === cmd);
+      const at = indexOf(build, (s) => s.run === cmd);
       expect(at, cmd).toBeGreaterThan(-1);
-      expect(at, cmd).toBeLessThan(publish);
+      expect(at, cmd).toBeLessThan(pack);
     }
-    const pack = indexOf(steps, (s) => s.run?.includes("scripts/pack-check.mjs") ?? false);
-    expect(pack).toBeGreaterThan(-1);
-    expect(pack).toBeLessThan(publish);
   });
 
   // One pack, checked and then published: a second pack could differ from
   // what the pack check installed and ran.
-  it("publishes the tarballs the pack check checked", () => {
-    const pack = steps.find((s) => s.run?.includes("scripts/pack-check.mjs"))?.run ?? "";
-    const publish = steps.find((s) => s.run?.includes("scripts/publish.mjs"))?.run ?? "";
-    const out = /pack-check\.mjs --out (\S+)/.exec(pack)?.[1];
+  // `with:` spells the runner's temp dir as an expression, `run:` as the
+  // environment variable (an expression there would be an injection).
+  const samePath = (p: unknown): string =>
+    String(p ?? "").replace(/^"|"$/g, "").replace("${{ runner.temp }}", "$RUNNER_TEMP");
+
+  it("publishes the tarballs the pack check checked, handed over as an artifact", () => {
+    const packRun = build.find((s) => s.run?.includes("scripts/pack-check.mjs"))?.run ?? "";
+    const out = /pack-check\.mjs --out (\S+)/.exec(packRun)?.[1];
     expect(out).toBeDefined();
-    expect(publish.trim()).toBe(`node scripts/publish.mjs ${out}`);
-    expect(steps.some((s) => /pnpm (pack|publish)|npm publish/.test(s.run ?? ""))).toBe(false);
+    const upload = build.find((s) => s.uses?.startsWith("actions/upload-artifact"));
+    const download = publish.find((s) => s.uses?.startsWith("actions/download-artifact"));
+    expect(samePath(upload?.with?.["path"])).toBe(samePath(out));
+    expect(download?.with?.["name"]).toBe(upload?.with?.["name"]);
+    const dir = samePath(download?.with?.["path"]);
+    expect(dir.length).toBeGreaterThan(0);
+    const publishRun = publish.find((s) => s.run?.includes("scripts/publish.mjs"))?.run ?? "";
+    expect(samePath(/^node scripts\/publish\.mjs (\S+)$/.exec(publishRun.trim())?.[1])).toBe(dir);
+    expect(jobs.flatMap((j) => j.steps).some((s) => /pnpm (pack|publish)|npm publish/.test(s.run ?? ""))).toBe(false);
   });
 
   // Trusted publishing needs npm 11.5.1 or later; Node 24.1 ships 11.3.0.
   it("installs an exact npm that trusted publishing supports", () => {
-    const npm = steps.find((s) => /npm install -g npm@/.test(s.run ?? ""));
+    const npm = publish.find((s) => /npm install -g npm@/.test(s.run ?? ""));
     const version = /npm@(\d+)\.(\d+)\.(\d+)(\s|$)/.exec(npm?.run ?? "");
     expect(version, "npm must be pinned to an exact version").not.toBeNull();
     const [maj, min, pat] = version!.slice(1, 4).map(Number) as [number, number, number];
     expect(maj > 11 || (maj === 11 && (min > 5 || (min === 5 && pat >= 1)))).toBe(true);
+  });
+});
+
+/**
+ * The pack check installs the third-party runtime dependencies from the
+ * registry. Their install scripts would be registry code running in CI; none
+ * has one today (checked under node_modules/.pnpm), so --ignore-scripts costs
+ * nothing and keeps it that way.
+ */
+describe("scripts/pack-check.mjs", () => {
+  it("installs the tarballs with install scripts off", () => {
+    const src = readFileSync(root("scripts/pack-check.mjs"), "utf8");
+    const install = /spawnSync\("npm", \[("install"[^\]]*)\]/.exec(src)?.[1] ?? "";
+    expect(install).toContain('"--ignore-scripts"');
   });
 });
 

@@ -33,7 +33,15 @@ Re-run the failed job. Versions already published are skipped and the rest
 are published in order. Never bump only the packages that failed: the CLI at
 the new version names its siblings at the same version.
 
+**An auth error (E401, ENEEDAUTH) on the first package** means the OIDC
+exchange did not happen, and npm logs why only at verbose level. Check that
+the trusted publishers have not expired (step 3 below), that the run used the
+`npm` environment, and that the workflow file is still `release.yml`; for the
+detail, re-run with `NPM_CONFIG_LOGLEVEL: verbose` set on the publish step.
+
 ## One-time setup (done once, before the first release)
+
+After the release workflow is on `main`.
 
 A trusted publisher can only be attached to a package that already exists,
 so each package's first version is a placeholder with no code, published by
@@ -57,8 +65,10 @@ for d in "$TMPDIR"/leastpilot-placeholders/*; do npm publish "$d" --access publi
 
 Each is a `package.json` and a README saying it is a placeholder.
 
-**3. The trusted publishers.** `npm trust` needs npm 11.15.0 or later, hence
-the `npx`:
+**3. The trusted publishers.** A new trusted-publisher configuration that has
+not published within 2 days expires, so do this within 2 days of pushing the
+first tag, or run it again. `npm trust` needs npm 11.15.0 or later, hence the
+`npx`:
 
 ```bash
 for p in catalog cli compiler proxy replay schema validator writer; do npx -y npm@11.21.0 trust github "@leastpilot/$p" --file release.yml --repo pkravella/mandate --env npm --allow-publish --yes; sleep 2; done

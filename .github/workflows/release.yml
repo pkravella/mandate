@@ -24,15 +24,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: publish to npm
+  # Everything that runs project or dependency code, with no OIDC token: every
+  # step of a job with id-token: write can mint one, and the trusted publisher
+  # accepts it for the whole job, so a compromised dependency running in the
+  # tests could otherwise publish any version, with valid provenance.
+  build:
+    name: check and pack
     runs-on: ubuntu-latest
-    environment: npm
     permissions:
       contents: read
-      # The OIDC token npm exchanges for a publish credential, and signs the
-      # provenance attestation with.
-      id-token: write
     steps:
       # fetch-depth 0 so origin/main is there to check the tag against.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,14 +53,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
 
       - name: The tag names the packages' version
         run: node scripts/release-version.mjs "$GITHUB_REF_NAME"
-
-      # Trusted publishing needs npm 11.5.1 or later; Node 24's bundled npm
-      # has been older than that.
-      - run: npm install -g npm@11.21.0
 
       - run: pnpm install --frozen-lockfile
 
@@ -73,5 +68,45 @@ jobs:
       - run: pnpm build
 
       - run: node scripts/pack-check.mjs --out "$RUNNER_TEMP/release-tarballs"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/release-tarballs
+          if-no-files-found: error
+          retention-days: 7
+
+  # Holds the OIDC token, and runs nothing but a pinned npm and publish.mjs on
+  # the tarballs the build job checked.
+  publish:
+    name: publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      # The OIDC token npm exchanges for a publish credential, and signs the
+      # provenance attestation with.
+      id-token: write
+    steps:
+      # For scripts/publish.mjs and the packages' manifests, which give the
+      # publish order. Nothing is installed from the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/release-tarballs
+
+      # Trusted publishing needs npm 11.5.1 or later; Node 24's bundled npm
+      # has been older than that.
+      - run: npm install -g npm@11.21.0
 
       - run: node scripts/publish.mjs "$RUNNER_TEMP/release-tarballs"
