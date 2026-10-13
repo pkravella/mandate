@@ -27,7 +27,7 @@ import type { ServeHandle } from "./sandbox.js";
  */
 const enabled = process.env["LEASTPILOT_SANDBOX"] === "1" && process.platform === "darwin";
 
-const SANDBOX_DIR = fileURLToPath(new URL("../../../sandbox", import.meta.url));
+const SANDBOX_DIR = fileURLToPath(new URL("../sandbox", import.meta.url));
 const IMAGE = "mandate-sandbox-test";
 const fixture = (name: string): string =>
   fileURLToPath(new URL(`../../../fixtures/${name}`, import.meta.url));

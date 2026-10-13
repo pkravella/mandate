@@ -1,7 +1,7 @@
 # Claude Code in the LeastPilot sandbox. The image the live run used, 2026-10-09.
 #
-#   docker build -t mandate-sandbox sandbox
-#   docker build -t mandate-agent-claude sandbox/examples/claude-code
+#   leastpilot sandbox build
+#   docker build -t mandate-agent-claude packages/cli/sandbox/examples/claude-code
 #
 # Then run it with `leastpilot run --sandbox`; see docs/quickstart.md §5.
 FROM mandate-sandbox

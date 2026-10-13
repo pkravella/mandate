@@ -182,7 +182,7 @@ describe("adversarial: what the proxy allows, egress can reach", () => {
   // The one place the layers differ on purpose. The proxy allows an scp remote
   // to the allowed repository because it is the same destination; the network
   // still refuses ssh, because the compiled config tunnels to 443 and nothing
-  // else. sandbox/verify.mjs proves that behaviourally against real squid
+  // else. packages/cli/sandbox/verify.mjs proves that behaviourally against real squid
   // (proxy.allowed-host-other-port); this pins that the config still says so.
   it("relies on the 443-only tunnel for a non-HTTP remote the proxy allows", () => {
     const { squidConf } = egressFor(DESTINATIONS);

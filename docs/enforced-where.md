@@ -324,7 +324,7 @@ exists, destination enforcement is advisory — which is why R9a's field-based
 check and this are two different rows in the table above.
 
 `compileEgress` turns `destinations.allow` into a squid configuration, and
-`sandbox/` is the container that runs it. Inside, the `agent` user has no route
+`packages/cli/sandbox/` is the container that runs it. Inside, the `agent` user has no route
 to the network except the proxy on loopback, and the proxy tunnels only to an
 allowed host on port 443.
 

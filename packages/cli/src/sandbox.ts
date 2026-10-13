@@ -90,7 +90,8 @@ export function refusedPassEnv(name: string): string | undefined {
 /** Input checks that need nothing minted or validated. A message, or undefined. */
 export function checkSandboxInputs(args: SandboxArgs, platform: string): string | undefined {
   if (args.image === undefined || args.image.length === 0) {
-    return "--sandbox needs --image: an image built FROM mandate-sandbox with your agent installed";
+    return "--sandbox needs --image: an image built FROM mandate-sandbox with your agent installed. "
+      + "Build mandate-sandbox itself with `leastpilot sandbox build`";
   }
   if (platform !== "darwin") {
     return "--sandbox runs on macOS (Docker Desktop) only for now. On Linux the relay needs "

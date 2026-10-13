@@ -192,13 +192,15 @@ of HEAD, and reaches only the mandate's non-GitHub destinations and the hosts yo
 open for it — GitHub itself it reaches only through serve. macOS with Docker
 Desktop for now.
 
-Build the base image, then one with your agent in it.
-[`sandbox/examples/claude-code`](../sandbox/examples/claude-code/Dockerfile) is
-the Claude Code image the live verification ran:
+Build the base image, then one with your agent in it. The sandbox's source
+ships in the CLI package ([`packages/cli/sandbox`](../packages/cli/sandbox/README.md)),
+and `leastpilot sandbox build` builds `mandate-sandbox` from it.
+[`packages/cli/sandbox/examples/claude-code`](../packages/cli/sandbox/examples/claude-code/Dockerfile)
+is the Claude Code image the live verification ran:
 
 ```bash
-docker build -t mandate-sandbox sandbox
-docker build -t mandate-agent-claude sandbox/examples/claude-code
+node packages/cli/dist/index.js sandbox build
+docker build -t mandate-agent-claude packages/cli/sandbox/examples/claude-code
 ```
 
 Then run with your image, the agent's model host, and its key passed by name.

@@ -76,7 +76,7 @@ describe("interpretAcceptanceExit", () => {
 describe("ACCEPTANCE_IMAGE", () => {
   it("is the agent sandbox's base image", () => {
     const dockerfile = readFileSync(
-      fileURLToPath(new URL("../../../sandbox/Dockerfile", import.meta.url)), "utf8",
+      fileURLToPath(new URL("../../cli/sandbox/Dockerfile", import.meta.url)), "utf8",
     );
     const from = /^FROM\s+(\S+)/m.exec(dockerfile)?.[1];
     expect(from).toBeDefined();

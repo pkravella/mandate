@@ -10,6 +10,7 @@ import { githubAppDeps, type MintDeps } from "@leastpilot/compiler";
 import { runWiden } from "./commands/widen.js";
 import { runAuditKeygen, runAuditVerify } from "./commands/audit.js";
 import { runExportGhAw } from "./commands/export.js";
+import { defaultSandboxBuildDeps, runSandboxBuild, SANDBOX_TAG } from "./commands/sandboxBuild.js";
 import { githubApprovalReader } from "./approval.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { writeMandate } from "@leastpilot/writer";
@@ -429,6 +430,16 @@ export function main(argv: readonly string[]): void {
     .requiredOption("--public-key <path>", "the public key of the key that signed it")
     .action((log: string, opts: { publicKey: string }) => {
       process.exitCode = runAuditVerify({ file: log, publicKey: opts.publicKey }, (m) => { console.log(m); });
+    });
+
+  program
+    .command("sandbox")
+    .description("the sandbox container that --sandbox runs agents in")
+    .command("build")
+    .description("build the mandate-sandbox base image from the sandbox source shipped in this package")
+    .option("--tag <name>", "the image's tag", SANDBOX_TAG)
+    .action((opts: { tag: string }) => {
+      process.exitCode = runSandboxBuild({ tag: opts.tag }, defaultSandboxBuildDeps);
     });
 
   // exitOverride makes commander throw where it would have called

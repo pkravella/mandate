@@ -23,7 +23,7 @@ import { compileEgress } from "./egress.js";
  */
 const enabled = process.env["LEASTPILOT_SANDBOX"] === "1";
 
-const SANDBOX_DIR = fileURLToPath(new URL("../../../sandbox", import.meta.url));
+const SANDBOX_DIR = fileURLToPath(new URL("../../cli/sandbox", import.meta.url));
 const IMAGE = "mandate-sandbox-test";
 
 const mandate = (allow: string[]): ValidatedMandate => markValidated(MandateSchema.parse({
