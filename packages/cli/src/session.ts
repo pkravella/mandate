@@ -144,7 +144,7 @@ export async function openSession(opts: SessionOptions): Promise<Session> {
       });
       throw new Error(
         `the GitHub MCP server exposes no tool for ${named.join(", ")}, so the agent could never `
-        + "use what the mandate grants. Nothing was run; the token was revoked.",
+        + "use what the mandate grants. Nothing was run.",
       );
     }
 

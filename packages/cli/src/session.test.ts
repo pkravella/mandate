@@ -339,6 +339,26 @@ describe("openSession — the upstream it starts", () => {
     expect(up.closed()).toBe(true);
   });
 
+  // Found by review: the refusal said "the token was revoked" before the
+  // revoke ran, and a failed revoke is swallowed. An operator told a live
+  // repository token is dead stops worrying about it.
+  it("never claims a revoke it has not seen succeed", async () => {
+    const gh = fakeGithub();
+    const deps: MintDeps = {
+      ...gh.deps,
+      asInstallation: async (route, token, params) => {
+        if (route === "DELETE /installation/token") throw new Error("network");
+        return gh.deps.asInstallation(route, token, params);
+      },
+    };
+    const up = fakeUpstream({ tools: ["get_file_contents"] });
+    const refused = await openSession({ mandate: mandate(), github: deps, upstream: up.connect })
+      .then(() => undefined, (e: unknown) => e);
+    expect(refused).toBeInstanceOf(Error);
+    expect((refused as Error).message).toMatch(/contents\.write/);
+    expect((refused as Error).message).not.toMatch(/revoked/);
+  });
+
   it("runs the pinned server with the toolsets in its environment, never the token in argv", () => {
     const c = dockerUpstreamCommand("default,actions");
     expect(c.command).toBe("docker");
