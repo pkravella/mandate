@@ -18,7 +18,7 @@
 # --cap-add=NET_ADMIN is required. Without it the iptables rules cannot be
 # loaded, and the entrypoint exits rather than running the agent with egress
 # wide open.
-FROM node:24-bookworm-slim
+FROM node:26-bookworm-slim
 
 # iptables is what actually closes egress. squidclient is deliberately absent:
 # the readiness check is a TCP connect, so it cannot quietly degrade into a
