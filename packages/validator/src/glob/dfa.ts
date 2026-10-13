@@ -109,15 +109,27 @@ export function dfaFromGlobs(
   return { start: startId, accepting, delta, alphabet };
 }
 
+/**
+ * One transition. A character outside `d`'s alphabet is one no glob behind `d`
+ * names, and the glob language has no character classes, so it behaves
+ * exactly as OTHER -- which every alphabet contains. That is what lets two
+ * automata built over different alphabets be combined.
+ */
 function step(d: Dfa, s: number, ch: string): number {
   const row = d.delta.get(s);
   if (row === undefined) return DEAD;
-  return row.get(ch) ?? DEAD;
+  return row.get(ch) ?? row.get(OTHER) ?? DEAD;
 }
 
-/** L(a) \ L(b). Both must share an alphabet. */
+/** The characters two automata between them name, plus OTHER. */
+const unionOf = (a: Dfa, b: Dfa): readonly string[] => [...new Set([...a.alphabet, ...b.alphabet])];
+
+/**
+ * L(a) \ L(b), over the union of their alphabets. Each automaton keeps the
+ * alphabet of its own globs, so one grant's characters never widen another's.
+ */
 export function difference(a: Dfa, b: Dfa, budget?: WorkBudget): Dfa {
-  const alphabet = a.alphabet;
+  const alphabet = unionOf(a, b);
   const delta = new Map<number, Map<string, number>>();
   const accepting = new Set<number>();
   const ids = new Map<string, number>();
@@ -167,7 +179,7 @@ export type Containment =
  * pointers, so the first such state yields a shortest distinguishing string.
  */
 export function isSubsetOf(inner: Dfa, outer: Dfa, budget?: WorkBudget): Containment {
-  const alphabet = inner.alphabet;
+  const alphabet = unionOf(inner, outer);
   const parents = new Map<string, { readonly prev: string; readonly ch: string }>();
   const startKey = `${inner.start}|${outer.start}`;
   const queue: Array<[number, number]> = [[inner.start, outer.start]];
