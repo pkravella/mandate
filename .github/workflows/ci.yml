@@ -74,3 +74,7 @@ jobs:
       - run: pnpm build
 
       - run: node scripts/pack-check.mjs
+
+      # What the Actions install: the published CLI from action-install's
+      # lockfile, with registry signatures and provenance checked.
+      - run: bash scripts/install-action-cli.sh

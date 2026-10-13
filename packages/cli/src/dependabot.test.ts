@@ -47,4 +47,13 @@ describe(".github/dependabot.yml", () => {
     const dir = docker?.directory ?? "";
     expect(existsSync(fileURLToPath(new URL(`../../..${dir}/Dockerfile`, import.meta.url)))).toBe(true);
   });
+
+  // The Actions install the published CLI from action-install's lockfile
+  // (Task 9.1). Dependabot is what proposes the next release there, and
+  // security fixes for the dependencies the lock pins.
+  it("watches the lockfile the Actions install from", () => {
+    const npm = config.updates.filter((u) => u["package-ecosystem"] === "npm").map((u) => u.directory);
+    expect(npm).toContain("/action-install");
+    expect(existsSync(fileURLToPath(new URL("../../../action-install/package-lock.json", import.meta.url)))).toBe(true);
+  });
 });

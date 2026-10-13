@@ -35,7 +35,9 @@ jobs:
         with:
           node-version: 24
 
-      - run: corepack enable && pnpm install --frozen-lockfile && pnpm build
+      # Nothing to build: the Action installs the published CLI pinned in
+      # action-install/, not this checkout's code. Dispatching this on a
+      # branch tests the branch's workflow and Action, not its CLI.
 
       # NOTE 2 — NEVER INTERPOLATE UNTRUSTED TEXT INTO `agent`.
       #

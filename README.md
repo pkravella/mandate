@@ -14,13 +14,13 @@ it decided.
 
 ---
 
-> ### Status: built, measured, not on npm yet
+> ### Status: 0.2.0 is on npm
 >
-> The whole loop runs from one command: write a mandate, check it, get it
-> approved, mint a scoped token, run the agent under it in a locked-down
-> container, and keep a signed log. Version 0.2.0 is ready to publish to npm
-> as [`@leastpilot/cli`](packages/cli/README.md) but **hasn't been published
-> yet**, so for now you build it from this repository.
+> It's on npm as [`@leastpilot/cli`](https://www.npmjs.com/package/@leastpilot/cli),
+> published from CI with provenance that traces each package to the commit it
+> was built from. The whole loop runs from one command: write a mandate, check
+> it, get it approved, mint a scoped token, run the agent under it in a
+> locked-down container, and keep a signed log.
 >
 > It's been measured on six synthetic tasks, not the fifty the plan called
 > for, and it **misses three of its targets**: task completion, how long
@@ -225,18 +225,31 @@ More detail on how they fit together: [docs/architecture.md](docs/architecture.m
 
 ## Install
 
-Not on npm yet. Until 0.2.0 is published, build from a checkout. You'll need
-Node 22.12 or later and pnpm:
+You'll need Node 22.12 or later:
 
 ```bash
-git clone https://github.com/pkravella/mandate
-cd mandate
-pnpm install && pnpm build
+npm install -g @leastpilot/cli
 ```
 
-The examples below call `node packages/cli/dist/index.js`, which is the
-`leastpilot` command. Running an agent in the sandbox also needs Docker
-Desktop on macOS.
+Where it runs unattended, install an exact version into a project and check
+the registry's signatures and provenance there:
+
+```bash
+npm install @leastpilot/cli@0.2.0 && npm audit signatures
+```
+
+Running an agent in the sandbox also needs Docker Desktop on macOS.
+
+The examples below use the sample ceilings in this repository's `fixtures/`,
+so run them from a clone:
+
+```bash
+git clone https://github.com/pkravella/mandate && cd mandate
+```
+
+To build from source instead, run `pnpm install && pnpm build` in the clone
+and use `node packages/cli/dist/index.js` wherever the examples say
+`leastpilot`.
 
 ## Try it
 
@@ -244,7 +257,7 @@ Desktop on macOS.
 `mandate.yaml`, then:
 
 ```bash
-node packages/cli/dist/index.js validate mandate.yaml \
+leastpilot validate mandate.yaml \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
@@ -277,7 +290,7 @@ an MCP config pointing at `leastpilot serve`, and starts whatever agent you
 give it. `{mcpConfig}` is replaced with that config's path:
 
 ```bash
-node packages/cli/dist/index.js run \
+leastpilot run \
   --mandate mandate.yaml \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
@@ -294,11 +307,11 @@ integration.
 in it, then add `--sandbox`:
 
 ```bash
-node packages/cli/dist/index.js sandbox build
+leastpilot sandbox build
 docker build -t mandate-agent-claude packages/cli/sandbox/examples/claude-code
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 
-node packages/cli/dist/index.js run --mandate mandate.yaml \
+leastpilot run --mandate mandate.yaml \
   --ceiling fixtures/ceilings/sandbox-v1.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/sandbox-v1.destinations \
@@ -357,10 +370,16 @@ mandate's limits. It refuses anything gh-aw can't hold exactly, rather than
 quietly loosening it. [docs/gh-aw.md](docs/gh-aw.md) has the mapping.
 
 **The GitHub Action.** There's an [Action](action.yml) and an
-[example workflow](.github/workflows/leastpilot.yml). It builds LeastPilot
-from source on every run for now (about a minute), since the CLI isn't on npm
-yet. The workflow sets `permissions: {}` and the Action refuses to run if it
-finds a `GITHUB_TOKEN`, since a second credential is access no mandate limits.
+[example workflow](.github/workflows/leastpilot.yml). It installs the
+published CLI from a committed lockfile
+([action-install/](action-install/package.json)) with `npm ci`, so every
+dependency is pinned by hash, and checks the registry's signatures and
+provenance before it runs anything. That lockfile is updated in a pull request
+after each release, so the Action at a release's own commit still runs the
+previous CLI: pin the Action to a commit after that update, and check which
+version `action-install/package.json` names. The workflow sets
+`permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
+since a second credential is access no mandate limits.
 It takes the agent command one argument per line, so no workflow input is ever
 run through a shell.
 

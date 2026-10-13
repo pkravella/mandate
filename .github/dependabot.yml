@@ -17,6 +17,13 @@ updates:
       # the newest. Newer majors let code use APIs that Node lacks.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+  # What both Actions install: the published CLI, locked with every
+  # dependency. Version updates cover the one direct dependency, so this
+  # proposes each new LeastPilot release; fixes deeper in the lock come only
+  # from Dependabot security updates, a separate repository setting.
+  - package-ecosystem: npm
+    directory: "/action-install"
+    schedule: { interval: weekly }
   - package-ecosystem: github-actions
     directory: "/"
     schedule: { interval: weekly }

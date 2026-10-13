@@ -72,11 +72,12 @@ runs:
       with:
         node-version: 24
 
-    - name: Build LeastPilot
+    - name: Install LeastPilot
+      id: cli
       shell: bash
       env:
         ACTION_ROOT: ${{ github.action_path }}/..
-      run: bash "$ACTION_ROOT/scripts/build-action.sh"
+      run: bash "$ACTION_ROOT/scripts/install-action-cli.sh"
 
     - name: Write the App key
       id: key
@@ -106,7 +107,7 @@ runs:
         IN_DESTINATIONS: ${{ inputs.ceiling-destinations }}
         IN_MIN_LEVEL: ${{ inputs.min-level }}
         IN_MAX_PER_HOUR: ${{ inputs.max-per-hour }}
-        ACTION_ROOT: ${{ github.action_path }}/..
+        LEASTPILOT_BIN: ${{ steps.cli.outputs.bin }}
       run: |
         set -euo pipefail
         task_file="$(mktemp)"
@@ -114,7 +115,7 @@ runs:
         extra=()
         [ -n "$IN_MIN_LEVEL" ] && extra+=(--min-level "$IN_MIN_LEVEL")
         [ -n "$IN_MAX_PER_HOUR" ] && extra+=(--max-per-hour "$IN_MAX_PER_HOUR")
-        node "$ACTION_ROOT/packages/cli/dist/index.js" review \
+        "$LEASTPILOT_BIN" review \
           --task-file "$task_file" \
           --on "$IN_ON" \
           --as "$IN_AS" \

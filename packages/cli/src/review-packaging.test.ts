@@ -37,7 +37,6 @@ const action = parse(readFileSync(root("action.yml"), "utf8")) as Action;
 const review = parse(readFileSync(root("review/action.yml"), "utf8")) as Action;
 const workflowText = readFileSync(root("examples/workflows/leastpilot-review.yml"), "utf8");
 const workflow = parse(workflowText) as { on: unknown; permissions?: unknown; jobs: Record<string, Job> };
-const buildScript = readFileSync(root("scripts/build-action.sh"), "utf8");
 
 const PINNED = /@[0-9a-f]{40}$/;
 const noInterpolation = (steps: readonly Step[], where: string): void => {
@@ -47,37 +46,99 @@ const noInterpolation = (steps: readonly Step[], where: string): void => {
   }
 };
 
-describe("action.yml, used from another repository", () => {
-  // dist/ is never committed, so `uses: pkravella/mandate@<sha>` from any other
-  // repository had no CLI to run. The Action builds itself.
-  it("sets up Node from a pinned action and builds LeastPilot before running it", () => {
-    const steps = action.runs.steps;
-    const node = steps.findIndex((s) => s.uses?.startsWith("actions/setup-node@"));
-    const build = steps.findIndex((s) => s.name === "Build LeastPilot");
-    const run = steps.findIndex((s) => s.name?.includes("run the agent"));
-    expect(steps[node]?.uses).toMatch(PINNED);
-    expect(node).toBeGreaterThan(-1);
-    expect(build).toBeGreaterThan(node);
-    expect(run).toBeGreaterThan(build);
-    expect(steps[build]?.run).toContain('"$ACTION_PATH/scripts/build-action.sh"');
-    expect(steps[build]?.env?.["ACTION_PATH"]).toBe("${{ github.action_path }}");
+/**
+ * Both Actions run the published CLI (Task 9.1 step 5). They used to build it
+ * from source with pnpm's frozen lockfile, which pinned every dependency. An
+ * exact `@leastpilot/cli@x.y.z` alone would not: its third-party dependencies
+ * are ranges, resolved fresh on every run. So the Actions install from a
+ * committed npm lockfile with `npm ci`, which checks every package against its
+ * integrity hash, and then check registry signatures and provenance.
+ */
+const installScript = existsSync(root("scripts/install-action-cli.sh"))
+  ? readFileSync(root("scripts/install-action-cli.sh"), "utf8") : "";
+const pin = existsSync(root("action-install/package.json"))
+  ? JSON.parse(readFileSync(root("action-install/package.json"), "utf8")) as { dependencies?: Record<string, string> }
+  : {};
+const lock = existsSync(root("action-install/package-lock.json"))
+  ? JSON.parse(readFileSync(root("action-install/package-lock.json"), "utf8")) as {
+    lockfileVersion?: number;
+    packages?: Record<string, { version?: string; resolved?: string; integrity?: string; link?: boolean }>;
+  }
+  : {};
+
+const installsThenRuns = (steps: readonly Step[], runName: (s: Step) => boolean, where: string): void => {
+  const node = steps.findIndex((s) => s.uses?.startsWith("actions/setup-node@"));
+  const install = steps.findIndex((s) => s.name === "Install LeastPilot");
+  const run = steps.findIndex(runName);
+  expect(steps[node]?.uses, where).toMatch(PINNED);
+  expect(install, where).toBeGreaterThan(node);
+  expect(run, where).toBeGreaterThan(install);
+  expect(steps[install]?.id, where).toBe("cli");
+  expect(steps[install]?.run, where).toMatch(/^bash "\$ACTION_(PATH|ROOT)\/scripts\/install-action-cli\.sh"$/);
+  expect(steps[run]?.env?.["LEASTPILOT_BIN"], where).toBe("${{ steps.cli.outputs.bin }}");
+  expect(steps[run]?.run, where).toContain('"$LEASTPILOT_BIN"');
+  // Nothing runs a CLI built from the Action's checkout any more.
+  for (const s of steps) expect(s.run ?? "", where).not.toMatch(/packages\/cli\/dist|build-action/);
+};
+
+describe("both Actions run the published CLI", () => {
+  it("action.yml installs it, then runs it", () => {
+    installsThenRuns(action.runs.steps, (s) => s.name?.includes("run the agent") ?? false, "action.yml");
   });
 
-  // The self-build runs in a job holding the App key: pnpm itself is checked
-  // against a hash, as corepack enforces (probed: a wrong hash refuses to run).
-  it("pins pnpm by integrity, which corepack checks", () => {
-    const pkg = JSON.parse(readFileSync(root("package.json"), "utf8")) as { packageManager?: string };
-    expect(pkg.packageManager).toMatch(/^pnpm@\d+\.\d+\.\d+\+sha512\.[0-9a-f]{128}$/);
+  it("review/action.yml installs it, then runs it", () => {
+    installsThenRuns(review.runs.steps, (s) => s.name?.includes("post the review") ?? false, "review/action.yml");
   });
 
-  it("builds from the lockfile, and not again when the CLI is already built", () => {
-    expect(buildScript).toContain("--frozen-lockfile");
-    expect(buildScript).toMatch(/packages\/cli\/dist\/index\.js/);
-    expect(buildScript).toContain("set -euo pipefail");
-  });
-
-  it("still never interpolates into a run block", () => {
+  it("never interpolates into a run block", () => {
     noInterpolation(action.runs.steps, "action.yml");
+  });
+});
+
+describe("scripts/install-action-cli.sh", () => {
+  it("installs from the lockfile, runs no install scripts, and checks signatures", () => {
+    expect(installScript).toContain("set -euo pipefail");
+    expect(installScript).toMatch(/npm ci [^\n]*--ignore-scripts/);
+    expect(installScript).toContain("npm audit signatures");
+    // `npm install` would re-resolve the ranges the lockfile exists to pin.
+    expect(installScript).not.toMatch(/npm (install|i) /);
+  });
+
+  // A caller's NPM_CONFIG_REGISTRY or .npmrc would otherwise redirect every
+  // fetch, and the signature check would ask that host for keys (review of
+  // step 5). Command-line flags outrank both, so the trust root is npmjs.
+  it("pins the registry on both npm commands, whatever the caller configured", () => {
+    const pinned = "--registry=https://registry.npmjs.org/ --replace-registry-host=never";
+    expect(installScript).toMatch(new RegExp(`npm ci [^\\n]*${pinned}`));
+    expect(installScript).toMatch(new RegExp(`npm audit signatures [^\\n]*--registry=https://registry\\.npmjs\\.org/`));
+  });
+});
+
+describe("action-install/, what the Actions install", () => {
+  const cli = pin.dependencies?.["@leastpilot/cli"];
+
+  it("depends on the CLI alone, at an exact version", () => {
+    expect(Object.keys(pin.dependencies ?? {})).toEqual(["@leastpilot/cli"]);
+    expect(cli).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("locks that version, and every LeastPilot package at it", () => {
+    expect(lock.lockfileVersion).toBe(3);
+    const entries = Object.entries(lock.packages ?? {}).filter(([k]) => k.startsWith("node_modules/@leastpilot/"));
+    expect(entries.map(([k]) => k)).toContain("node_modules/@leastpilot/cli");
+    for (const [k, v] of entries) expect(v.version, k).toBe(cli);
+  });
+
+  // npm ci checks each tarball against this hash; an entry without one, or
+  // from anywhere but the registry, is a package nothing checks.
+  it("pins every package by integrity, from the npm registry", () => {
+    const entries = Object.entries(lock.packages ?? {}).filter(([k]) => k !== "");
+    expect(entries.length).toBeGreaterThan(10);
+    for (const [k, v] of entries) {
+      expect(v.link, k).toBeUndefined();
+      expect(v.resolved, k).toMatch(/^https:\/\/registry\.npmjs\.org\//);
+      expect(v.integrity, k).toMatch(/^sha512-/);
+    }
   });
 });
 
@@ -116,11 +177,9 @@ describe("review/action.yml", () => {
     expect(shred?.if).toBe("always()");
   });
 
-  it("builds LeastPilot, then posts a review with the task read from a file", () => {
-    const build = steps.findIndex((s) => s.name === "Build LeastPilot");
+  it("posts a review with the task read from a file", () => {
     const post = steps.findIndex((s) => s.name?.includes("post the review"));
-    expect(build).toBeGreaterThan(-1);
-    expect(post).toBeGreaterThan(build);
+    expect(post).toBeGreaterThan(-1);
     const run = steps[post];
     expect(Object.keys(run?.env ?? {})).toEqual(expect.arrayContaining(["IN_TASK", "IN_ON", "IN_AS", "IN_REPO", "ANTHROPIC_API_KEY"]));
     expect(run?.run).toContain('printf \'%s\' "${IN_TASK#/leastpilot }" >');
@@ -209,8 +268,8 @@ describe("examples/workflows/leastpilot-review.yml", () => {
   });
 });
 
-// The run step's script, executed under bash with a stand-in `node` that
-// records its arguments: the branches are behaviour, not strings to grep.
+// The run step's script, executed under bash with a stand-in `leastpilot`
+// that records its arguments: the branches are behaviour, not strings to grep.
 describe("action.yml's run step, executed", () => {
   const script = action.runs.steps.find((s) => s.name?.includes("run the agent"))?.run ?? "";
 
@@ -219,14 +278,14 @@ describe("action.yml's run step, executed", () => {
     const bin = join(dir, "bin");
     mkdirSync(bin);
     const log = join(dir, "calls");
-    writeFileSync(join(bin, "node"), `#!/usr/bin/env bash\nshift\nprintf '%s\\n' "$*" >> "${log}"\n`);
-    chmodSync(join(bin, "node"), 0o755);
+    writeFileSync(join(bin, "leastpilot"), `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${log}"\n`);
+    chmodSync(join(bin, "leastpilot"), 0o755);
     writeFileSync(join(dir, "step.sh"), script);
     let code = 0;
     try {
       execFileSync("bash", [join(dir, "step.sh")], {
         env: {
-          PATH: `${bin}:${process.env["PATH"] ?? ""}`, ACTION_PATH: "/action", RUNNER_TEMP: dir,
+          PATH: process.env["PATH"] ?? "", LEASTPILOT_BIN: join(bin, "leastpilot"), RUNNER_TEMP: dir,
           GITHUB_WORKSPACE: dir, GITHUB_OUTPUT: join(dir, "out"),
           IN_MANDATE: "", IN_APPROVED_DIGEST: "", IN_APPROVAL: "", IN_REPO: "acme/api", IN_LEVEL: "",
           IN_AGENT: "claude\n{mcpConfig}", IN_TRACE: "t.jsonl", IN_AS: "alice", IN_CEILING: "c",

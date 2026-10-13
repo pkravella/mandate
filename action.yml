@@ -124,17 +124,19 @@ runs:
           exit 1
         fi
 
-    # dist/ is never committed, so from any other repository this Action has
-    # no CLI until it builds one. Skipped when it is already built.
+    # The published CLI, locked with every dependency in action-install/ and
+    # installed with `npm ci`, then checked against the registry's signatures
+    # and provenance (scripts/install-action-cli.sh).
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version: 24
 
-    - name: Build LeastPilot
+    - name: Install LeastPilot
+      id: cli
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-      run: bash "$ACTION_PATH/scripts/build-action.sh"
+      run: bash "$ACTION_PATH/scripts/install-action-cli.sh"
 
     - name: Write the App key
       id: key
@@ -167,7 +169,7 @@ runs:
         IN_TRACE: ${{ inputs.trace }}
         IN_APPROVAL: ${{ inputs.approval }}
         IN_APPROVED_DIGEST: ${{ inputs.approved-digest }}
-        ACTION_PATH: ${{ github.action_path }}
+        LEASTPILOT_BIN: ${{ steps.cli.outputs.bin }}
       run: |
         set -euo pipefail
 
@@ -216,7 +218,7 @@ runs:
           mandate_file="$RUNNER_TEMP/mandate-approved.yaml"
           # The task goes to a file the agent is told to read, never into its
           # argv: it is the requester's comment, in the end.
-          node "$ACTION_PATH/packages/cli/dist/index.js" reviewed \
+          "$LEASTPILOT_BIN" reviewed \
             --on "$IN_APPROVAL" \
             --digest "$IN_APPROVED_DIGEST" \
             --out "$mandate_file" \
@@ -231,7 +233,7 @@ runs:
           approval=(--approval "$IN_APPROVAL")
         fi
 
-        node "$ACTION_PATH/packages/cli/dist/index.js" run \
+        "$LEASTPILOT_BIN" run \
           --mandate "$mandate_file" \
           --ceiling "$IN_CEILING" \
           --schema "$IN_SCHEMA" \
