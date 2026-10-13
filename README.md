@@ -142,26 +142,28 @@ may do, and everything during the run holds it to that.
 
 ```mermaid
 flowchart TB
-    subgraph before["Before the run"]
+    subgraph limits["What the validator checks against"]
         direction LR
-        task["Task text<br/>from the requester"] --> writer["Writer<br/>a model, untrusted"]
-        writer -- "proposal" --> validator{"Validator<br/>plain code"}
-        ceiling[("Org ceiling<br/>Cedar policy")] --> validator
-        level[("Requester's permission<br/>read from GitHub")] --> validator
-        validator -- "validated mandate" --> approve["Requester approves<br/>the permission diff"]
-        approve --> compiler["Compiler"]
+        ceiling[("Org ceiling<br/>a Cedar policy")]
+        level[("Requester's permission<br/>read from GitHub")]
     end
 
-    subgraph outputs["What the compiler produces"]
+    subgraph before["Before the run: decide what the agent may do"]
+        direction LR
+        task["Task text"] --> writer["Writer<br/>a model, untrusted"]
+        writer -- "proposal" --> validator{"Validator<br/>plain code"}
+        validator -- "validated<br/>mandate" --> approve["Requester<br/>approves"]
+    end
+
+    subgraph compiled["What the compiler produces"]
         direction LR
         token["GitHub App token<br/>one repo, needed permissions"]
         rules["Proxy rules<br/>branches, paths, counts"]
         egress["Egress allowlist<br/>for the sandbox"]
     end
 
-    compiler --> token
-    compiler --> rules
-    compiler --> egress
+    limits --> before
+    before --> compiled
 ```
 
 The line that matters is the validator. Everything above it is untrusted:
@@ -175,24 +177,22 @@ at all, and its only way out to the internet is an allowlist:
 
 ```mermaid
 flowchart TB
-    subgraph host["Your machine"]
-        serve["leastpilot serve<br/>holds the token,<br/>enforces the mandate"]
-        key[("App private key")]
-        log[("Signed audit log")]
-        key --> serve
-        serve --> log
-    end
-
-    subgraph box["Sandbox container, no GitHub credential"]
+    subgraph box["Sandbox container: no GitHub credential"]
         direction LR
-        agent["Agent<br/>e.g. Claude Code"] -- "MCP over a relay" --> relay["Relay"]
-        agent -- "all other traffic" --> squid["Egress proxy<br/>allowlist only"]
+        agent["Agent<br/>e.g. Claude Code"] -- "MCP" --> relay["Relay"]
+        agent -- "everything else" --> squid["Egress proxy<br/>allowlist only"]
     end
 
-    relay -- "secret handshake" --> serve
-    serve -- "allowed calls only" --> mcp["github-mcp-server<br/>pinned by digest"]
-    mcp --> github["GitHub API"]
-    squid -. "the mandate's destinations<br/>and the model's API;<br/>GitHub only via serve" .-> internet["Internet"]
+    subgraph host["Your machine"]
+        direction LR
+        key[("App private key")] --> serve["leastpilot serve<br/>holds the token,<br/>checks every call"]
+        serve --> log[("Signed<br/>audit log")]
+        serve -- "allowed calls only" --> mcp["github-mcp-server<br/>pinned by digest"]
+    end
+
+    box -- "relay, with a secret handshake" --> host
+    host --> github["GitHub API"]
+    box -. "the mandate's destinations and the model's API;<br/>GitHub only through serve" .-> internet["Internet"]
 ```
 
 Why the sandbox matters: the proxy only sees MCP calls. An agent with a shell
