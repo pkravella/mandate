@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   OPERATIONS, getOperation, requireOperation, operationsForMcpTool,
   highRiskOps, atLeast, UnknownOperationError,
-  TOOLSET_REQUIRED, unreachableOperations,
+  TOOLSET_REQUIRED, unreachableOperations, toolsetsFor, GITHUB_MCP_SERVER_IMAGE,
 } from "./operations.js";
 
 describe("catalog", () => {
@@ -122,7 +122,7 @@ describe("catalog", () => {
 });
 
 // The two names below were wrong until a live `tools/list` against
-// ghcr.io/github/github-mcp-server:latest caught them. `get_repository` does
+// github-mcp-server (v1.14.0 at the time) caught them. `get_repository` does
 // not exist at all, and the review tool is `pull_request_review_write`.
 describe("mcpTools against the real server", () => {
   it("does not name a tool the server has never had", () => {
@@ -170,5 +170,35 @@ describe("unreachableOperations", () => {
     for (const id of Object.keys(TOOLSET_REQUIRED)) {
       expect(getOperation(id), `${id} is not a catalog operation`).toBeDefined();
     }
+  });
+});
+
+// Phase 8: the catalog's tool names were checked against one server, and the
+// session ran whatever `:latest` was. It moved to a new major (v2.0.0, Oct 6)
+// with nobody choosing it. The image is now named once, here, by digest.
+describe("the upstream server the catalog was checked against", () => {
+  it("is pinned by digest, never a moving tag", () => {
+    expect(GITHUB_MCP_SERVER_IMAGE)
+      .toMatch(/^ghcr\.io\/github\/github-mcp-server:v\d+\.\d+\.\d+@sha256:[0-9a-f]{64}$/);
+  });
+});
+
+describe("toolsetsFor", () => {
+  it("asks for the default toolsets when every grant is in them", () => {
+    expect(toolsetsFor(["repo.read", "contents.write", "pull_request.create"])).toBe("default");
+  });
+
+  it("adds each toolset a grant needs, once, in a stable order", () => {
+    expect(toolsetsFor(["gist.write", "repo.read", "actions.read", "actions.logs.read"]))
+      .toBe("default,actions,gists");
+  });
+
+  it("covers every gated operation", () => {
+    const all = toolsetsFor(Object.keys(TOOLSET_REQUIRED)).split(",");
+    for (const ts of Object.values(TOOLSET_REQUIRED)) expect(all).toContain(ts);
+  });
+
+  it("ignores an unknown action rather than throwing", () => {
+    expect(toolsetsFor(["repo.yolo"])).toBe("default");
   });
 });

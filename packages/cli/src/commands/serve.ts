@@ -1,9 +1,12 @@
 import { EventEmitter } from "node:events";
-import { renameSync, writeFileSync } from "node:fs";
+import { accessSync, constants, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { MintDeps } from "@leastpilot/compiler";
 import { proofOf } from "@leastpilot/schema";
-import { AuditLog, AuditLogError, type AuditKey, type Decision } from "@leastpilot/proxy";
+import {
+  AuditLog, AuditLogError, type AuditKey, type Decision, type PauseRecord,
+} from "@leastpilot/proxy";
 import { auditInputs } from "./audit.js";
 import {
   approvalInputs, requireApproval, type ApprovalReader, type ApprovalRecord,
@@ -55,6 +58,11 @@ export interface ServeArgs extends PrepareArgs {
    * approved this exact mandate there (see approval.ts).
    */
   readonly approval?: string | undefined;
+  /**
+   * R10: a directory to write each denial's pause record into, one JSON file
+   * per denial, each one a file `leastpilot widen` reads.
+   */
+  readonly pauses?: string | undefined;
 }
 
 export interface ServeDeps extends AuthorityDeps {
@@ -138,6 +146,19 @@ export async function runServe(
   }
   const auditKey: AuditKey | undefined = audited.key;
 
+  // Same rule for the pause directory: one that cannot be written is found
+  // now, not at the first denial.
+  if (args.pauses !== undefined) {
+    try {
+      mkdirSync(args.pauses, { recursive: true });
+      accessSync(args.pauses, constants.W_OK);
+    } catch (e) {
+      log(`--pauses ${args.pauses} cannot be written: ${e instanceof Error ? e.message : String(e)}. `
+        + "Nothing was minted.");
+      return 2;
+    }
+  }
+
   const approvalIn = approvalInputs(args.approval, deps.approvals);
   if ("error" in approvalIn) {
     log(approvalIn.error);
@@ -216,6 +237,7 @@ export async function runServe(
       ...(deps.upstream === undefined ? {} : { upstream: deps.upstream }),
       onDecision: (d) => decisions.push(d),
       ...(audit === undefined ? {} : { sink: audit }),
+      ...(args.pauses === undefined ? {} : { onPause: pauseWriter(args, log) }),
     });
   } catch (e) {
     log(`Could not open an enforced session: ${e instanceof Error ? e.message : String(e)}`);
@@ -314,4 +336,41 @@ export async function runServe(
   const denied = decisions.filter((d) => d.kind === "deny").length;
   log(`${decisions.length} call(s) decided, ${denied} denied.`);
   return 0;
+}
+
+/**
+ * Writes each pause record to its own file and says, on stderr, what was
+ * refused and -- where a widen is the right answer -- the command that asks
+ * for it. The file name carries the time and a counter, so two sessions
+ * writing to one directory never collide, and nothing is ever overwritten.
+ * A failed write is reported and the session carries on: the refusal already
+ * happened, and it is what protects.
+ */
+function pauseWriter(args: ServeArgs, log: (s: string) => void): (p: PauseRecord) => void {
+  const dir = resolve(args.pauses ?? "");
+  let seq = 0;
+  return (p) => {
+    seq += 1;
+    // The tool name is the agent's: a `mandate.grants` denial carries whatever
+    // it called. It never decides where the file goes.
+    const tool = p.tool.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+    const path = join(dir, `${p.at.replace(/[:.]/g, "-")}-${String(seq).padStart(3, "0")}-${tool}.json`);
+    // Agent text reaches the operator's terminal JSON-quoted, so a newline or
+    // an escape sequence in it cannot forge or erase a line.
+    const said = `Paused ${JSON.stringify(p.tool)} at ${p.clause}: ${JSON.stringify(p.reason)}`;
+    try {
+      if (!path.startsWith(dir + sep)) throw new Error("the record's path left the directory");
+      writeFileSync(path, `${JSON.stringify(p, null, 2)}\n`, { flag: "wx" });
+    } catch (e) {
+      log(`${said}, but the pause record was not written: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    log(`${said}. Pause record: ${path}`);
+    if (p.widenRequest !== undefined) {
+      log(`  To ask for more scope, review and run: leastpilot widen ${args.file} ${path} `
+        + `--ceiling ${args.ceiling} --schema ${args.schema} --ceiling-destinations ${args.destinations} `
+        + `--as ${args.as}${args.repo !== undefined ? ` --repo ${args.repo}` : ""}`
+        + `${args.level !== undefined ? ` --level ${args.level}` : ""}`);
+    }
+  };
 }

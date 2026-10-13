@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import Anthropic from "@anthropic-ai/sdk";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { dockerUpstreamCommand } from "@leastpilot/cli";
 import { githubAppDeps } from "@leastpilot/compiler";
 import { Recorder, parseJsonl } from "@leastpilot/proxy";
 import { taskPrompt } from "./prompt.js";
@@ -114,11 +115,13 @@ describe.skipIf(!enabled)("the unconstrained pass", () => {
         continue;
       }
 
+      // The pinned server, with its default toolsets: the unconstrained agent
+      // gets what an agent on a plain token would.
+      const c = dockerUpstreamCommand("default");
       const transport = new StdioClientTransport({
-        command: "docker",
-        args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
-          "ghcr.io/github/github-mcp-server:latest"],
-        env: { ...process.env, GITHUB_PERSONAL_ACCESS_TOKEN: token } as Record<string, string>,
+        command: c.command,
+        args: c.args,
+        env: { ...process.env, ...c.env, GITHUB_PERSONAL_ACCESS_TOKEN: token } as Record<string, string>,
       });
       const upstream = new Client({ name: "bench-unconstrained", version: "0.1.0" });
       await upstream.connect(transport);

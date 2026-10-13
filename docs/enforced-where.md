@@ -164,16 +164,22 @@ machine — rather than a wall-clock deadline, because a validator whose verdict
 depends on how busy the runner is cannot be something a mandate is proved
 against.
 
-**A granted operation can be unreachable, depending on how the upstream is
-run.** `github-mcp-server`'s default toolsets expose 46 tools;
-`GITHUB_TOOLSETS=all` exposes 91. Six catalog operations —
-`actions.read`, `actions.logs.read`, `actions.write`, `discussions.read`,
-`notifications.read` and `gist.write` — name tools that appear only once extra
-toolsets are enabled. The proxy filters `tools/list` to what the upstream
-offers, so a grant whose tools are absent means the agent never sees the tool
-and the task fails with nothing explaining why. `TOOLSET_REQUIRED` in the
-catalog names the toolset each one needs, and `unreachableOperations()` reports
-the gap for a running server.
+**A granted operation must be reachable on the server the session starts.**
+`github-mcp-server`'s default toolsets expose 46 tools; `GITHUB_TOOLSETS=all`
+exposes 91 (measured at v1.14.0). Six catalog operations — `actions.read`,
+`actions.logs.read`, `actions.write`, `discussions.read`, `notifications.read`
+and `gist.write` — name tools that appear only once extra toolsets are enabled.
+The session starts the pinned server (`GITHUB_MCP_SERVER_IMAGE`, v2.0.2 by
+digest) with `GITHUB_TOOLSETS` set from the grants (`TOOLSET_REQUIRED` names
+each one's toolset), then lists its tools. A grant with no tool on that list is
+refused before the agent starts, with the token revoked: the proxy filters
+`tools/list` to what the upstream offers, so the agent would never have seen
+it. v2.0.2's input schemas for every catalog tool match v1.14.0's; the upstream
+behaviour this table cites was measured at v1.14.0.
+
+`get_me` is not in the catalog, and adding it would not help: it calls
+`GET /user`, which an installation token is refused (403 "Resource not
+accessible by integration", measured 2026-10-12).
 
 **The loosest rule for a tool decides.** Nine MCP tools are reached by more than
 one operation — `get_file_contents` by both `repo.read` and `contents.read`,
@@ -252,6 +258,9 @@ grant list decorative.
 **The refusal list governs the act, not just the suggestion.** The proxy
 declines to *offer* a widen for those clauses, and `leastpilot widen` refuses to
 *apply* one — including for a pause record edited by hand to attach a request.
+`serve --pauses <dir>` writes each pause record where `widen` can read it; until
+Phase 8 only the benchmark built pause records, and a real session's denial
+left nothing to hand to `widen`.
 That is why the list and the pause-record format live in `@leastpilot/schema`
 rather than in the proxy: one definition, read by the layer that offers and the
 layer that applies.
