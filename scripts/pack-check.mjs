@@ -18,13 +18,18 @@
 //
 // Run after `pnpm build`. Needs the npm registry for third-party dependencies.
 // Exits 1 listing every failure, not just the first.
+//
+//   node scripts/pack-check.mjs [--out <dir>]
+//
+// --out copies the checked tarballs into <dir> when every check passed, so the
+// release publishes exactly the bytes that were checked, not a second pack.
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   realpathSync, rmSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
@@ -45,6 +50,12 @@ console.log(`${packages.length} public packages at ${VERSION}`);
 
 const work = realpathSync(mkdtempSync(join(tmpdir(), "leastpilot-pack-check-")));
 const keep = process.env["PACK_CHECK_KEEP"] === "1";
+const outAt = process.argv.indexOf("--out");
+const out = outAt === -1 ? undefined : process.argv[outAt + 1];
+if (outAt !== -1 && (out === undefined || out.length === 0)) {
+  console.error("--out needs a directory");
+  process.exit(2);
+}
 try {
   // 1. Pack, the way the release does.
   const tgzDir = join(work, "tgz");
@@ -151,6 +162,11 @@ try {
   else if (realpathSync(context) !== realpathSync(expected)) {
     fail(`docker's build context is ${context}, not the installed package's ${expected}`);
   } else ok("sandbox build uses the installed package's sandbox");
+  if (out !== undefined && failures.length === 0) {
+    mkdirSync(out, { recursive: true });
+    for (const t of tarballs) copyFileSync(t, join(out, basename(t)));
+    ok(`${tarballs.length} checked tarballs copied to ${out}`);
+  }
 } catch (e) {
   // Always recorded: a throw after earlier failures still means a later check
   // never ran, and that must not read as one that passed.
