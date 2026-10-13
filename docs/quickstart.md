@@ -11,7 +11,9 @@ pnpm install && pnpm build
 
 Node 22.12 or later. The CLI binary is `leastpilot`; the examples below call
 `packages/cli/dist/index.js` directly so they work in a checkout without a
-global install.
+global install. With `npm install -g @leastpilot/cli`, write `leastpilot`
+instead; the examples still need a clone for the sample ceilings in
+`fixtures/`.
 
 ---
 

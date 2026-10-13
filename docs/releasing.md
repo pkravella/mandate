@@ -113,5 +113,16 @@ for p in catalog cli compiler proxy replay schema validator writer; do npm depre
    npm install @leastpilot/cli@0.2.0 && npm audit signatures
    ```
 
+5. Point the Actions at it. They install from `action-install/`'s lockfile,
+   so the new version reaches them only through a pull request that updates
+   it. Dependabot proposes one weekly; to do it straight away:
+
+   ```bash
+   cd action-install && npm install --package-lock-only --ignore-scripts --save-exact @leastpilot/cli@0.2.0
+   ```
+
+   CI's pack job installs from the new lockfile and checks signatures, so a
+   bad lock fails the pull request.
+
 The `v0.1.0` tag marks a commit before the rename and was never published.
 It stays where it is.
