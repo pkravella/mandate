@@ -46,26 +46,33 @@ export function pauseRecord(args: {
   const blocked = NOT_WIDENABLE[facet];
   if (blocked !== undefined) return base;
 
+  // An observed value is the agent's own argument, and the glob language has
+  // no escape: `*` in it would be proposed as a wildcard (`path: "**"` became an
+  // offer of every path), and a control character has no place in a pattern a
+  // person is asked to read. Such a value is recorded and never offered.
+  const offerable = (v: string | undefined): v is string =>
+    v !== undefined && v.length > 0 && !v.includes("*") && !/[\p{Cc}\p{Cf}]/u.test(v);
+
   const addGrant: Record<string, unknown> = {};
   switch (facet) {
     case "resources": {
       const repo = observed["repo"];
-      if (repo !== undefined && repo.length > 0) addGrant["resources"] = [repo];
+      if (offerable(repo)) addGrant["resources"] = [repo];
       break;
     }
     case "branches": {
       const branch = observed["branch"];
-      if (branch !== undefined && branch.length > 0) addGrant["branches"] = [branch];
+      if (offerable(branch)) addGrant["branches"] = [branch];
       break;
     }
     case "paths": {
       const path = observed["path"];
-      if (path !== undefined && path.length > 0) addGrant["paths"] = [path];
+      if (offerable(path)) addGrant["paths"] = [path];
       break;
     }
     case "base": {
       const b = observed["base"];
-      if (b !== undefined && b.length > 0) addGrant["base"] = b;
+      if (offerable(b)) addGrant["base"] = b;
       break;
     }
     case "max": {

