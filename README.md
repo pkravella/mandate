@@ -231,10 +231,14 @@ You'll need Node 22.12 or later:
 npm install -g @leastpilot/cli
 ```
 
-Where it runs unattended, pin an exact version and check the registry's
-signatures and provenance after installing (`npm audit signatures` in the
-project you installed it into). Running an agent in the sandbox also needs
-Docker Desktop on macOS.
+Where it runs unattended, install an exact version into a project and check
+the registry's signatures and provenance there:
+
+```bash
+npm install @leastpilot/cli@0.2.0 && npm audit signatures
+```
+
+Running an agent in the sandbox also needs Docker Desktop on macOS.
 
 The examples below use the sample ceilings in this repository's `fixtures/`,
 so run them from a clone:
@@ -367,10 +371,15 @@ quietly loosening it. [docs/gh-aw.md](docs/gh-aw.md) has the mapping.
 
 **The GitHub Action.** There's an [Action](action.yml) and an
 [example workflow](.github/workflows/leastpilot.yml). It installs the
-published CLI from a committed lockfile ([action-install/](action-install/package.json))
-with `npm ci`, so every dependency is pinned by hash, and checks the
-registry's signatures and provenance before it runs anything. The workflow sets `permissions: {}` and the Action refuses to run if it
-finds a `GITHUB_TOKEN`, since a second credential is access no mandate limits.
+published CLI from a committed lockfile
+([action-install/](action-install/package.json)) with `npm ci`, so every
+dependency is pinned by hash, and checks the registry's signatures and
+provenance before it runs anything. That lockfile is updated in a pull request
+after each release, so the Action at a release's own commit still runs the
+previous CLI: pin the Action to a commit after that update, and check which
+version `action-install/package.json` names. The workflow sets
+`permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
+since a second credential is access no mandate limits.
 It takes the agent command one argument per line, so no workflow input is ever
 run through a shell.
 

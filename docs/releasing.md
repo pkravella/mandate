@@ -122,7 +122,9 @@ for p in catalog cli compiler proxy replay schema validator writer; do npm depre
    ```
 
    CI's pack job installs from the new lockfile and checks signatures, so a
-   bad lock fails the pull request.
+   bad lock fails the pull request. Until that pull request merges, the
+   Action at the release's tagged commit runs the previous CLI. Anyone
+   pinning the Action should pin a commit after the update.
 
 The `v0.1.0` tag marks a commit before the rename and was never published.
 It stays where it is.

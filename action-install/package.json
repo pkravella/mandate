@@ -1,7 +1,7 @@
 {
   "name": "leastpilot-action-install",
   "private": true,
-  "description": "What both Actions install: the published CLI at an exact version, locked with every dependency in package-lock.json. Update after each release (docs/releasing.md).",
+  "description": "What both Actions install: the published CLI at an exact version, locked with every dependency in package-lock.json. Dependabot proposes each new release; docs/releasing.md step 5 does it by hand.",
   "license": "Apache-2.0",
   "dependencies": {
     "@leastpilot/cli": "0.2.0"
