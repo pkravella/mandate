@@ -255,3 +255,18 @@ describe("the ceiling's destination allowlist", () => {
     expect(() => load(src, "https://github.com/acme\n")).toThrow(/scheme/i);
   });
 });
+
+// The validator cross-checks containment against Cedar on witness strings, so
+// Cedar's `like` and the glob reading must agree on an astral character: one
+// character, matched by `*` and by itself.
+describe("Cedar and an astral character", () => {
+  const k = "\u{1F511}";
+  const c = load(`@id("p")
+permit (principal, action == Mandate::Action::"contents.write", resource)
+when { resource.repo like "acme/*" && context has path && context.path like "a/${k}*" };`);
+  it("matches it as one character, as the glob does", () => {
+    expect(cedarAllows(c, { action: "contents.write", repo: "acme/api", path: `a/${k}x` }).allowed).toBe(true);
+    expect(cedarAllows(c, { action: "contents.write", repo: "acme/api", path: "a/x" }).allowed).toBe(false);
+    expect(globMatches([`a/${k}**`], `a/${k}x`)).toBe(true);
+  });
+});
