@@ -76,6 +76,11 @@ export type WidenDelta = z.infer<typeof WidenDeltaSchema>;
  */
 export const WidenRequestSchema = z.object({
   mandateId: z.string().min(1),
+  /**
+   * The mandate's full sha256 (`mandateHash`). Its id is a slug of the task's
+   * first words, so two mandates can share one; the hash names this one.
+   */
+  mandateHash: z.string().regex(/^[0-9a-f]{64}$/, "a 64-character lowercase hex sha256"),
   action: z.string().min(1),
   addGrant: WidenDeltaSchema,
   justification: z.string().min(1),
@@ -91,6 +96,7 @@ export type WidenRequest = z.infer<typeof WidenRequestSchema>;
 export const PauseRecordSchema = z.object({
   at: z.string().min(1),
   mandateId: z.string().min(1),
+  mandateHash: z.string().regex(/^[0-9a-f]{64}$/, "a 64-character lowercase hex sha256"),
   tool: z.string().min(1),
   clause: z.string().min(1),
   reason: z.string().min(1),

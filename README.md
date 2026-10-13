@@ -103,12 +103,15 @@ was mistyped. Every result names the ceiling it was checked against by its file
 and the sha256 of its contents; a mandate's own `ceiling:` field is shown only
 as the claim it is.
 
-A paused call can be re-reviewed with more scope. `leastpilot widen` takes the
-pause record the proxy emitted and re-validates the whole mandate from scratch,
-so the agent can never grant itself anything:
+A paused call can be re-reviewed with more scope. Run `serve` or `run` with
+`--pauses <dir>` and every denial is written there as a pause record, with the
+command to ask for more scope printed beside it. `leastpilot widen` takes that
+record and re-validates the whole mandate from scratch, so the agent can never
+grant itself anything. The record names the mandate by hash, and `widen`
+refuses it against any other mandate, including one with the same id:
 
 ```bash
-node packages/cli/dist/index.js widen mandate.yaml pause.json \
+node packages/cli/dist/index.js widen mandate.yaml pauses/2026-10-12T22-40-01-123Z-001-create_or_update_file.json \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \

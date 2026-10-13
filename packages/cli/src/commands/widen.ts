@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  GrantSchema, MandateSchema, parseMandateYaml, widenRefusal, widenRequestOf,
+  GrantSchema, MandateSchema, mandateHash, parseMandateYaml, widenRefusal, widenRequestOf,
   WidenInputSchema,
   type Grant, type Mandate, type ProposedMandate, type WidenRequest,
 } from "@leastpilot/schema";
@@ -48,6 +48,15 @@ export function applyWiden(current: Mandate, request: WidenRequest): Mandate {
     throw new WidenRefused(
       `this widen request targets a different mandate (${JSON.stringify(request.mandateId)} `
       + `rather than ${JSON.stringify(current.mandate)})`,
+    );
+  }
+  // The id is a slug of the task's first words, so another mandate can carry
+  // it. The hash is what names this one.
+  const hash = mandateHash(current);
+  if (request.mandateHash !== hash) {
+    throw new WidenRefused(
+      `this widen request was made for a different mandate with the same id (sha256 `
+      + `${request.mandateHash.slice(0, 12)}…, but this mandate is ${hash.slice(0, 12)}…)`,
     );
   }
 

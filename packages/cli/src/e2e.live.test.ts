@@ -223,7 +223,9 @@ describe.skipIf(!live)("the whole loop, live", () => {
       console.log(`--- decisions: ${decisions.length} total, ${denials.length} denied`);
       for (const d of denials) {
         if (d.kind !== "deny") continue;
-        const record = pauseRecord({ mandateId: rules.mandateId, decision: d, observed: {} });
+        const record = pauseRecord({
+          mandateId: rules.mandateId, mandateHash: rules.mandateHash, decision: d, observed: {},
+        });
         console.log(`    ${d.clause}  widen=${record.widenRequest === undefined ? "no" : "yes"}`);
       }
 

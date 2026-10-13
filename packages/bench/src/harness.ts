@@ -461,7 +461,9 @@ async function runOnce(deps: BenchDeps, run: RunInput, log: (s: string) => void)
     let widenRequests = 0;
     let widenRefusals = 0;
     for (const d of denials) {
-      const pause = pauseRecord({ mandateId: rules.mandateId, decision: d, observed: {} });
+      const pause = pauseRecord({
+        mandateId: rules.mandateId, mandateHash: rules.mandateHash, decision: d, observed: {},
+      });
       if (pause.widenRequest === undefined) widenRefusals += 1;
       else widenRequests += 1;
     }

@@ -258,6 +258,9 @@ grant list decorative.
 **The refusal list governs the act, not just the suggestion.** The proxy
 declines to *offer* a widen for those clauses, and `leastpilot widen` refuses to
 *apply* one — including for a pause record edited by hand to attach a request.
+`serve --pauses <dir>` writes each pause record where `widen` can read it; until
+Phase 8 only the benchmark built pause records, and a real session's denial
+left nothing to hand to `widen`.
 That is why the list and the pause-record format live in `@leastpilot/schema`
 rather than in the proxy: one definition, read by the layer that offers and the
 layer that applies.

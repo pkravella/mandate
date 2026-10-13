@@ -211,8 +211,12 @@ what maps and what is refused.
 ### 3.7 Mandate ids can collide
 
 `slug()` truncates at 48 characters on a word boundary, so two tasks opening
-with the same words share an id. `mandateHash` exists for this and the trace
-header uses it; nothing else keys on the hash.
+with the same words share an id. The id is a label; nothing that has to tell
+two mandates apart relies on it. The trace header, the audit log, the approval
+digest and the widen request all name the mandate by `mandateHash`, and
+`leastpilot widen` refuses a pause record or request made for a different
+mandate even when the ids match. (Until Phase 8 the widen check compared ids
+only.)
 
 ---
 
