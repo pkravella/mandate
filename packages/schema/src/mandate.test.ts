@@ -91,6 +91,15 @@ describe("MandateSchema", () => {
     }
   });
 
+  it("rejects a NUL character in a pattern", () => {
+    const bad = {
+      ...valid,
+      grants: [{ action: "contents.write", enforcedBy: "proxy", resources: ["acme/api"],
+        branches: ["agent/42-*"], paths: ["src/\u0000.ts"] }],
+    };
+    expect(MandateSchema.safeParse(bad).success).toBe(false);
+  });
+
   it("rejects path traversal in a pattern", () => {
     const bad = {
       ...valid,

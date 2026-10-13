@@ -103,12 +103,15 @@ was mistyped. Every result names the ceiling it was checked against by its file
 and the sha256 of its contents; a mandate's own `ceiling:` field is shown only
 as the claim it is.
 
-A paused call can be re-reviewed with more scope. `leastpilot widen` takes the
-pause record the proxy emitted and re-validates the whole mandate from scratch,
-so the agent can never grant itself anything:
+A paused call can be re-reviewed with more scope. Run `serve` or `run` with
+`--pauses <dir>` and every denial is written there as a pause record, with the
+command to ask for more scope printed beside it. `leastpilot widen` takes that
+record and re-validates the whole mandate from scratch, so the agent can never
+grant itself anything. The record names the mandate by hash, and `widen`
+refuses it against any other mandate, including one with the same id:
 
 ```bash
-node packages/cli/dist/index.js widen mandate.yaml pause.json \
+node packages/cli/dist/index.js widen mandate.yaml pauses/2026-10-12T22-40-01-123Z-001-create_or_update_file.json \
   --ceiling fixtures/ceilings/org-policy-v12.cedar \
   --schema  fixtures/ceilings/schema.cedarschema \
   --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
@@ -517,13 +520,15 @@ negative controls that widen the allowlist and strip the firewall rules to
 confirm the checks can fail, and it exits rather than starting the agent if it
 cannot install the rules. macOS with Docker Desktop for now.
 
-**Running the proxy needs the right upstream toolsets.** `github-mcp-server`
-exposes 46 tools by default and 91 with `GITHUB_TOOLSETS=all`. Six catalog
-operations name tools in the non-default sets, so granting `actions.read`
-against a default server reaches nothing — and because the proxy only offers
-tools the upstream advertises, the agent never sees it and the task fails with
-nothing explaining why. `TOOLSET_REQUIRED` in the catalog names the toolset each
-one needs, and `unreachableOperations()` reports the gap for a running server.
+**The upstream is pinned, and started with the toolsets the grants need.**
+A session runs `github-mcp-server` v2.0.2 by digest (`GITHUB_MCP_SERVER_IMAGE`
+in the catalog), never `:latest`, which moved to a new major on 2026-10-06 with
+nobody choosing it. Six catalog operations name tools outside the server's
+default toolsets, so the session sets `GITHUB_TOOLSETS` from the grants
+(`default,actions` for a mandate granting `actions.read`). If a granted
+operation still has no tool on the server, the session refuses before the agent
+starts, names the operation, and revokes the token: the proxy only offers tools
+the upstream lists, so the agent would never have seen it.
 
 The npm scope is `@leastpilot`; `@mandate` and the `mandate-dev` scope belong
 to unrelated projects.

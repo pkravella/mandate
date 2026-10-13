@@ -49,6 +49,9 @@ export function parseGlob(src: string): Token[] {
       out.push({ kind: "star" });
       continue;
     }
+    // U+0000 is the automaton's OTHER: "every character no glob names". A
+    // pattern naming it would match all of them.
+    if (c === "\u0000") throw new GlobParseError("a NUL character is not allowed in a glob", src);
     if (FORBIDDEN.has(c)) {
       throw new GlobParseError(`unsupported metacharacter ${JSON.stringify(c)}`, src);
     }

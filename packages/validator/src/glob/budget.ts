@@ -62,8 +62,29 @@ export interface WorkBudget {
  *   - `pattern-flood`: 11_960_064, so it is refused about two thirds of the way
  *     through, in roughly 1.7 s.
  *
- * The headroom is therefore ~240x for a realistic mandate and ~2x for one at the
- * extreme end of what the schema permits. That second figure is thin and is the
+ * Phase 8 re-measured, after a cache scoped to one validate() call stopped the
+ * same deny list, ceiling clause and probe automaton being rebuilt per grant
+ * (see DfaCache in contains.ts):
+ *
+ *   - the benchmark's four-grant mandate: 8_977 (0.1%);
+ *   - 64 grants with two deny patterns each: 329_001 (4.1%), was 47%;
+ *   - 19 grants with an ordinary six-pattern deny list: 490_505 (6.1%), was
+ *     102% -- refused as too complex before the cache;
+ *   - 64 grants with that deny list: 1_512_867 (18.9%), was 341%;
+ *   - `pattern-flood`, rewritten with distinct patterns per grant (identical
+ *     grants now share their automata): refused at the budget, in ~1.0 s.
+ *     The 11_960_064 below is the earlier, identical-grant file.
+ *
+ * Each automaton is built over its own globs' alphabet, so a grant with many
+ * distinct characters in its paths costs that grant, not every grant: a
+ * call-wide alphabet, tried first, let one 300-character CJK path take 62
+ * ordinary grants past the budget.
+ *
+ * The axis that mattered was the deny list, not the grant count. The table
+ * below records the derivation of the unit; its figures predate the cache.
+ *
+ * Before the cache, the headroom was ~240x for a realistic mandate and ~2x for
+ * one at the extreme end the test reached. That second figure is thin and is the
  * honest cost of a deterministic bound: a wall-clock deadline would separate the
  * two cleanly but would make a validator's verdict depend on how busy the
  * machine is, and a validator that answers differently on a loaded CI runner is

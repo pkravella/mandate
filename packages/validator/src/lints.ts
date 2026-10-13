@@ -2,8 +2,8 @@ import { getOperation } from "@leastpilot/catalog";
 import {
   SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles, type Mandate,
 } from "@leastpilot/schema";
-import { globMatches, globSetContains } from "./glob/contains.js";
-import { type WorkBudget } from "./glob/budget.js";
+import { globMatches, globSetContains, type DfaCache } from "./glob/contains.js";
+import { WorkBudgetError, type WorkBudget } from "./glob/budget.js";
 import { GlobParseError } from "./glob/parse.js";
 
 export type LintSeverity = "error" | "warn";
@@ -36,23 +36,39 @@ const DEFAULT_BRANCHES = ["main", "master", "develop", "release", "release/1.0"]
 // where they were first published.
 export { SENSITIVE_PATHS, SIDE_EFFECTING, writesFiles };
 
-/** Membership that degrades to "no match" on an undecidable pattern. */
+/**
+ * Membership that degrades to "no match" on an undecidable pattern.
+ *
+ * Never on a spent budget, which is a WorkBudgetError and so also a
+ * GlobParseError: "no match" there read as "cannot reach main", and the
+ * default-branch lint passed a grant it had not decided. That propagates, and
+ * validate() refuses the mandate as too complex.
+ */
 function matchesSafely(globs: readonly string[], value: string, budget?: WorkBudget): boolean {
   try {
     return globMatches(globs, value, budget);
   } catch (e) {
+    if (e instanceof WorkBudgetError) throw e;
     if (e instanceof GlobParseError) return false;
     throw e;
   }
 }
 
-/** Containment that degrades to "not contained" on an undecidable pattern. */
+/**
+ * Containment that degrades to "not contained" on an undecidable pattern.
+ * Never on a spent budget, which used to surface as "does not exclude
+ * **.env**" for a grant that excludes it.
+ */
 function containsSafely(
-  outer: readonly string[], inner: readonly string[], budget?: WorkBudget,
+  outer: readonly string[], inner: readonly string[], budget?: WorkBudget, cache?: DfaCache,
 ): boolean {
   try {
-    return globSetContains(outer, inner, budget !== undefined ? { budget } : {}).ok;
+    return globSetContains(outer, inner, {
+      ...(budget !== undefined ? { budget } : {}),
+      ...(cache !== undefined ? { cache } : {}),
+    }).ok;
   } catch (e) {
+    if (e instanceof WorkBudgetError) throw e;
     if (e instanceof GlobParseError) return false;
     throw e;
   }
@@ -74,7 +90,7 @@ function containsSafely(
  * budget error degrades here the same way an unparseable pattern does, to "not
  * contained", which is still a lint error and still a rejection.
  */
-export function runLints(m: Mandate, budget?: WorkBudget): readonly LintFinding[] {
+export function runLints(m: Mandate, budget?: WorkBudget, cache?: DfaCache): readonly LintFinding[] {
   const out: LintFinding[] = [];
   const add = (rule: string, severity: LintSeverity, message: string, grantIndex?: number): void => {
     out.push(grantIndex === undefined ? { rule, severity, message } : { rule, severity, message, grantIndex });
@@ -123,7 +139,7 @@ export function runLints(m: Mandate, budget?: WorkBudget): readonly LintFinding[
       const denies = g.denyPaths ?? [];
       const uncovered = denies.length === 0
         ? SENSITIVE_PATHS
-        : SENSITIVE_PATHS.filter((s) => !containsSafely(denies, [s], budget));
+        : SENSITIVE_PATHS.filter((s) => !containsSafely(denies, [s], budget, cache));
       if (uncovered.length > 0) {
         add("require-sensitive-deny-paths", "error",
           `${g.action} does not exclude ${uncovered.join(", ")}`, i);

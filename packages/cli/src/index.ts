@@ -19,7 +19,7 @@ import { runReviewFetch } from "./reviewFetch.js";
 
 export { runValidate, type ValidateArgs } from "./commands/validate.js";
 export {
-  openSession, dockerUpstream, type Session, type SessionOptions,
+  openSession, dockerUpstream, dockerUpstreamCommand, type Session, type SessionOptions,
 } from "./session.js";
 export { runServe, type ServeArgs, type ServeDeps } from "./commands/serve.js";
 export {
@@ -87,6 +87,9 @@ const appDeps = (): MintDeps | undefined => {
 const APPROVAL_HELP = "refuse to mint unless the mandate's requester approved this exact mandate "
   + "with a comment on that issue or pull request (R5); reads it with the App's issues and pull_requests read";
 
+const PAUSES_HELP =
+  "write each denial's pause record into this directory, one file per denial, for "
+  + "`leastpilot widen` (R10)";
 const AUDIT_LOG_HELP = "write a signed log of the session here as it happens (R16), signed with "
   + "LEASTPILOT_AUDIT_KEY_PATH; never over an existing file";
 
@@ -208,11 +211,12 @@ export function main(argv: readonly string[]): void {
     )
     .option("--ready-file <path>", "with --listen: write {host, port} here once listening")
     .option("--audit-log <path>", AUDIT_LOG_HELP)
+    .option("--pauses <dir>", PAUSES_HELP)
     .option("--approval <owner/repo#number>", APPROVAL_HELP)
     .action(async (opts: {
       mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
       as: string; level?: string; repo?: string; trace?: string;
-      listen?: string; readyFile?: string; auditLog?: string; approval?: string;
+      listen?: string; readyFile?: string; auditLog?: string; approval?: string; pauses?: string;
     }) => {
       // stdout is the JSON-RPC stream. Every diagnostic goes to stderr, or the
       // agent sees a parse error instead of a tool list.
@@ -236,6 +240,7 @@ export function main(argv: readonly string[]): void {
         ...(opts.listen === undefined ? {} : { listen: opts.listen }),
         ...(opts.readyFile === undefined ? {} : { readyFile: opts.readyFile }),
         ...(opts.auditLog === undefined ? {} : { auditLog: opts.auditLog }),
+        ...(opts.pauses === undefined ? {} : { pauses: opts.pauses }),
         ...(opts.approval === undefined ? {} : { approval: opts.approval }),
       }, log, {
         github,
@@ -257,6 +262,7 @@ export function main(argv: readonly string[]): void {
     .option("--trace <path>", "write the action graph here when the session ends (R8)")
     .option("--diff", "print the permission diff before launching")
     .option("--audit-log <path>", AUDIT_LOG_HELP)
+    .option("--pauses <dir>", PAUSES_HELP)
     .option("--approval <owner/repo#number>", APPROVAL_HELP)
     .option(
       "--sandbox",
@@ -277,7 +283,7 @@ export function main(argv: readonly string[]): void {
       mandate: string; ceiling: string; schema: string; ceilingDestinations: string;
       as: string; level?: string; repo?: string; trace?: string; diff?: boolean;
       sandbox?: boolean; image?: string; agentEgress?: string[]; passEnv?: string[];
-      auditLog?: string; approval?: string;
+      auditLog?: string; approval?: string; pauses?: string;
     }) => {
       const resolve = githubResolver();
       const approvals = githubApprovalReader();
@@ -293,6 +299,7 @@ export function main(argv: readonly string[]): void {
         ...(opts.agentEgress === undefined ? {} : { agentEgress: opts.agentEgress }),
         ...(opts.passEnv === undefined ? {} : { passEnv: opts.passEnv }),
         ...(opts.auditLog === undefined ? {} : { auditLog: opts.auditLog }),
+        ...(opts.pauses === undefined ? {} : { pauses: opts.pauses }),
         ...(opts.approval === undefined ? {} : { approval: opts.approval }),
       }, (m) => { console.log(m); }, {
         ...(resolve === undefined ? {} : { resolve }),

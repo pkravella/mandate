@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -5,7 +7,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { markValidated, parseMandateYaml, type ValidatedMandate } from "@leastpilot/schema";
 import type { MintDeps } from "@leastpilot/compiler";
-import { openSession } from "./session.js";
+import { GITHUB_MCP_SERVER_IMAGE } from "@leastpilot/catalog";
+import { dockerUpstreamCommand, openSession } from "./session.js";
 
 /**
  * The enforced session: mint, compile, connect upstream, build the proxy.
@@ -52,7 +55,9 @@ interface FakeGithub {
   readonly revoked: () => boolean;
 }
 
-const fakeGithub = (opts: { mintFails?: boolean; tokenLifeMs?: number } = {}): FakeGithub => {
+const fakeGithub = (
+  opts: { mintFails?: boolean; tokenLifeMs?: number; permissions?: Record<string, string> } = {},
+): FakeGithub => {
   const calls: string[] = [];
   let revoked = false;
   return {
@@ -70,7 +75,7 @@ const fakeGithub = (opts: { mintFails?: boolean; tokenLifeMs?: number } = {}): F
           data: {
             token: "ghs_faketoken",
             expires_at: new Date(Date.now() + (opts.tokenLifeMs ?? 3_600_000)).toISOString(),
-            permissions: { contents: "write", metadata: "read" },
+            permissions: opts.permissions ?? { contents: "write", metadata: "read" },
             // Bare names, which is what the endpoint really returns: measured
             // in Phase 2 and enforced by TokenResponseSchema.
             repositories: [{ name: "api" }],
@@ -87,28 +92,35 @@ const fakeGithub = (opts: { mintFails?: boolean; tokenLifeMs?: number } = {}): F
 };
 
 interface FakeUpstream {
-  readonly connect: (token: string) => Promise<Client>;
+  readonly connect: (token: string, toolsets: string) => Promise<Client>;
   readonly tokenSeen: () => string | undefined;
+  readonly toolsetsSeen: () => string | undefined;
   readonly closed: () => boolean;
 }
 
-const fakeUpstream = (opts: { connectFails?: boolean } = {}): FakeUpstream => {
+/**
+ * Exposes the tools the test mandate's grants need (repo.read, contents.write)
+ * plus one ungranted tool, unless `tools` says otherwise: a session now refuses
+ * a grant the upstream has no tool for.
+ */
+const fakeUpstream = (opts: { connectFails?: boolean; tools?: readonly string[] } = {}): FakeUpstream => {
   let tokenSeen: string | undefined;
+  let toolsetsSeen: string | undefined;
   let closed = false;
+  const tools = opts.tools ?? ["get_file_contents", "merge_pull_request", "create_or_update_file"];
   return {
     tokenSeen: () => tokenSeen,
+    toolsetsSeen: () => toolsetsSeen,
     closed: () => closed,
-    connect: async (token) => {
+    connect: async (token, toolsets) => {
       tokenSeen = token;
+      toolsetsSeen = toolsets;
       if (opts.connectFails === true) throw new Error("docker is not running");
       const server = new Server(
         { name: "fake-github", version: "0" }, { capabilities: { tools: {} } },
       );
       server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: [
-          { name: "get_file_contents", description: "reads", inputSchema: { type: "object" } },
-          { name: "merge_pull_request", description: "merges", inputSchema: { type: "object" } },
-        ],
+        tools: tools.map((name) => ({ name, description: name, inputSchema: { type: "object" as const } })),
       }));
       server.setRequestHandler(CallToolRequestSchema, async () => ({
         content: [{ type: "text" as const, text: "ok" }],
@@ -288,5 +300,85 @@ describe("openSession — giving the token back", () => {
     });
     expect(JSON.stringify(session.rules)).not.toContain(session.minted.token);
     await session.close();
+  });
+});
+
+// Phase 8: the grants have to be reachable on the server actually started.
+describe("openSession — the upstream it starts", () => {
+  it("asks the upstream for the toolsets the grants need", async () => {
+    const up = fakeUpstream();
+    const session = await openSession({ mandate: mandate(), github: fakeGithub().deps, upstream: up.connect });
+    await session.close();
+    expect(up.toolsetsSeen()).toBe("default");
+  });
+
+  it("asks for an extra toolset when a grant lives outside the defaults", async () => {
+    const yaml = MANDATE_YAML.replace(
+      "grants:\n", "grants:\n  - { action: actions.read, enforcedBy: token, resources: [\"acme/api\"] }\n",
+    );
+    const m = markValidated(parseMandateYaml(yaml), {
+      ceilingId: "org-policy@v12", ceilingSha256: "0".repeat(64), userLevel: "push",
+      checkedAt: new Date().toISOString(), grantProofs: [],
+    });
+    const up = fakeUpstream({ tools: ["get_file_contents", "create_or_update_file", "actions_list"] });
+    const gh = fakeGithub({ permissions: { contents: "write", metadata: "read", actions: "read" } });
+    const session = await openSession({ mandate: m, github: gh.deps, upstream: up.connect });
+    await session.close();
+    expect(up.toolsetsSeen()).toBe("default,actions");
+  });
+
+  // The silent failure TOOLSET_REQUIRED warned about: the proxy offers only
+  // what upstream lists, so an unreachable grant meant an agent that never saw
+  // its tool and a task that failed with nothing saying why.
+  it("refuses a grant the upstream has no tool for, and gives the token back", async () => {
+    const gh = fakeGithub();
+    const up = fakeUpstream({ tools: ["get_file_contents"] });
+    await expect(openSession({ mandate: mandate(), github: gh.deps, upstream: up.connect }))
+      .rejects.toThrow(/contents\.write/);
+    expect(gh.revoked()).toBe(true);
+    expect(up.closed()).toBe(true);
+  });
+
+  // Found by review: the refusal said "the token was revoked" before the
+  // revoke ran, and a failed revoke is swallowed. An operator told a live
+  // repository token is dead stops worrying about it.
+  it("never claims a revoke it has not seen succeed", async () => {
+    const gh = fakeGithub();
+    const deps: MintDeps = {
+      ...gh.deps,
+      asInstallation: async (route, token, params) => {
+        if (route === "DELETE /installation/token") throw new Error("network");
+        return gh.deps.asInstallation(route, token, params);
+      },
+    };
+    const up = fakeUpstream({ tools: ["get_file_contents"] });
+    const refused = await openSession({ mandate: mandate(), github: deps, upstream: up.connect })
+      .then(() => undefined, (e: unknown) => e);
+    expect(refused).toBeInstanceOf(Error);
+    expect((refused as Error).message).toMatch(/contents\.write/);
+    expect((refused as Error).message).not.toMatch(/revoked/);
+  });
+
+  it("runs the pinned server with the toolsets in its environment, never the token in argv", () => {
+    const c = dockerUpstreamCommand("default,actions");
+    expect(c.command).toBe("docker");
+    expect(c.args.at(-1)).toBe(GITHUB_MCP_SERVER_IMAGE);
+    expect(c.args.join(" ")).toContain("-e GITHUB_TOOLSETS");
+    expect(c.args.join(" ")).toContain("-e GITHUB_PERSONAL_ACCESS_TOKEN");
+    expect(c.env).toEqual({ GITHUB_TOOLSETS: "default,actions" });
+  });
+});
+
+describe("no moving tag for the upstream", () => {
+  it("names github-mcp-server by digest everywhere it is run", () => {
+    const root = new URL("../../../", import.meta.url);
+    const files = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
+      .split("\n").filter((f) => f.length > 0 && !/^docs\/[^/]+\.json$/.test(f) && !f.startsWith("fixtures/"));
+    expect(files.length).toBeGreaterThan(100);
+    const hits = files.flatMap((f) => {
+      const text = readFileSync(new URL(f, root), "utf8");
+      return new RegExp("github-mcp-server" + ":latest").test(text) ? [f] : [];
+    });
+    expect(hits).toEqual([]);
   });
 });
