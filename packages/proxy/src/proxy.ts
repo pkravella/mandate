@@ -99,7 +99,7 @@ function annotate<T extends { readonly name: string; readonly description?: stri
 type ListedTool = Awaited<ReturnType<Client["listTools"]>>["tools"][number];
 
 /** Every upstream tool, following `nextCursor`. */
-async function listAllUpstreamTools(upstream: Client): Promise<readonly ListedTool[]> {
+export async function listAllUpstreamTools(upstream: Client): Promise<readonly ListedTool[]> {
   const all: ListedTool[] = [];
   let cursor: string | undefined;
   // A malicious or broken upstream could cycle cursors forever. Bound it: the

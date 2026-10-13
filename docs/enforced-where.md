@@ -164,16 +164,22 @@ machine — rather than a wall-clock deadline, because a validator whose verdict
 depends on how busy the runner is cannot be something a mandate is proved
 against.
 
-**A granted operation can be unreachable, depending on how the upstream is
-run.** `github-mcp-server`'s default toolsets expose 46 tools;
-`GITHUB_TOOLSETS=all` exposes 91. Six catalog operations —
-`actions.read`, `actions.logs.read`, `actions.write`, `discussions.read`,
-`notifications.read` and `gist.write` — name tools that appear only once extra
-toolsets are enabled. The proxy filters `tools/list` to what the upstream
-offers, so a grant whose tools are absent means the agent never sees the tool
-and the task fails with nothing explaining why. `TOOLSET_REQUIRED` in the
-catalog names the toolset each one needs, and `unreachableOperations()` reports
-the gap for a running server.
+**A granted operation must be reachable on the server the session starts.**
+`github-mcp-server`'s default toolsets expose 46 tools; `GITHUB_TOOLSETS=all`
+exposes 91 (measured at v1.14.0). Six catalog operations — `actions.read`,
+`actions.logs.read`, `actions.write`, `discussions.read`, `notifications.read`
+and `gist.write` — name tools that appear only once extra toolsets are enabled.
+The session starts the pinned server (`GITHUB_MCP_SERVER_IMAGE`, v2.0.2 by
+digest) with `GITHUB_TOOLSETS` set from the grants (`TOOLSET_REQUIRED` names
+each one's toolset), then lists its tools. A grant with no tool on that list is
+refused before the agent starts, with the token revoked: the proxy filters
+`tools/list` to what the upstream offers, so the agent would never have seen
+it. v2.0.2's input schemas for every catalog tool match v1.14.0's; the upstream
+behaviour this table cites was measured at v1.14.0.
+
+`get_me` is not in the catalog, and adding it would not help: it calls
+`GET /user`, which an installation token is refused (403 "Resource not
+accessible by integration", measured 2026-10-12).
 
 **The loosest rule for a tool decides.** Nine MCP tools are reached by more than
 one operation — `get_file_contents` by both `repo.read` and `contents.read`,
