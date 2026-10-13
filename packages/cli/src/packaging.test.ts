@@ -112,6 +112,14 @@ describe("action.yml", () => {
 });
 
 describe("the example workflow", () => {
+  // `uses: ./` runs the published CLI pinned in action-install/, not this
+  // checkout (Task 9.1 step 5). A build step here would cost a minute and make
+  // a dispatch on a branch look like it tested that branch's code.
+  it("does not build LeastPilot, since the Action runs the published CLI", () => {
+    const runs = Object.values(workflow.jobs).flatMap((j) => j.steps).map((s) => s.run ?? "");
+    expect(runs.some((r) => /pnpm (install|build)|corepack/.test(r))).toBe(false);
+  });
+
   it("grants the job no permissions at all", () => {
     // An empty block means GITHUB_TOKEN is not issued, so there is no second
     // credential for an injected agent to find.

@@ -103,6 +103,15 @@ describe("scripts/install-action-cli.sh", () => {
     // `npm install` would re-resolve the ranges the lockfile exists to pin.
     expect(installScript).not.toMatch(/npm (install|i) /);
   });
+
+  // A caller's NPM_CONFIG_REGISTRY or .npmrc would otherwise redirect every
+  // fetch, and the signature check would ask that host for keys (review of
+  // step 5). Command-line flags outrank both, so the trust root is npmjs.
+  it("pins the registry on both npm commands, whatever the caller configured", () => {
+    const pinned = "--registry=https://registry.npmjs.org/ --replace-registry-host=never";
+    expect(installScript).toMatch(new RegExp(`npm ci [^\\n]*${pinned}`));
+    expect(installScript).toMatch(new RegExp(`npm audit signatures [^\\n]*--registry=https://registry\\.npmjs\\.org/`));
+  });
 });
 
 describe("action-install/, what the Actions install", () => {
