@@ -160,6 +160,7 @@ flowchart TB
         token["GitHub App token<br/>one repo, needed permissions"]
         rules["Proxy rules<br/>branches, paths, counts"]
         egress["Egress allowlist<br/>for the sandbox"]
+        token ~~~ rules ~~~ egress
     end
 
     limits --> before
