@@ -21,7 +21,7 @@ updates:
     directory: "/"
     schedule: { interval: weekly }
   - package-ecosystem: docker
-    directory: "/sandbox"
+    directory: "/packages/cli/sandbox"
     schedule: { interval: weekly }
     # Odd-numbered Node releases are never LTS. CI does not build this image
     # (it is behind LEASTPILOT_SANDBOX), so a green check says nothing about one.

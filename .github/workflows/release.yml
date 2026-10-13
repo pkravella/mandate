@@ -1,0 +1,112 @@
+name: release
+
+# Publishes the public packages to npm when a version tag is pushed (Task 9.1).
+#
+# Authentication is npm trusted publishing: npm exchanges this job's OIDC
+# token for a short-lived publish credential, so no npm token is stored in the
+# repository's secrets. Each package's trusted publisher on npmjs.com names
+# this repository, this file and the `npm` environment, so a run from anywhere
+# else gets no credential. A trusted publisher can only be attached to a
+# package that already exists, which is why the first version of each package
+# was a placeholder published by hand (docs/releasing.md).
+#
+# If a run fails part-way, re-run it. scripts/publish.mjs skips what is
+# already on the registry; never bump only the packages that failed, because
+# the CLI pins its siblings exactly.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Everything that runs project or dependency code, with no OIDC token: every
+  # step of a job with id-token: write can mint one, and the trusted publisher
+  # accepts it for the whole job, so a compromised dependency running in the
+  # tests could otherwise publish any version, with valid provenance.
+  build:
+    name: check and pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # fetch-depth 0 so origin/main is there to check the tag against.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The tag is on main
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on main; nothing was published"
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      # No dependency cache: a release builds from a clean install.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: The tag names the packages' version
+        run: node scripts/release-version.mjs "$GITHUB_REF_NAME"
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm lint
+
+      - run: pnpm test
+
+      - run: pnpm build
+
+      - run: node scripts/pack-check.mjs --out "$RUNNER_TEMP/release-tarballs"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/release-tarballs
+          if-no-files-found: error
+          retention-days: 7
+
+  # Holds the OIDC token, and runs nothing but a pinned npm and publish.mjs on
+  # the tarballs the build job checked.
+  publish:
+    name: publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      # The OIDC token npm exchanges for a publish credential, and signs the
+      # provenance attestation with.
+      id-token: write
+    steps:
+      # For scripts/publish.mjs and the packages' manifests, which give the
+      # publish order. Nothing is installed from the checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-tarballs
+          path: ${{ runner.temp }}/release-tarballs
+
+      # Trusted publishing needs npm 11.5.1 or later; Node 24's bundled npm
+      # has been older than that.
+      - run: npm install -g npm@11.21.0
+
+      - run: node scripts/publish.mjs "$RUNNER_TEMP/release-tarballs"

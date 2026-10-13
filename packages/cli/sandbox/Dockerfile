@@ -5,9 +5,10 @@
 # This container is the layer that actually closes egress, so the mandate's
 # destination list means something for traffic the proxy never sees.
 #
-# Build and run from the repository root:
+# Build it with `leastpilot sandbox build` (this directory ships in the CLI
+# package), or by hand from the repository root:
 #
-#   docker build -t mandate-sandbox sandbox
+#   docker build -t mandate-sandbox packages/cli/sandbox
 #   docker run --rm --cap-add=NET_ADMIN \
 #     -e MANDATE_SQUID_CONF="$(node -e '...compileEgress(m).squidConf...')" \
 #

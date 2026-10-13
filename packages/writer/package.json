@@ -1,8 +1,18 @@
 {
   "name": "@leastpilot/writer",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "description": "Proposes a mandate from a task with a model. Untrusted: its output is accepted only by the validator.",
   "type": "module",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pkravella/mandate.git",
+    "directory": "packages/writer"
+  },
+  "homepage": "https://github.com/pkravella/mandate/tree/main/packages/writer#readme",
+  "bugs": {
+    "url": "https://github.com/pkravella/mandate/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -16,7 +26,8 @@
     "typecheck": "tsc --build"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "dependencies": {
     "@leastpilot/catalog": "workspace:*",
@@ -29,5 +40,8 @@
   },
   "engines": {
     "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

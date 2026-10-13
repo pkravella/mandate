@@ -180,8 +180,8 @@ readable by the agent's own user. That is what `--sandbox` is for.
 ### In the sandbox
 
 ```bash
-docker build -t mandate-sandbox sandbox
-docker build -t mandate-agent-claude sandbox/examples/claude-code
+node packages/cli/dist/index.js sandbox build    # docker build -t mandate-sandbox packages/cli/sandbox
+docker build -t mandate-agent-claude packages/cli/sandbox/examples/claude-code
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 
 node packages/cli/dist/index.js run --mandate mandate.yaml \
@@ -348,6 +348,7 @@ what to do about it.
 | [Audit log](docs/audit-log.md) | The signed session log: turning it on, checking it, its format, what it proves |
 | [gh-aw export](docs/gh-aw.md) | A mandate as a GitHub Agentic Workflows workflow: what maps, what is refused, what enforces it |
 | [Architecture](docs/architecture.md) | The package graph and why it is shaped that way |
+| [Releasing](docs/releasing.md) | How the packages reach npm, the one-time setup, and what to do when a release fails part-way |
 | [Benchmark report](docs/benchmark-report.md) | Measured completion, authority cut, over-grant, and the denials an under-grant produces, rendered from [its results](docs/benchmark-results.json) |
 
 ## Three things worth knowing up front
@@ -514,7 +515,7 @@ upstream of it is untrusted; everything downstream takes only a
 
 **The egress sandbox is the layer that actually holds.** An MCP proxy sees MCP
 traffic and nothing else, so an agent with a shell, a `git push` to a remote it
-configures itself, or a `curl` never transits it. [`sandbox/`](sandbox/README.md)
+configures itself, or a `curl` never transits it. [`packages/cli/sandbox/`](packages/cli/sandbox/README.md)
 is a container whose only route out is a `CONNECT` proxy allowlist compiled from
 the mandate's destinations, with `iptables` rejecting everything else from the
 agent's uid, over IPv4 and IPv6. `leastpilot run --sandbox` runs the agent in it,

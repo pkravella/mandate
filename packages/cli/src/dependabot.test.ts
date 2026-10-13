@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -15,6 +15,7 @@ import { parse } from "yaml";
  */
 interface Update {
   readonly "package-ecosystem": string;
+  readonly directory: string;
   readonly ignore?: readonly { readonly "dependency-name": string; readonly versions?: readonly string[] }[];
 }
 const config = parse(readFileSync(
@@ -37,5 +38,13 @@ describe(".github/dependabot.yml", () => {
       expect(hi).toBe(lo! + 1);
     }
     expect(ranges.map(([lo]) => lo)).toEqual([23, 25, 27, 29, 31]);
+  });
+
+  // The sandbox moved into the CLI package to ship on npm (Task 9.1). Pointed
+  // at a directory with no Dockerfile, Dependabot reports nothing and the base
+  // image stops getting updates without anyone seeing it.
+  it("watches the directory the sandbox's Dockerfile is in", () => {
+    const dir = docker?.directory ?? "";
+    expect(existsSync(fileURLToPath(new URL(`../../..${dir}/Dockerfile`, import.meta.url)))).toBe(true);
   });
 });

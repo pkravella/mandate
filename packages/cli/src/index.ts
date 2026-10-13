@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Command, CommanderError } from "commander";
 import { runValidate, type ValidateArgs } from "./commands/validate.js";
@@ -10,6 +10,7 @@ import { githubAppDeps, type MintDeps } from "@leastpilot/compiler";
 import { runWiden } from "./commands/widen.js";
 import { runAuditKeygen, runAuditVerify } from "./commands/audit.js";
 import { runExportGhAw } from "./commands/export.js";
+import { defaultSandboxBuildDeps, runSandboxBuild, SANDBOX_TAG } from "./commands/sandboxBuild.js";
 import { githubApprovalReader } from "./approval.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { writeMandate } from "@leastpilot/writer";
@@ -93,10 +94,21 @@ const PAUSES_HELP =
 const AUDIT_LOG_HELP = "write a signed log of the session here as it happens (R16), signed with "
   + "LEASTPILOT_AUDIT_KEY_PATH; never over an existing file";
 
+/**
+ * The CLI package's own version, read from the package.json beside `dist/`.
+ * Both a checkout and an npm install have it there, and npm always packs it.
+ */
+function packageVersion(): string {
+  const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  };
+  return manifest.version;
+}
+
 /** Only runs when this file is the entry point, so importing it is side-effect free. */
 export function main(argv: readonly string[]): void {
   const program = new Command();
-  program.name("leastpilot").description("Task-scoped authority for AI agents").version("0.1.0");
+  program.name("leastpilot").description("Task-scoped authority for AI agents").version(packageVersion());
   program.exitOverride();
 
   program
@@ -418,6 +430,16 @@ export function main(argv: readonly string[]): void {
     .requiredOption("--public-key <path>", "the public key of the key that signed it")
     .action((log: string, opts: { publicKey: string }) => {
       process.exitCode = runAuditVerify({ file: log, publicKey: opts.publicKey }, (m) => { console.log(m); });
+    });
+
+  program
+    .command("sandbox")
+    .description("the sandbox container that --sandbox runs agents in")
+    .command("build")
+    .description("build the mandate-sandbox base image from the sandbox source shipped in this package")
+    .option("--tag <name>", "the image's tag", SANDBOX_TAG)
+    .action((opts: { tag: string }) => {
+      process.exitCode = runSandboxBuild({ tag: opts.tag }, defaultSandboxBuildDeps);
     });
 
   // exitOverride makes commander throw where it would have called

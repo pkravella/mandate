@@ -405,7 +405,7 @@
     "id": "destination-scp-inside-allow",
     "file": "args/destination-scp-inside-allow.json",
     "attack": "Not an attack: the scp remote of the very repository the mandate allows, git@github.com:acme/api.git.",
-    "invariant": "ALLOWED, and pinned in this direction against false pauses: an scp remote and a trailing .git are spellings of github.com/acme/api, not another place. The proxy allowing it does not open ssh: the sandbox tunnels to 443 only, and sandbox/verify.mjs checks that behaviourally (proxy.allowed-host-other-port).",
+    "invariant": "ALLOWED, and pinned in this direction against false pauses: an scp remote and a trailing .git are spellings of github.com/acme/api, not another place. The proxy allowing it does not open ssh: the sandbox tunnels to 443 only, and packages/cli/sandbox/verify.mjs checks that behaviourally (proxy.allowed-host-other-port).",
     "expect": {
       "outcome": "allow",
       "why": "The same destination in git's own spelling; refusing it would be a false pause on the commonest remote form."

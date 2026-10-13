@@ -6,17 +6,17 @@ The MCP proxy bounds the destinations that appear in tool *arguments* (R9a).
 This bounds the network, because an agent with a shell, a `git push` to a remote
 it configures itself, or a `curl` never transits the proxy at all. Until this
 container exists, destination enforcement is advisory —
-[`docs/enforced-where.md`](../docs/enforced-where.md) says so.
+[`docs/enforced-where.md`](../../../docs/enforced-where.md) says so.
 
 ## Running it
 
 The way to run an agent in it is `leastpilot run --sandbox`, which builds the
 container's environment, workspace and egress from the mandate and starts
-`leastpilot serve` on the host (see the [quickstart](../docs/quickstart.md#5-run-it-in-the-sandbox)).
+`leastpilot serve` on the host (see the [quickstart](../../../docs/quickstart.md#5-run-it-in-the-sandbox)).
 By hand, for the checks below:
 
 ```bash
-docker build -t mandate-sandbox sandbox
+leastpilot sandbox build    # or: docker build -t mandate-sandbox packages/cli/sandbox
 docker run --rm --cap-add=NET_ADMIN \
   -e MANDATE_SQUID_CONF="$(node -e '...compileEgress(m).squidConf...')" \
   mandate-sandbox <command>
