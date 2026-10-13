@@ -348,6 +348,7 @@ what to do about it.
 | [Audit log](docs/audit-log.md) | The signed session log: turning it on, checking it, its format, what it proves |
 | [gh-aw export](docs/gh-aw.md) | A mandate as a GitHub Agentic Workflows workflow: what maps, what is refused, what enforces it |
 | [Architecture](docs/architecture.md) | The package graph and why it is shaped that way |
+| [Releasing](docs/releasing.md) | How the packages reach npm, the one-time setup, and what to do when a release fails part-way |
 | [Benchmark report](docs/benchmark-report.md) | Measured completion, authority cut, over-grant, and the denials an under-grant produces, rendered from [its results](docs/benchmark-results.json) |
 
 ## Three things worth knowing up front
