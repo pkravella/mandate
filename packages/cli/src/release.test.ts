@@ -323,17 +323,18 @@ function publishRun(env: Record<string, string> = {}, omit: string[] = []): Publ
 const publishedNames = (calls: string[][]): string[] =>
   calls.filter((c) => c[0] === "publish").map((c) => /\/leastpilot-([a-z]+)-\d[^/]*\.tgz$/.exec(c[1] ?? "")![1]!);
 
-describe("scripts/publish.mjs", () => {
+// Each run starts the script and a stand-in npm per package (about 17 Node
+// processes), which took one test past the 5 s default under the full suite.
+describe("scripts/publish.mjs", { timeout: 30_000 }, () => {
   it("publishes all eight, each after every package it depends on", () => {
     const r = publishRun();
     expect(r.status, r.stderr).toBe(0);
     const order = publishedNames(r.calls);
-    expect(order.sort()).toEqual(published.map((p) => p.dir).sort());
-    const again = publishedNames(publishRun().calls);
+    expect([...order].sort()).toEqual(published.map((p) => p.dir).sort());
     for (const p of published) {
       for (const dep of Object.keys(p.json.dependencies ?? {}).filter((d) => d.startsWith("@leastpilot/"))) {
-        expect(again.indexOf(dep.slice("@leastpilot/".length)), `${dep} before ${p.json.name}`)
-          .toBeLessThan(again.indexOf(p.dir));
+        expect(order.indexOf(dep.slice("@leastpilot/".length)), `${dep} before ${p.json.name}`)
+          .toBeLessThan(order.indexOf(p.dir));
       }
     }
   });

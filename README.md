@@ -1,51 +1,72 @@
 # LeastPilot
 
-Task-scoped authority for AI agents.
+**LeastPilot gives an AI coding agent only the access its current task needs, and enforces that while the agent runs.**
 
-LeastPilot gives each agent task its own authority and enforces it, before and
-during execution, with one artifact. From a request like *"Fix issue #42 and
-open a PR"* it writes a **mandate**: the resources, actions, argument limits,
-allowed data destinations and expiry that the task needs. A deterministic
-validator proves the mandate grants nothing beyond what the user and the
-organization already allow. LeastPilot then compiles it into controls GitHub and
-MCP gateways already enforce, and watches the run against it.
+Tell it the task, say *"Fix issue #42 and open a PR"*, and it writes down
+exactly what that task is allowed to touch: which repository, which branches
+and files, which actions, where data may go, and when it all expires. That
+written-down permission slip is called a **mandate**. A plain rule-based
+checker (no AI involved) proves the mandate doesn't go beyond what the person
+asking and the organization already allow. Then LeastPilot hands the agent a
+GitHub token limited to that one repository, puts a proxy between the agent
+and GitHub that checks every call against the mandate, and records everything
+it decided.
 
-> **Renamed from Mandate.** The product, the `leastpilot` binary, the
-> `@leastpilot/*` packages, the `/leastpilot` comment commands and the
-> `LEASTPILOT_*` variables are new names; the old `MANDATE_*` ones are no
-> longer read. What it writes is still a mandate, so the mandate YAML, the
-> Cedar namespace `Mandate::`, `mandate-audit/1` and `mandate-approval/1` are
-> unchanged: old logs still verify and old ceilings still load. A review, or
-> an approval, posted under the old comment command is not read: request the
-> review again with `/leastpilot`.
+---
 
-> **Status: v0.1 plus Phases 5 and 6 of the post-MVP plan. The loop runs end
-> to end from one command, and is measured — but completion, write latency and
-> the token-layer authority cut against one repository miss their targets, and
-> the corpus is six tasks rather than fifty.** A model
-> writes a mandate, the validator proves it against a Cedar ceiling and a
-> destination allowlist, a repo-scoped GitHub App token is minted, and
-> `leastpilot run` launches an agent whose GitHub tools all go through the enforced
-> proxy. With `--sandbox` the agent runs in a container that holds no GitHub
-> credential at all and reaches only the mandate's destinations; without it,
-> any credential the agent can find is its own (see the
-> [threat model](docs/threat-model.md) §3.1). Every decision is recorded as an
-> action graph, and a replay evaluator scores mandates against traces of
-> unconstrained runs.
+> ### Status: built, measured, not on npm yet
 >
-> What is measured and what is missed: the
-> [benchmark report](docs/benchmark-report.md), which states its own shortfalls
-> before any metric and is rendered from the committed results it reports. What
-> is not built: [below](#not-built).
+> The whole loop runs from one command: write a mandate, check it, get it
+> approved, mint a scoped token, run the agent under it in a locked-down
+> container, and keep a signed log. Version 0.2.0 is ready to publish to npm
+> as [`@leastpilot/cli`](packages/cli/README.md) but **hasn't been published
+> yet**, so for now you build it from this repository.
+>
+> It's been measured on six synthetic tasks, not the fifty the plan called
+> for, and it **misses three of its targets**: task completion, how long
+> writing a mandate takes, and how much it cuts a token's access when the
+> token was already limited to one repository. See [Benchmark](#benchmark),
+> and the [benchmark report](docs/benchmark-report.md), which lists its own
+> shortfalls before any number.
+>
+> The project was called Mandate until 2026-10-12. The product, the
+> `leastpilot` command, the `@leastpilot/*` packages and the `LEASTPILOT_*`
+> variables are new names. The thing it writes is still called a mandate.
 
-## What a mandate looks like
+---
+
+## Why this exists
+
+Coding agents usually run with far more access than any one task needs.
+Today's ways of limiting them each fall short:
+
+1. **Broad credentials.** Agents tend to run on a developer's personal token
+   or a wide GitHub App install. An agent fixing one issue can often merge
+   pull requests, edit CI workflows, read secrets or touch other repositories.
+2. **Policies written once.** Tools like GitHub's MCP toolsets or GitHub
+   Agentic Workflows let you write limits per agent or per workflow. Those are
+   either too loose for most tasks or too tight for some.
+3. **Asking a model to judge.** Some products ask a language model, during the
+   run, whether an action fits the task. A model can be talked out of its
+   answer, and its decisions are hard to audit.
+
+LeastPilot writes limits **per task**, checks them with ordinary code, and
+enforces them with controls GitHub already has (scoped App tokens) plus a
+proxy in front of GitHub's MCP server.
+
+It does **not** try to detect prompt injection. It assumes an agent can be
+tricked, and limits what a tricked agent can do.
+
+## How it works
+
+Here's the mandate for *"Fix issue #42 and open a PR"*:
 
 ```yaml
 mandate: fix-issue-42
 task: "Fix issue #42 and open a PR"
-requestedBy: user:alice        # an authorized source, never the agent
+requestedBy: user:alice        # the person asking, never the agent
 expiresInMinutes: 60
-ceiling: org-policy@v12        # proved to be a subset of this
+ceiling: org-policy@v12        # the org policy it must fit inside
 grants:
   - action: repo.read
     enforcedBy: token
@@ -66,27 +87,161 @@ destinations:
   allow: ["github.com/acme/api"]
 ```
 
-Anything not granted is denied.
+Anything not granted is denied. So this agent can read `acme/api`, write
+under `src/` on its own `agent/42-*` branch (never a CI workflow or a `.env`
+file), and open one pull request into `main`. It can't merge, can't touch
+another repository, and can't send repository data anywhere but that
+repository.
 
-## What works today
+A task goes through these steps:
 
-```bash
-pnpm install && pnpm build
+- **Write.** A model reads the task and proposes a mandate. It's treated as
+  untrusted: its output is a *proposal*, and only the validator can turn a
+  proposal into something the rest of the system will accept. You can also
+  write a mandate by hand.
+- **Validate.** Plain code checks the proposal against two limits: the
+  organization's **ceiling** (a policy file the operator writes, in
+  [Cedar](https://www.cedarpolicy.com/)) and the requester's real permission
+  on the repository, read from GitHub. It also rejects risky shapes outright,
+  like writing to the default branch or touching workflows and secrets. If a
+  grant is too wide, the error names the ceiling rule it broke and gives an
+  example it would have allowed.
+- **Approve.** The requester reads a permission diff of what's being granted.
+  If you ask for it (`--approval`), nothing is minted until they approve that
+  exact mandate by posting `/leastpilot approve <digest>` on the issue.
+- **Mint.** LeastPilot creates a GitHub App token limited to the one
+  repository and the permissions the grants need, expiring within the hour.
+- **Run.** The agent's only route to GitHub is `leastpilot serve`, an MCP
+  server that hides the tools the mandate doesn't grant and checks every call's
+  repository, branch, base, file paths, destinations and count. A refused call
+  names the rule it hit.
+- **Widen.** If the mandate turns out too narrow, a refused call can be turned
+  into a request for more scope. That request goes back through the validator
+  and the requester, never the agent.
+- **Expire and log.** The token is revoked at the end, and every call and
+  decision is recorded, optionally in a signed log.
 
-node packages/cli/dist/index.js validate mandate.yaml \
-  --ceiling fixtures/ceilings/org-policy-v12.cedar \
-  --schema  fixtures/ceilings/schema.cedarschema \
-  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
-  --as alice --repo acme/api --repositories 20
+Two things about the checks matter more than they look:
+
+- **The validator checks whole patterns, not examples.** A grant like
+  `branches: ["agent/42-*"]` stands for every branch name that matches it.
+  Checking a few sample names would prove nothing about the rest, so the
+  validator turns each pattern into a small state machine and proves one
+  pattern's matches are a subset of the other's. That's why a refusal can
+  hand you a specific counterexample.
+- **A GitHub token can't limit branches or files.** An App token can be
+  limited to a set of repositories and permissions, and nothing finer. So
+  every grant records what actually enforces it (`token`, `proxy` or
+  `sandbox`), and [docs/enforced-where.md](docs/enforced-where.md) lists what
+  each layer covers and what gets around it.
+
+## System design
+
+Two halves: everything that happens before the agent starts decides what it
+may do, and everything during the run holds it to that.
+
+```mermaid
+flowchart TB
+    subgraph limits["What the validator checks against"]
+        direction LR
+        ceiling[("Org ceiling<br/>a Cedar policy")]
+        level[("Requester's permission<br/>read from GitHub")]
+    end
+
+    subgraph before["Before the run: decide what the agent may do"]
+        direction LR
+        task["Task text"] --> writer["Writer<br/>a model, untrusted"]
+        writer -- "proposal" --> validator{"Validator<br/>plain code"}
+        validator -- "validated<br/>mandate" --> approve["Requester<br/>approves"]
+    end
+
+    subgraph compiled["What the compiler produces"]
+        direction LR
+        token["GitHub App token<br/>one repo, needed permissions"]
+        rules["Proxy rules<br/>branches, paths, counts"]
+        egress["Egress allowlist<br/>for the sandbox"]
+        token ~~~ rules ~~~ egress
+    end
+
+    limits --> before
+    before --> compiled
 ```
 
-`--repo` reads `alice`'s permission on `acme/api` from GitHub, which is what
-makes the output an authorisation record. It needs `LEASTPILOT_APP_ID`,
-`LEASTPILOT_INSTALLATION_ID` and `LEASTPILOT_APP_KEY_PATH`; the token it mints carries
-`metadata: read` and nothing else, and is revoked straight after the lookup.
+The line that matters is the validator. Everything above it is untrusted:
+task text, issue bodies, the model's proposal, an agent's plan. Everything
+below it only accepts a *validated* mandate, and the only code that can
+create one is the validator. That's enforced by the type system and by a lint
+rule, not by convention.
 
-Without credentials, assert the level instead — and the output says, every
-time, that it is an assertion:
+Here's a run in the sandbox. The agent's container holds no GitHub credential
+at all, and its only way out to the internet is an allowlist:
+
+```mermaid
+flowchart TB
+    subgraph box["Sandbox container: no GitHub credential"]
+        direction LR
+        agent["Agent<br/>e.g. Claude Code"] -- "MCP" --> relay["Relay"]
+        agent -- "everything else" --> squid["Egress proxy<br/>allowlist only"]
+    end
+
+    subgraph host["Your machine"]
+        direction LR
+        key[("App private key")] --> serve["leastpilot serve<br/>holds the token,<br/>checks every call"]
+        serve --> log[("Signed<br/>audit log")]
+        serve -- "allowed calls only" --> mcp["github-mcp-server<br/>pinned by digest"]
+    end
+
+    box -- "relay, with a secret handshake" --> host
+    host --> github["GitHub API"]
+    box -. "the mandate's destinations and the model's API;<br/>GitHub only through serve" .-> internet["Internet"]
+```
+
+Why the sandbox matters: the proxy only sees MCP calls. An agent with a shell
+could run `git push` or `curl` directly, or find a token somewhere on disk,
+and never touch the proxy. In the sandbox the agent works in a clean clone of
+your repository (no `.git/config`, no ignored `.env`), gets only the
+environment variables you name, and can only reach hosts on the allowlist.
+`iptables` rejects everything else, over IPv4 and IPv6, and if those rules
+can't be loaded the container exits instead of starting the agent. Without `--sandbox`, the
+agent runs as your user and could read the App's private key, so destination
+limits are advisory. [docs/threat-model.md](docs/threat-model.md) §3.1 goes
+through this.
+
+The code is split into small packages, with the validator in the middle:
+
+| Package | What it does |
+| --- | --- |
+| `@leastpilot/catalog` | 46 GitHub operations. For each: the REST route, the MCP tool, the App permission it needs, and how risky it is. Just data. |
+| `@leastpilot/schema` | The mandate format, hashing, and the "validated" type only the validator can create. |
+| `@leastpilot/validator` | The subset proofs, the Cedar ceiling, and the lints for risky mandates. |
+| `@leastpilot/writer` | The model that proposes a mandate. Untrusted by design. |
+| `@leastpilot/compiler` | Mints and revokes the scoped token, and turns a mandate into proxy rules, the egress allowlist and the gh-aw export. |
+| `@leastpilot/proxy` | The MCP proxy: hides ungranted tools, checks every call, records decisions, and writes the signed audit log. |
+| `@leastpilot/replay` | Replays a recorded run against a mandate and reports what it over- or under-granted. |
+| `@leastpilot/cli` | The `leastpilot` command, and the sandbox's source. |
+| `@leastpilot/bench` | Private. The benchmark. |
+
+More detail on how they fit together: [docs/architecture.md](docs/architecture.md).
+
+## Install
+
+Not on npm yet. Until 0.2.0 is published, build from a checkout. You'll need
+Node 22.12 or later and pnpm:
+
+```bash
+git clone https://github.com/pkravella/mandate
+cd mandate
+pnpm install && pnpm build
+```
+
+The examples below call `node packages/cli/dist/index.js`, which is the
+`leastpilot` command. Running an agent in the sandbox also needs Docker
+Desktop on macOS.
+
+## Try it
+
+**Check a mandate, offline and free.** Save the example above as
+`mandate.yaml`, then:
 
 ```bash
 node packages/cli/dist/index.js validate mandate.yaml \
@@ -96,38 +251,8 @@ node packages/cli/dist/index.js validate mandate.yaml \
   --as alice --level push
 ```
 
-There is no default. `--level` used to default to `push`, so every run quietly
-asserted push authority with nothing in the output saying so.
-
-Exit 0 prints the permission diff, 1 prints the rejection with the ceiling
-clause and a counterexample, 2 means the input could not be read or the command
-was mistyped. Every result names the ceiling it was checked against by its file
-and the sha256 of its contents; a mandate's own `ceiling:` field is shown only
-as the claim it is.
-
-A paused call can be re-reviewed with more scope. Run `serve` or `run` with
-`--pauses <dir>` and every denial is written there as a pause record, with the
-command to ask for more scope printed beside it (on your terminal under
-`--sandbox`; otherwise wherever the agent sends its MCP server's output, so
-read the directory). `leastpilot widen` takes that
-record and re-validates the whole mandate from scratch, so the agent can never
-grant itself anything. The record names the mandate by hash, and `widen`
-refuses it against any other mandate, including one with the same id:
-
-```bash
-node packages/cli/dist/index.js widen mandate.yaml pauses/2026-10-12T22-40-01-123Z-001-create_or_update_file.json \
-  --ceiling fixtures/ceilings/org-policy-v12.cedar \
-  --schema  fixtures/ceilings/schema.cedarschema \
-  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations \
-  --as alice --repo acme/api
-```
-
-Not every denial is widenable, and the refusal list is the contract: a deny
-path, an expired mandate, an ungranted operation, a disallowed destination and
-an internal error are all refused with the reason instead. A one-click "add
-`.github/workflows/**` to your paths" would make the deny list decorative.
-
-A refusal looks like this:
+It prints a permission diff and exits 0 if the mandate fits. If it doesn't,
+you get exit 1 and something like this:
 
 ```
 Mandate rejected.
@@ -140,15 +265,16 @@ Mandate rejected.
 Nothing was minted. Narrow the mandate, or request a ceiling change.
 ```
 
-Which of the two you used is printed with the result, because "verified
-against GitHub" and "asserted by whoever ran the command" are different claims
-and output that does not distinguish them reads like an authorisation record
-without being one.
+`--level push` *asserts* Alice's permission, and the output says so every
+time. To check it for real, use `--repo acme/api` instead, which reads it from
+GitHub using your App's credentials (`LEASTPILOT_APP_ID`,
+`LEASTPILOT_INSTALLATION_ID`, `LEASTPILOT_APP_KEY_PATH`). Only that version
+counts as a record of who was allowed to do what. There's no default, so you
+always pick one.
 
-## Running an agent under a mandate
-
-`leastpilot serve` is an MCP server that enforces one mandate. `leastpilot run`
-validates, writes a config pointing at it, and launches the command you give:
+**Run an agent under a mandate.** `leastpilot run` checks the mandate, writes
+an MCP config pointing at `leastpilot serve`, and starts whatever agent you
+give it. `{mcpConfig}` is replaced with that config's path:
 
 ```bash
 node packages/cli/dist/index.js run \
@@ -160,27 +286,15 @@ node packages/cli/dist/index.js run \
   -- claude --mcp-config '{mcpConfig}' -p "Fix issue #42 and open a PR"
 ```
 
-`{mcpConfig}` becomes the config path, and `LEASTPILOT_MCP_CONFIG` is set in the
-agent's environment, so an agent that takes a flag and one that reads the
-environment both work.
+LeastPilot doesn't drive any particular agent. Every MCP client already knows
+how to start a server from a config, so being that server is the whole
+integration.
 
-LeastPilot does not drive a particular agent. Every MCP client already knows how to
-start a server from a config, so *being* that server is the whole integration —
-which is also what makes vendor neutrality true rather than aspirational. The
-cost of that choice: LeastPilot bounds the authority it mints, and cannot bound an
-agent holding a credential of its own. That is the sandbox's job, and
-[docs/threat-model.md](docs/threat-model.md) §3.1 says so.
-
-Nothing is minted and no agent is launched until the mandate validates. The
-config the agent reads carries no credential: `leastpilot serve` mints its own
-token in its own process. But without the sandbox the agent spawns that process
-itself, with the operator's environment — which names the App's private key,
-readable by the agent's own user. That is what `--sandbox` is for.
-
-### In the sandbox
+**Run it in the sandbox.** Build the base image, then an image with your agent
+in it, then add `--sandbox`:
 
 ```bash
-node packages/cli/dist/index.js sandbox build    # docker build -t mandate-sandbox packages/cli/sandbox
+node packages/cli/dist/index.js sandbox build
 docker build -t mandate-agent-claude packages/cli/sandbox/examples/claude-code
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 
@@ -195,441 +309,229 @@ node packages/cli/dist/index.js run --mandate mandate.yaml \
      --mcp-config '{mcpConfig}' --strict-mcp-config --allowedTools mcp__github
 ```
 
-`leastpilot run` starts `leastpilot serve` itself, on the host, and runs the agent in a
-container built from an allowlist: a depth-1 clone of HEAD (HEAD's tree and no
-other object — no history, stash or host hook, no ignored `.env`; a dirty tree
-is refused), egress to the mandate's destinations except GitHub's own hosts —
-the agent reaches GitHub only through serve — plus the hosts named with
-`--agent-egress`, and only the environment variables named with `--pass-env`,
-refusing anything GitHub-named outright. squid never matches a destination by
-reverse DNS and refuses IP addresses, and the agent runs with no way to regain
-privileges. Ctrl-C or a `kill` stops docker, then serve (which revokes), then
-removes the workspace. The agent
-reaches serve through a relay with a secret handshake. Verified live with
-Claude Code: the allowed read succeeded, a read of another repository was
-refused at `repo.read.resources`, and the only egress was two tunnels to the
-model's API. macOS with Docker Desktop only; `--sandbox` refuses elsewhere,
-which includes the Action's Linux runners.
+`--agent-egress` opens the agent's own model API, and `--pass-env` passes its
+key by name. Both are your choice and are printed in the output; a mandate can
+never ask for them. Ctrl-C stops the container, then revokes the token, then
+removes the workspace. This was verified live with Claude Code: the allowed
+read worked, a read of another repository was refused, and the only traffic
+out was to the model's API.
 
-### An audit log
+The [quickstart](docs/quickstart.md) walks through all of this step by step.
 
-`--audit-log <path>` on `run` or `serve` writes a signed, append-only record of
-the session as it happens: the mandate, every call sent to GitHub, every
-decision, and a seal saying whether the session served or never opened. Each line is signed with
-an Ed25519 key of its own (`LEASTPILOT_AUDIT_KEY_PATH`, made by
-`leastpilot audit keygen`), never the App's, and chained to the line before it.
-`leastpilot audit verify <log> --public-key <pub>` checks it with the public half
-alone and names any call that was sent and never answered. With `--sandbox` the
-key never reaches the agent; without it, the agent could read the key and
-rewrite the log. [docs/audit-log.md](docs/audit-log.md) has the format and what
-the signature does and does not prove.
+## The rest of the loop
 
-### Requiring an approval
+**Approvals.** `--approval owner/repo#42` on `run` or `serve` refuses to mint
+a token until the requester has posted `/leastpilot approve <digest>` on that
+issue or pull request. The digest covers the mandate, the ceiling it was
+checked against, and who asked, so a mandate edited after review needs a new
+approval. Only the requester's own, unedited comment counts.
 
-`--approval owner/repo#number` on `serve` or `run` refuses to mint until the
-mandate's requester has approved it in a comment on that issue or pull request,
-on a line of its own:
+**Asking for a mandate in a comment.** `leastpilot review` writes a mandate
+for a task and posts the permission diff on the issue, with the exact line
+that approves it. Because a model call costs money and anyone can comment, it
+checks the requester's permission, an hourly limit per repository and the
+task's length before it calls the model.
+[examples/workflows/leastpilot-review.yml](examples/workflows/leastpilot-review.yml)
+wires this up so `/leastpilot <task>` posts a review and the requester's
+approval runs the agent.
 
-```
-/leastpilot approve 3f9c…
-```
+**Widening.** Run `serve` or `run` with `--pauses <dir>` and every refused
+call is saved there, along with the command to ask for more scope.
+`leastpilot widen` applies that request and re-checks the whole mandate from
+scratch. Some refusals can't be widened on purpose: a denied path, an expired
+mandate, an operation that wasn't granted at all, or a disallowed destination.
+A one-click "allow `.github/workflows/**`" would make the deny list pointless.
 
-The refusal prints the exact line to post. The digest covers the mandate's
-content, the ceiling it was proved against and its requester, so a mandate
-edited after review, or validated against another ceiling, needs a new
-approval. Only the requester's own comment counts, and never an edited one,
-since a repository admin can edit anyone's comment. GitHub dates comments to
-the second, so an edit made within the second the comment was posted is not
-detected. An approval stands until its comment is deleted: it covers every
-session of that mandate, ceiling and requester, not one run. Each session's
-approval goes into the audit log. Reading it needs the App's `issues: read` and
-`pull_requests: read`: a pull request's comments are refused to an
-`issues: read` token (probed).
+**Audit log.** `--audit-log <path>` writes a signed, append-only record of the
+session: the mandate, every call sent to GitHub, every decision, and a final
+seal. Each line is signed with its own Ed25519 key (`leastpilot audit keygen`)
+and chained to the one before. `leastpilot audit verify` checks it with only
+the public key. The signature only means something against the agent when the
+agent runs in the sandbox, because otherwise it could read the key.
+[docs/audit-log.md](docs/audit-log.md) has the details.
 
-### Asking for a mandate in a comment
+**Exporting to GitHub Agentic Workflows.** `leastpilot export gh-aw` turns a
+checked mandate into a [gh-aw](https://github.github.com/gh-aw/) workflow,
+where the agent runs read-only and gh-aw's own job does the writing within the
+mandate's limits. It refuses anything gh-aw can't hold exactly, rather than
+quietly loosening it. [docs/gh-aw.md](docs/gh-aw.md) has the mapping.
 
-`leastpilot review` writes a mandate for a requester's task and posts its
-permission diff on the issue or pull request, with the exact line that
-approves it:
+**The GitHub Action.** There's an [Action](action.yml) and an
+[example workflow](.github/workflows/leastpilot.yml). It builds LeastPilot
+from source on every run for now (about a minute), since the CLI isn't on npm
+yet. The workflow sets `permissions: {}` and the Action refuses to run if it
+finds a `GITHUB_TOKEN`, since a second credential is access no mandate limits.
+It takes the agent command one argument per line, so no workflow input is ever
+run through a shell.
 
-```bash
-node packages/cli/dist/index.js review --task-file task.txt --on acme/api#42 \
-  --as alice --repo acme/api \
-  --ceiling fixtures/ceilings/org-policy-v12.cedar \
-  --schema  fixtures/ceilings/schema.cedarschema \
-  --ceiling-destinations fixtures/ceilings/org-policy-v12.destinations --post
-```
+## Benchmark
 
-The model call costs money and the request is a comment, so everything that
-can refuse without the model goes first:
-- **The requester's level.** It is read from GitHub, and `--level` is refused.
-  It must be at least `--min-level` (default `push`). The validator still
-  bounds the mandate by that level afterwards.
-- **A rate limit.** At most `--max-per-hour` (default 10) mandates per
-  repository per hour. Only the App's own review comments are counted, since
-  anyone can type the marker it leaves. Rejections and failed writes count too,
-  since they were paid for. The count is read, then the write happens, so two
-  reviews running at once can both pass it: run them one at a time per
-  repository (a workflow `concurrency` group does that). Deleting the App's
-  comments resets the count.
-- **The task's length.** A mandate holds at most 4000 characters of task, and
-  a longer one is refused before it is sent to the model.
+Six synthetic tasks against a test repository, each run under its generated
+mandate. One run per task per mode, so the numbers are noisy. The
+[full report](docs/benchmark-report.md) is generated from committed results,
+and a test re-renders it to make sure they still match.
 
-The task text sits inside code fences it cannot close, so a comment cannot
-write Markdown under the App's name. A rejected proposal, or a writer that
-produced nothing, is posted too, with nothing to approve. Without `--post`, the
-comment is printed instead.
+| Metric | Result | Target |
+| --- | --- | --- |
+| Tasks completed | 83.3% (5 of 6) | at least 90% |
+| Access cut at the token, vs. a token for 1 repository | 32.3% | at least 80% |
+| Access cut at the proxy, vs. a token for 1 repository | **87.1%** | at least 80% |
+| Access cut at the token, vs. a developer's token (63 repositories) | 98.9% | at least 80% |
+| Access cut at the proxy, vs. a developer's token (63 repositories) | 99.8% | at least 80% |
+| Granted but never needed | **0.0%** | under 10% |
+| Runs paused for something in scope, tools hidden | 0.0%, but see below | under 5% |
+| Runs paused for something in scope, every tool offered | 66.7% (4 of 6, 3 of which still finished) | under 5% |
+| Time to write a mandate | ~10.2 s at effort `medium` (13.0 s at `high`) | under 10 s |
+| Grants outside the ceiling, including 42 attack cases | 0 | 0 |
 
-### Exporting to gh-aw
+How to read these:
 
-`leastpilot export gh-aw` validates a mandate and prints it as the frontmatter of
-a [GitHub Agentic Workflows](https://github.github.com/gh-aw/) workflow (gh-aw
-v0.89.21). The agent runs read-only, and gh-aw's own job writes the pull
-request or comments within the mandate's limits. It refuses anything gh-aw
-cannot hold exactly rather than widen it: branch patterns (gh-aw normalises a
-branch name after checking it, so `agent/42-!!` matches `agent/42-*` and is
-pushed as `agent/42`), reads limited by path, more than one repository, a
-mandate that writes nothing. It also switches off every gh-aw default that
-writes something on its own. gh-aw sets these limits when the workflow is
-written, so the result is a template for a kind of task, not one task's
-mandate. A conformance test runs gh-aw's own matcher code against LeastPilot's.
-[docs/gh-aw.md](docs/gh-aw.md) has the mapping and every refusal.
+- **The 63-repository numbers flatter it.** Nearly all of that cut comes from
+  limiting the token to one repository, which any scoped token gets without
+  LeastPilot. Per repository, LeastPilot takes a task from 31 operations down
+  to 21 at the token and 4 at the proxy.
+- **Zero pauses doesn't mean the mandates were the right size.** The proxy
+  hides tools the mandate doesn't grant, so the agent never tries them and
+  nothing gets refused. Replay of unconstrained runs predicted seven calls the
+  mandates were missing, yet the proxy refused nothing. So the benchmark also
+  runs each mandate with every tool visible. That turned up five refusals. Four
+  were redundant reads of an issue the agent already had. The fifth was real:
+  the triage task's mandate didn't grant commenting, so the agent couldn't
+  report what it found, and that task failed.
+- **Writing a mandate** costs about $0.03 and takes two model calls. Effort
+  `medium` gave the same mandates as `high` on all six tasks, and on the five
+  tasks written at both settings every `medium` write was faster, a median of **10.4 seconds** against 11.7 (10.2 across all six), so `medium` is the
+  default. It still misses the ten-second target
+  ([writer-effort-results.json](docs/writer-effort-results.json)).
 
-In a repository, [examples/workflows/leastpilot-review.yml](examples/workflows/leastpilot-review.yml)
-runs this on comments:
-1. `/leastpilot <task>` from someone with at least `push` posts the review.
-2. `/leastpilot approve <digest>` from the same person runs the agent under that
-   exact mandate. [review/action.yml](review/action.yml) posts the review, and
-   the main Action's `approved-digest` and `approval` inputs run it.
-3. Reviews run one at a time per repository, so the hourly limit holds.
+The attack suite is separate from the benchmark: 42 cases where injected issue
+text, hostile tool descriptions, over-asking agent plans or tricky arguments
+try to widen what the agent can do. Each case assumes the model writing the
+mandate was **fully fooled** and proposed exactly what the attacker wanted. The
+question is only whether the validator and the proxy refused it anyway. They
+did in every case.
 
-There is also an [Action](action.yml) and an
-[example workflow](.github/workflows/leastpilot.yml). Both Actions build LeastPilot
-from source on every run, because the CLI is not published yet. That adds
-about a minute to a run, and it is why `uses: pkravella/mandate@<sha>` works
-from another repository. pnpm itself is pinned by hash, which corepack checks. The workflow sets
-`permissions: {}` and the Action refuses to run if it finds a `GITHUB_TOKEN`,
-because a second credential is authority no mandate bounds.
+## Commands
 
-The Action takes the agent command **one argument per line**:
+| Command | What it does |
+| --- | --- |
+| `leastpilot validate` | Check a mandate against the ceiling and the requester's permission, and print the permission diff |
+| `leastpilot run` | Check a mandate, then start an agent whose only route to GitHub is the enforcing proxy (`--sandbox` to run it in a container) |
+| `leastpilot serve` | The enforcing MCP server for one mandate, which is what an agent's MCP config starts |
+| `leastpilot review` | Write a mandate for a task and post its permission diff on an issue or pull request |
+| `leastpilot reviewed` | Recover the mandate an approval digest names, from the review comment |
+| `leastpilot widen` | Apply a request for more scope and re-check the whole mandate |
+| `leastpilot export gh-aw` | Turn a checked mandate into a GitHub Agentic Workflows workflow |
+| `leastpilot audit keygen` / `verify` | Make an audit-log signing key, and check a log |
+| `leastpilot sandbox build` | Build the sandbox's base image from the source in the package |
 
-```yaml
-agent: |
-  claude
-  --mcp-config
-  {mcpConfig}
-  -p
-  Fix issue 42 and open a pull request.
-```
+## What it doesn't do
 
-That shape is deliberate. A single string would have to be word-split by the
-shell, and a value reaching a shell from a workflow input is the classic
-injection route — the first version of this Action interpolated every input
-into its script and was a remote shell for anyone who could set one. One
-element per line means spaces inside a line are kept and nothing in a line is
-ever interpreted. It is enforced by a test that reads `action.yml` and fails on
-an interpolation inside a `run:` block.
+- **Detect prompt injection.** It limits what a tricked agent can do instead.
+- **Protect you from another credential.** If the agent can find a personal
+  token, a logged-in `gh`, or an SSH key, it doesn't need the proxy. That's
+  what the sandbox is for.
+- **Ask a model whether an action is OK.** A model proposes; plain code
+  decides.
+- **Be an identity provider, a secrets vault, or another MCP gateway.**
+- **Work outside GitHub**, for now.
 
-Note what that does **not** protect: an issue title placed in the prompt is
-still attacker-controlled text going to the model. LeastPilot's answer to that is
-the mandate — an injected agent is bounded by what was granted — but the two
-are different problems. [docs/threat-model.md](docs/threat-model.md) §5 says
-what to do about it.
+## Known gaps
+
+Stated here so nobody has to discover them:
+
+- **No auto-approval.** Every mandate needs a person to approve it. There's no
+  library of task templates yet for an org to mark as safe to auto-approve.
+- **Requests from automation accounts are refused.** GitHub only tells an App
+  what another App may do, so LeastPilot has no way to check an `app:`
+  requester's access.
+- **One export backend out of four.** gh-aw works. Docker MCP Gateway, AWS
+  AgentCore (Cedar) and OPA exports don't exist yet.
+- **Thirteen catalog operations have no MCP tool,** so the proxy never sees
+  them. Most are classed as forbidden and rejected by the validator;
+  `branch.delete` is the one to watch.
+- **The sandbox is macOS with Docker Desktop only.** The Linux path has never
+  been run, so `--sandbox` refuses there, including on GitHub's runners.
+- **`max` counts per session, not per task.** A new session starts from zero.
+  With `--sandbox` only you can start one; without it, the agent could.
+- **The audit log has no outside witness.** A log with no seal was cut off,
+  and nothing in it can say how.
+- **Six tasks, not fifty.** A fifty-task run would cost about $14 plus
+  recording reference runs, and the project's budget was $10.
+
+The full list of what breaks it is in [docs/threat-model.md](docs/threat-model.md) §3.
+
+## Prior work
+
+| Project | What it does | What LeastPilot adds |
+| --- | --- | --- |
+| [IntentCap](https://arxiv.org/abs/2609.14631) | Model-written capability leases, a checker that only narrows, MCP and eBPF enforcement | The closest design. LeastPilot is a maintained tool with GitHub's semantics and replay measurement |
+| [Progent](https://github.com/sunblaze-ucb/progent) | A policy language and a model-written policy per task | An org-level ceiling, expiry, and GitHub-native enforcement |
+| [Conseca](https://arxiv.org/abs/2501.17070) | Per-task policy from trusted context, checked deterministically | Released code |
+| [AWS AgentCore Policy](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy.html) | Plain English to Cedar, formally checked, enforced at AgentCore Gateway | Policy per task rather than per agent, and it works outside AWS |
+| [GitHub Agentic Workflows](https://github.github.com/gh-aw/reference/safe-outputs/) | A read-only agent that writes through limited safe outputs | Limits per task instead of per workflow; LeastPilot can export to it |
+| [Invariant Guardrails](https://explorer.invariantlabs.ai/docs/guardrails/dataflow-rules), [FIDES](https://github.com/microsoft/fides) | Deterministic data-flow rules | Derives the rules from the task instead of writing them by hand |
+
+The npm scope is `@leastpilot`. `@mandate` and `mandate-dev` belong to
+unrelated projects, which is part of why the name changed.
+
+## Security
+
+The [threat model](docs/threat-model.md) says what holds, what's out of scope
+and what breaks it. Short version for operators: run agents with `--sandbox`,
+use `--repo` rather than `--level`, require an approval, give the job no
+`GITHUB_TOKEN`, and never paste issue text into the agent's prompt. Pass the
+issue number and let the agent fetch it through its granted tools.
+
+To report a security problem in LeastPilot itself, see [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
 | | |
 | --- | --- |
-| [Quickstart](docs/quickstart.md) | Validate a mandate, run an agent under it |
-| [Mandate format](docs/mandate-format.md) | Every field, and what the lints refuse |
-| [Writing a ceiling](docs/ceiling-authoring.md) | The constrained Cedar profile, as a contract |
-| [Enforced where](docs/enforced-where.md) | Which control bounds what, and what defeats each |
-| [Threat model](docs/threat-model.md) | What holds, what is out of scope, what breaks it |
-| [Audit log](docs/audit-log.md) | The signed session log: turning it on, checking it, its format, what it proves |
-| [gh-aw export](docs/gh-aw.md) | A mandate as a GitHub Agentic Workflows workflow: what maps, what is refused, what enforces it |
-| [Architecture](docs/architecture.md) | The package graph and why it is shaped that way |
-| [Releasing](docs/releasing.md) | How the packages reach npm, the one-time setup, and what to do when a release fails part-way |
-| [Benchmark report](docs/benchmark-report.md) | Measured completion, authority cut, over-grant, and the denials an under-grant produces, rendered from [its results](docs/benchmark-results.json) |
-
-## Three things worth knowing up front
-
-**Enforcement never rests on a model's judgment.** A model *proposes* a
-mandate. A deterministic validator decides whether it may be granted, and the
-proof is a language-inclusion check over finite automata, not a policy engine
-answering point queries about representative requests. A grant is a pattern, so
-it denotes a *set* — and a point query proves nothing about the rest of that
-set. When a mandate is refused, the refusal names the ceiling clause it
-exceeded and a concrete counterexample it would have permitted.
-
-**No single control enforces a whole mandate, and the gaps are documented.** A
-GitHub App token cannot limit by branch or path. Every grant therefore records
-which control enforces it, and
-[docs/enforced-where.md](docs/enforced-where.md) states for each layer what it
-bounds, what it does not, and what defeats it.
-
-**LeastPilot does not detect prompt injection.** It limits what an injected agent
-can do. That is a deliberate non-goal, along with being an identity provider, a
-credential vault, or another MCP gateway.
-
-## Build status
-
-The v0.1 plan ran in four phases; the post-MVP plan continues from Phase 5.
-
-| Phase | Scope | State |
-| --- | --- | --- |
-| 1 | Contract and ceiling: operation catalog, mandate schema, containment engine, Cedar ceiling, validator, lints | exit criterion **met** — 21/21 seeded over-grants rejected |
-| 2 | Write and enforce: mandate writer, scoped GitHub App tokens, MCP proxy, argument enforcement, permission diff | exit criterion **met** — see below |
-| 3 | Runtime and measurement: action graph, destination rules, egress sandbox, widen flow, replay evaluator, benchmark | built; exit criterion **not met as written** — it asks for 50 tasks and the corpus has 6 |
-| 4 | Adversarial testing and launch: the attack corpus, `leastpilot run`, packaging, docs | exit criterion **met** — zero ceiling breaches across 34 adversarial cases |
-| 5 | Make the trust story true: the agent in the sandbox, destination extraction, requester and ceiling identity, the token clock, `max` | exit criterion **met** — every security property the docs assert is exercised by a test, threat-model §3 is shorter, and no module is tested but unreachable |
-| 6 | Make the numbers mean something: the authority cut against a real baseline, under-granting made observable, write latency | exit criterion **met** — every figure in the report is measured on the corpus it names or labelled, and a test re-renders the report from its committed results; the derived 50-task corpus is not started (budget) |
-
-Phase 5 closed the distance between what the docs claimed and what the shipped
-path did, and most of what it fixed was found by probing rather than planned:
-an agent could leave the sandbox over IPv6; destination extraction read
-`https://github.com@evil.example.com/` as github.com, missed `HTTPS://` and
-`../` traversal, and never saw the one destination field the real server has (a
-fork's `organization`); the CLI printed a ceiling name chosen by the mandate's
-writer; a mandate could name any requester; and `max: 1` on `issue.create` let
-three issues through when updates were also granted. It also ran a real agent
-in the sandbox for the first time, which found that no agent image could be
-built on the base image at all.
-
-Phase 6 made the published numbers checkable. The first sweep had kept neither
-its mandates nor its results, and called a one-repository figure an org-wide
-baseline; a sweep now commits `results.json` beside the report, and a test
-re-renders the report from it. The authority cut is reported against one
-repository and against the 63 a developer's own token reaches. Each mandate is
-run twice — with tools filtered, as the product runs, and with every tool
-offered and refused on call — which is what finally made an under-grant show
-up as a denial. Grading had been crediting an earlier sweep's pull request and
-borrowing the mandate's own token; a task's acceptance command, which runs the
-agent's own code, ran on the host with the App key readable, and now runs in a
-container with neither. Two fresh reviewers then checked the phase and found no
-Critical issue.
-
-Writing a mandate costs about **$0.03** and misses the PRD's under-ten-second
-target. Phase 6 measured the lever: six tasks written again at effort `medium`
-gave mandates identical to `high`'s, facet by facet. On the five tasks written
-at both settings, every `medium` write was faster -- a median of **10.4
-seconds** against 11.7 (10.2 across all six) -- so `medium` is now the
-default. Lowering only the second call changed three mandates in five. The
-remaining cost is two sequential model calls
-([writer-effort-results.json](docs/writer-effort-results.json)).
-
-Phase 2's exit criterion was *"an agent fixes a real issue end to end under a
-mandate, and an attempted merge is blocked."* Run against a throwaway
-repository seeded with a `retry()` that swallowed its last error: the agent read
-the file, branched to `agent/issue-1-rethrow-last-error`, replaced the swallow
-with `throw lastError`, added a regression test asserting the last error
-specifically, and opened a pull request. Six turns, $0.23. The merge attempt
-came back refused with `clause: mandate.grants`. Ten proxy decisions, one
-denial, and that denial was the merge.
-
-Phase 4 added the attack corpus and the commands. The adversarial suite was 34
-cases (42 since Phase 5 added eight destination cases) across four families — injected issue text, hostile MCP tool
-declarations, over-asking agent plans, argument-level escapes — each paired with
-the invariant it must not break. Every case assumes a **fully compromised
-writer** that proposed exactly what the attack asked for, because LeastPilot does
-not detect prompt injection: the question is only whether the ceiling held
-anyway. It did, and the suite found three holes in the process, all closed.
-
-`leastpilot run` was verified live. An agent importing nothing from this
-repository was handed an MCP config, spawned what it named, and was offered
-exactly `get_file_contents`, `list_branches` and `search_code` — three tools
-from a single `repo.read` grant, with no write tool and no merge. Calling
-`merge_pull_request` by name came back refused with `clause: mandate.grants`.
-The requester's level was read from GitHub rather than asserted, so that run is
-an authorisation record.
-
-That second check is a **negative control**, and it exists because of what
-Phase 3 measured: the proxy filters `tools/list`, so an ungranted tool is never
-offered and therefore never attempted. Across six mandated benchmark runs there
-were **zero denials while replay predicted seven under-granted calls**. A clean
-run can mean the mandate was right or that nothing ever tested it, and the two
-look identical from the outside — so the suite calls the forbidden tool by name
-rather than waiting for a model to try.
-
-Phase 3 added the runtime half and measured it; Phase 6 re-ran the sweep with
-each mandate in both tool-visibility modes. The full
-[benchmark report](docs/benchmark-report.md) is committed; the headline is:
-
-| Metric | Result | v0.1 target |
-| --- | --- | --- |
-| Task completion (either mode) | 83.3% | at least 90% |
-| Authority cut, token layer, against 1 repository | 32.3% | at least 80% |
-| Authority cut, proxy layer, against 1 repository | **87.1%** | at least 80% |
-| Authority cut, token layer, against 63 repositories | 98.9% | at least 80% |
-| Authority cut, proxy layer, against 63 repositories | 99.8% | at least 80% |
-| Over-grant | **0.0%** | under 10% |
-| False pauses, tools filtered | 0.0% — nothing was attempted, so nothing paused | under 5% |
-| False pauses, every tool offered | 66.7% — 4 of 6 runs, 3 of which still completed | under 5% |
-| Write latency | 13,010 ms at effort `high`; ~10.2 s at `medium`, now the default | under 10 s |
-
-Two caveats the report states at length and this table cannot: the corpus is
-**6 tasks, not the 50** Phase 3's exit criterion asks for, and those tasks are
-**synthetic**, so the completion figure is optimistic.
-
-The authority cut is reported against two baselines and neither is the figure.
-One repository is the conservative one. Sixty-three is what the developer's own
-token reaches, which is the PRD's comparison, and nearly all of that cut is
-repository scoping that any token limited to one repository gets without
-LeastPilot. What LeastPilot adds per repository is 31 operations to 21 at the token
-and to 4 at the proxy.
-
-**The finding worth reading the report for.** With tools filtered, as the
-product runs, the proxy issued **zero denials** across six runs while replay
-predicted **seven under-granted calls**. Filtering `tools/list` means a tool no
-grant reaches is never offered, so it is never attempted — R10's promise that
-every pause names the clause it hit is true and *vacuous where there is no
-pause*.
-
-So the benchmark also runs each mandate with **every tool offered** and refused
-on call. That produced five denials, and they split two ways. Four were
-`issue_read`, three of them on tasks that finished anyway: the agent already had
-the issue text, so most of the "seven predicted" were redundant calls, not
-mandates too narrow.
-The fifth is the real one: the triage agent tried `add_issue_comment`, was
-refused, and could not report what it found. None of the five could be fixed by
-a widen, which may not add an operation, so "widen requests" stays at zero by
-design and the useful count is denials that need a new mandate. One run per mode
-per task; the report says how noisy that is.
-
-### Packages
-
-The dependency graph is a DAG with the validator as its waist. Everything
-upstream of it is untrusted; everything downstream takes only a
-`ValidatedMandate`, whose constructor the validator owns.
-
-| Package | Responsibility |
-| --- | --- |
-| `@leastpilot/catalog` | 46 GitHub operations, each tying together LeastPilot's action atom, the REST route, the `github-mcp-server` tool name, and the GitHub App permission a token needs. Pure data. |
-| `@leastpilot/schema` | The mandate contract, canonical hashing, the ceiling digest, and the `ValidatedMandate` brand. |
-| `@leastpilot/validator` | Glob-set containment by DFA inclusion, the constrained Cedar ceiling profile, the two-layer subset proof, and the R4 lints. |
-| `@leastpilot/writer` | The one model-driven component, and untrusted. Covers from the catalog, prunes, and emits a `ProposedMandate` that only `validate()` accepts. Runs both calls at effort `medium`, by measurement. |
-| `@leastpilot/compiler` | Mints a repository-scoped GitHub App token and revokes it, and compiles the mandate into proxy rules — capped to end before the token does — plus the token-versus-proxy enforcement report and the gh-aw export. |
-| `@leastpilot/proxy` | An MCP server facing the agent and an MCP client facing `github-mcp-server`. Filters `tools/list` (or, in the benchmark's measurement mode only, offers every tool and refuses on call), checks every call's repository, branch, base, paths, destinations and count, records every decision as an action graph, and turns a denial into a clause and a reviewable widen request. Writes and verifies the signed audit log. |
-| `@leastpilot/replay` | Scores a mandate by replaying a recorded action graph through the production argument enforcer, reporting over-grant, under-grant, and which operations a task needed that the mandate lacked. |
-| `@leastpilot/cli` | `leastpilot validate`, `widen`, `serve`, `run` (with `--sandbox`: the workspace clone, the container launch and the relay listener) `audit keygen`/`verify` and `export gh-aw`, the permission diff, the rejection report, and the enforced session the CLI and the benchmark share. |
-| `@leastpilot/bench` | Private. The benchmark corpus loader, the seeder, the harness (each mandated run with tools filtered and with every tool offered; acceptance in a locked-down container), the writer-effort sweep, and the report renderer. |
-
-**The egress sandbox is the layer that actually holds.** An MCP proxy sees MCP
-traffic and nothing else, so an agent with a shell, a `git push` to a remote it
-configures itself, or a `curl` never transits it. [`packages/cli/sandbox/`](packages/cli/sandbox/README.md)
-is a container whose only route out is a `CONNECT` proxy allowlist compiled from
-the mandate's destinations, with `iptables` rejecting everything else from the
-agent's uid, over IPv4 and IPv6. `leastpilot run --sandbox` runs the agent in it,
-with no GitHub credential inside — the token stays with `leastpilot serve` on the
-host — and a clone of HEAD for a working copy. It verifies itself, including
-negative controls that widen the allowlist and strip the firewall rules to
-confirm the checks can fail, and it exits rather than starting the agent if it
-cannot install the rules. macOS with Docker Desktop for now.
-
-**The upstream is pinned, and started with the toolsets the grants need.**
-A session runs `github-mcp-server` v2.0.2 by digest (`GITHUB_MCP_SERVER_IMAGE`
-in the catalog), never `:latest`, which moved to a new major on 2026-10-06 with
-nobody choosing it. Six catalog operations name tools outside the server's
-default toolsets, so the session sets `GITHUB_TOOLSETS` from the grants
-(`default,actions` for a mandate granting `actions.read`). If a granted
-operation still has no tool on the server, the session refuses before the agent
-starts, names the operation, and revokes the token: the proxy only offers tools
-the upstream lists, so the agent would never have seen it.
-
-The npm scope is `@leastpilot`; `@mandate` and the `mandate-dev` scope belong
-to unrelated projects.
-
-<a id="not-built"></a>
-## Not built in v0.1
-
-Stated here rather than left to be discovered.
-
-**R5 has no auto-approval.** There is no template library (R13) for an
-auto-approval policy to name. The review flow itself,
-[examples/workflows/leastpilot-review.yml](examples/workflows/leastpilot-review.yml),
-has run end to end in a private test repository:
-1. A `/leastpilot` comment produced a review.
-2. The App's own reply re-triggered the workflow, and that run was skipped.
-3. The requester's approval ran the agent under that exact mandate.
-
-**No `app:` requesters.** A mandate requested by an automation account is
-refused: GitHub reveals what another App may do only to that App, so LeastPilot
-has no source for an app principal's authority, and borrowing the operator's
-would attribute the request to the automation while a person's level bounded
-it. `requestedBy` must name the user checked with `--as`.
-
-**One of R12's four backends.** `leastpilot export gh-aw` is built (see below).
-The Docker MCP Gateway, Cedar/AgentCore and OPA exports are not. Shipping four
-half-implemented backends would be four things that look supported and are not.
-
-**The audit log has no outside witness, and the Action does not write one.** A
-log with no seal was killed or truncated, and nothing in the file can tell
-which. Without `--sandbox` the agent can read the audit key, so the signature
-proves nothing against it, and that includes the Action. See
-[docs/audit-log.md](docs/audit-log.md).
-
-**Thirteen catalog operations no MCP tool reaches**, so the proxy is not in the
-way of them at all. Most are classed `forbidden` and the lints reject them,
-which is the real mitigation. `branch.delete` is the sharp one.
-
-**The corpus is six synthetic tasks, not fifty derived ones.** A 50-task sweep
-in both modes is now estimated at about $14 — the agent loop caches its prompt —
-plus recording ground truth for each new task, against a whole budget of $10
-that Phase 6's measurements nearly used up. The corpus schema
-records `synthetic` as a provenance that cannot imply attribution it lacks, and
-`loadCorpus` reports the shortfall as a number so nothing can present six as
-fifty.
-
-**The sandbox is macOS and Docker Desktop only.** On Linux the relay needs
-`host-gateway` and serve would have to bind the bridge address; that path has
-never been run, so `--sandbox` refuses there rather than claim it.
-
-**`max` limits a session, not a task.** A new session starts the count at zero —
-with `--sandbox` only the operator can start one, without it the agent can, by
-restarting its MCP server — and where operations share a tool and a call cannot
-say which it is, their limits combine. [docs/mandate-format.md](docs/mandate-format.md)
-has the exact rule.
-
-**A zero false-pause count is not evidence.** The proxy filters `tools/list`, so
-an ungranted tool is never offered and therefore never attempted — measured,
-zero denials across six mandated runs while replay predicted seven under-granted
-calls. The benchmark's measurement mode, which offers every tool and refuses on
-call, surfaced the real one: the triage agent's refused `add_issue_comment`.
-[docs/threat-model.md](docs/threat-model.md) §3.3 explains why this matters more
-than it sounds.
+| [Quickstart](docs/quickstart.md) | Check a mandate, then run an agent under it |
+| [Mandate format](docs/mandate-format.md) | Every field, and what gets rejected |
+| [Writing a ceiling](docs/ceiling-authoring.md) | The org policy file and the subset of Cedar it uses |
+| [Enforced where](docs/enforced-where.md) | Which control enforces what, and what gets around each one |
+| [Threat model](docs/threat-model.md) | What holds, what's out of scope, what breaks it |
+| [Audit log](docs/audit-log.md) | Turning it on, checking it, and what the signature proves |
+| [gh-aw export](docs/gh-aw.md) | What maps to GitHub Agentic Workflows and what's refused |
+| [Architecture](docs/architecture.md) | How the packages fit together, and why |
+| [Benchmark report](docs/benchmark-report.md) | The full measurements, generated from [the results](docs/benchmark-results.json) |
+| [Releasing](docs/releasing.md) | How the packages get to npm |
 
 ## Development
 
 ```bash
 pnpm install
-pnpm typecheck   # solution build, then typecheck the test files
-pnpm lint        # includes the trust-boundary rules
+pnpm typecheck   # builds, then typechecks the tests
+pnpm lint        # includes the rules that guard the validator boundary
 pnpm test
 pnpm build
 ```
 
-Requires Node 22.12 or newer. **1,080 tests run offline with no credentials**, and
-that is what CI runs. Rebuild with the root `pnpm build`: the packages have no
-build script of their own, so `pnpm --filter <pkg> build` exits 0 having done
-nothing.
+About 1,450 tests run offline with no credentials, and that's what CI runs.
+Use the root `pnpm build`: the packages have no build script of their own, so
+`pnpm --filter <pkg> build` does nothing and still exits 0.
 
-Fifty-two more are gated, each behind its own variable, because they spend
-money, mint real credentials, write to a real repository, or need Docker. CI
-never runs any of them and needs no secrets.
+Fifty-two more tests are switched off by default, each behind its own
+variable, because they spend money, use real credentials, write to a real
+repository, or need Docker. CI never runs them and needs no secrets.
 
-| Gate | What it does | Cost |
+| Variable | What it runs | Cost |
 | --- | --- | --- |
-| `LEASTPILOT_LIVE=1` | The writer against the live model, token minting against a real GitHub App, and the whole loop end to end | ~$0.03 to ~$0.30 |
-| `LEASTPILOT_SANDBOX=1` | Builds the sandbox and verifies its egress, the relay to `leastpilot serve`, and `leastpilot run --sandbox` end to end (the last two on macOS), and the benchmark's acceptance container, each with negative controls | free, needs Docker |
-| `LEASTPILOT_SEED=1` | Seeds the benchmark corpus into the bench repository — **writes to its default branch and opens issues** | free |
-| `LEASTPILOT_GROUND_TRUTH=1` | Re-records the benchmark's ground-truth traces, **overwriting the committed ones** | ~$3 |
-| `LEASTPILOT_BENCH=1` | The mandated sweep and the report: each task's mandated run with tools filtered and with every tool offered | ~$1.80 for six tasks |
-| `LEASTPILOT_WRITER_SWEEP=1` | Writes each task's mandate again at several effort settings and compares it with the published one | ~$0.03 a write |
+| `LEASTPILOT_LIVE=1` | The writer against the real model, real token minting, and the whole loop end to end | ~$0.03 to ~$0.30 |
+| `LEASTPILOT_SANDBOX=1` | Builds the sandbox and checks its egress, the relay, and `run --sandbox` end to end, each with a control that shows the check can fail | free, needs Docker |
+| `LEASTPILOT_SEED=1` | Seeds the benchmark tasks into the test repository: **writes to its default branch and opens issues** | free |
+| `LEASTPILOT_GROUND_TRUTH=1` | Re-records the reference runs, **overwriting the committed ones** | ~$3 |
+| `LEASTPILOT_BENCH=1` | The benchmark sweep and the report | ~$1.80 for six tasks |
+| `LEASTPILOT_WRITER_SWEEP=1` | Rewrites each task's mandate at several effort settings and compares | ~$0.03 a write |
 
-The credential-backed gates also need `ANTHROPIC_API_KEY`, `LEASTPILOT_APP_ID`,
-`LEASTPILOT_INSTALLATION_ID`, `LEASTPILOT_APP_KEY_PATH` and `LEASTPILOT_TEST_REPO`. See
-[CONTRIBUTING.md](CONTRIBUTING.md) — in particular the one rule that is not
-negotiable.
+The ones that use credentials also need `ANTHROPIC_API_KEY`,
+`LEASTPILOT_APP_ID`, `LEASTPILOT_INSTALLATION_ID`, `LEASTPILOT_APP_KEY_PATH`
+and `LEASTPILOT_TEST_REPO`. See [CONTRIBUTING.md](CONTRIBUTING.md), in
+particular the one rule that isn't negotiable.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+[Apache-2.0](LICENSE). See [NOTICE](NOTICE) for attribution.
