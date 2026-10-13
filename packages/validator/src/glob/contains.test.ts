@@ -13,6 +13,14 @@ describe("parseGlob", () => {
       expect(() => parseGlob(bad), bad).toThrow(GlobParseError);
     }
   });
+  // U+0000 is the automaton's OTHER symbol, "any character no glob names". A
+  // glob naming it would match every unnamed character: `src/\0.ts` reads as
+  // one odd file and would allow every single-character `src/?.ts` in the
+  // proxy (found by the Phase 8 review of the glob cache).
+  it("rejects a NUL character, which the automaton reserves for every unnamed one", () => {
+    expect(() => parseGlob("src/\u0000.ts")).toThrow(GlobParseError);
+    expect(() => globMatches(["src/\u0000.ts"], "src/a.ts")).toThrow(GlobParseError);
+  });
   it("rejects *** and empty patterns", () => {
     expect(() => parseGlob("a***b")).toThrow(GlobParseError);
     expect(() => parseGlob("")).toThrow(GlobParseError);

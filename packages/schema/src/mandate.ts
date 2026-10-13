@@ -16,6 +16,7 @@ export const GlobString = z
     message: "unsupported glob metacharacter; only literals, * and ** are allowed",
   })
   .refine((s) => !s.includes("***"), { message: "*** is not a valid glob" })
+  .refine((s) => !s.includes("\u0000"), { message: "a NUL character is not allowed in a pattern" })
   .refine((s) => !s.split("/").includes(".."), {
     message: "path traversal is not allowed in a pattern",
   });
