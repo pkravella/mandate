@@ -342,3 +342,31 @@ describe("scripts/release-version.mjs", () => {
     expect(check(tag)).toBe(1);
   });
 });
+
+/**
+ * scripts/placeholders.mjs writes, and never publishes, the 0.0.0 placeholder
+ * each package needs before npm will attach a trusted publisher to it (the
+ * owner's route a; docs/releasing.md). The owner publishes them by hand.
+ */
+describe("scripts/placeholders.mjs", () => {
+  const out = mkdtempSync(join(tmpdir(), "leastpilot-placeholders-test-"));
+  const r = spawnSync(process.execPath, [root("scripts/placeholders.mjs"), out], { encoding: "utf8" });
+
+  it("writes one placeholder per published package and nothing else", () => {
+    expect(r.status, r.stderr).toBe(0);
+    expect(readdirSync(out).sort()).toEqual(published.map((p) => p.dir).sort());
+  });
+
+  it.each(published.map((p) => [p.json.name, p] as const))("%s: 0.0.0, no code, says what it is", (_n, p) => {
+    const dir = join(out, p.dir);
+    expect(readdirSync(dir).sort()).toEqual(["README.md", "package.json"]);
+    const json = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Manifest & Record<string, unknown>;
+    expect(json.name).toBe(p.json.name);
+    expect(json.version).toBe("0.0.0");
+    expect(json.private).toBeUndefined();
+    expect(json.publishConfig).toEqual({ access: "public" });
+    expect(json.repository).toEqual(p.json.repository);
+    for (const k of ["bin", "main", "exports", "dependencies", "scripts"]) expect(json[k], k).toBeUndefined();
+    expect(readFileSync(join(dir, "README.md"), "utf8")).toMatch(/placeholder/i);
+  });
+});
