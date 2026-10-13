@@ -1,0 +1,14 @@
+# A mandate that validates against fixtures/ceilings/org-policy-v12.cedar.
+# scripts/pack-check.mjs runs it through the installed package and the
+# checkout and requires the same answer from both.
+mandate: fix-issue-42
+task: "Fix issue #42"
+requestedBy: user:alice
+expiresInMinutes: 30
+ceiling: org-policy@v12
+grants:
+  - { action: repo.read, enforcedBy: token, resources: ["acme/api"] }
+  - { action: branch.create, enforcedBy: proxy, resources: ["acme/api"], branches: ["agent/42-fix"] }
+  - { action: contents.write, enforcedBy: proxy, resources: ["acme/api"], branches: ["agent/42-fix"], paths: ["src/**"], denyPaths: [".github/workflows/**", "**.env**"] }
+  - { action: pull_request.create, enforcedBy: proxy, resources: ["acme/api"], branches: ["agent/42-fix"], base: main, max: 1 }
+destinations: { allow: ["github.com/acme/api"] }
