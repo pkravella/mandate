@@ -27,12 +27,17 @@ const FORBIDDEN = new Set(["?", "[", "]", "{", "}", "!", "(", ")", "|", "+", "@"
 export function parseGlob(src: string): Token[] {
   if (src.length === 0) throw new GlobParseError("empty glob", src);
   const out: Token[] = [];
-  for (let i = 0; i < src.length; i++) {
-    const c = src[i]!;
+  // By code point, not UTF-16 unit: dfaAccepts reads a value by code point and
+  // Cedar's `like` matches by character, so an astral character (an emoji) is
+  // one literal. Read by unit it was two lone surrogates nothing could match,
+  // and a deny path naming one never denied.
+  const chars = [...src];
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i]!;
     if (c === "*") {
-      if (src[i + 1] === "*") {
-        if (src[i + 2] === "*") throw new GlobParseError("*** is not a valid glob", src);
-        if (src[i + 2] === "/") {
+      if (chars[i + 1] === "*") {
+        if (chars[i + 2] === "*") throw new GlobParseError("*** is not a valid glob", src);
+        if (chars[i + 2] === "/") {
           out.push({ kind: "globstarSlash" });
           i += 2;
         } else {

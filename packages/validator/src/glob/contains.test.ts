@@ -333,6 +333,29 @@ describe("globMatches on values that are not patterns", () => {
   });
 });
 
+// parseGlob read a pattern by UTF-16 code unit and dfaAccepts reads a value by
+// code point, so an astral character (an emoji, U+1F511) in a pattern became
+// two lone surrogates no value could match. In a deny list that was a deny
+// that never applied.
+describe("astral characters in a pattern", () => {
+  const k = "\u{1F511}";
+  it("match themselves", () => {
+    expect(globMatches([`a/${k}/**`], `a/${k}/x`)).toBe(true);
+    expect(globMatches([`a/${k}`], "a/x")).toBe(false);
+  });
+  it("match in a deny-style pattern", () => {
+    expect(globMatches([`**/${k}*`], `x/${k}.txt`)).toBe(true);
+  });
+  it("are one character to *, as to a literal", () => {
+    expect(globMatches(["a/*"], `a/${k}`)).toBe(true);
+    expect(globSetContains(["a/*"], [`a/${k}`]).ok).toBe(true);
+    expect(globSetContains([`a/${k}`], ["a/*"]).ok).toBe(false);
+  });
+  it("leave a lone surrogate matching itself", () => {
+    expect(globMatches(["a/\uD83Dx"], "a/\uD83Dx")).toBe(true);
+  });
+});
+
 // Phase 8: the proxy rebuilt the automaton for every value it checked. Under a
 // mandate with 64 path patterns that was 18 ms per path and 4.7 s for one call
 // at the 256-path cap (measured). It now builds one per glob set and keeps a

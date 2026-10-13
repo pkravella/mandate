@@ -489,3 +489,14 @@ describe("makeArgumentEnforcer", () => {
       .toBe("deny");
   });
 });
+
+describe("an astral character in a deny path", () => {
+  it("denies the path it names", () => {
+    const k = "\u{1F511}";
+    const rule = { ...writeRule, paths: ["**"], denyPaths: [...(writeRule.denyPaths ?? []), `secrets/${k}/**`] };
+    const enforce = makeArgumentEnforcer({ ...rules, rules: [rule, prRule] });
+    expect(enforce(rule, {
+      owner: "acme", repo: "api", branch: "agent/42-fix", path: `secrets/${k}/a.txt`, content: "x",
+    })).toMatchObject({ kind: "deny" });
+  });
+});
