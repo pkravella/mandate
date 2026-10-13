@@ -66,13 +66,19 @@ export interface WorkBudget {
  * same deny list, ceiling clause and probe automaton being rebuilt per grant
  * (see DfaCache in contains.ts):
  *
- *   - the benchmark's four-grant mandate: 14_379 (0.2%);
- *   - 64 grants with two deny patterns each: 535_703 (6.7%), was 47%;
- *   - 19 grants with an ordinary six-pattern deny list: 708_046 (8.9%), was
+ *   - the benchmark's four-grant mandate: 8_977 (0.1%);
+ *   - 64 grants with two deny patterns each: 329_001 (4.1%), was 47%;
+ *   - 19 grants with an ordinary six-pattern deny list: 490_505 (6.1%), was
  *     102% -- refused as too complex before the cache;
- *   - 64 grants with that deny list: 2_142_421 (27%), was 341%;
+ *   - 64 grants with that deny list: 1_512_867 (18.9%), was 341%;
  *   - `pattern-flood`, rewritten with distinct patterns per grant (identical
- *     grants now share their automata): refused at the budget, in ~0.9 s.
+ *     grants now share their automata): refused at the budget, in ~1.0 s.
+ *     The 11_960_064 below is the earlier, identical-grant file.
+ *
+ * Each automaton is built over its own globs' alphabet, so a grant with many
+ * distinct characters in its paths costs that grant, not every grant: a
+ * call-wide alphabet, tried first, let one 300-character CJK path take 62
+ * ordinary grants past the budget.
  *
  * The axis that mattered was the deny list, not the grant count. The table
  * below records the derivation of the unit; its figures predate the cache.

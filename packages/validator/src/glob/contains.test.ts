@@ -254,7 +254,7 @@ describe("globMatches — cross-checked against a regex oracle", () => {
   // cache's memberOf as through globMatches.
   it("decides every pair the same through a call's shared cache", () => {
     const minus = [[], ["**/.env*"], [".github/workflows/**", "a/b"]];
-    const cache = dfaCache([...PATTERN_SETS.flat(), ...minus.flat()]);
+    const cache = dfaCache();
     const disagreements: string[] = [];
     for (const outer of PATTERN_SETS) {
       for (const inner of PATTERN_SETS) {

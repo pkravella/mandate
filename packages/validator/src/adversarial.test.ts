@@ -430,6 +430,30 @@ describe("the work budget and an ordinary deny list", () => {
     expect(spent / budget.total, `spent ${spent} of ${budget.total}`).toBeLessThan(0.5);
   });
 
+  // Found by review: one alphabet for the whole call made every automaton as
+  // wide as the widest grant's characters. One grant with a path of 300
+  // distinct CJK characters (1.8M units alone) took 62 ordinary grants (1.6M)
+  // to 8.0M together, refused. A grant's characters now cost only that grant.
+  it("does not let one grant's characters inflate every other grant", () => {
+    const cjk = Array.from({ length: 300 }, (_, k) => String.fromCodePoint(0x4e00 + k)).join("");
+    const m = monorepo(62);
+    const wide = { ...m, grants: [...m.grants, {
+      action: "contents.write" as const, enforcedBy: "proxy" as const, resources: ["acme/api"],
+      branches: ["agent/42-*"], paths: [`docs/${cjk}/**`], denyPaths: DENY,
+    }] };
+    const alone = (x: ProposedMandate): number => {
+      const b = workBudget();
+      validate(x, { ceiling, authority: AUTHORITY, budget: b });
+      return b.total - b.remaining;
+    };
+    const budget = workBudget();
+    const result = validate(wide, { ceiling, authority: AUTHORITY, budget });
+    expect(result.ok, JSON.stringify(result.ok ? [] : result.rejections)).toBe(true);
+    const together = budget.total - budget.remaining;
+    // No more than the two halves would cost apart, give or take what they share.
+    expect(together).toBeLessThan(alone(m) + alone({ ...m, grants: [m.grants[0]!, wide.grants.at(-1)!] }));
+  });
+
   it("spends exactly the same on the same mandate, whatever ran before", () => {
     const spend = (): number => {
       const budget = workBudget();

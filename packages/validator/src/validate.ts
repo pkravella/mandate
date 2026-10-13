@@ -1,6 +1,6 @@
 import { atLeast, requireOperation, UnknownOperationError } from "@leastpilot/catalog";
 import {
-  destinationsWithin, markValidated, SENSITIVE_PATHS,
+  destinationsWithin, markValidated,
   type ContainmentProof, type Grant, type GrantProof,
   type ProposedMandate, type ValidatedMandate,
 } from "@leastpilot/schema";
@@ -59,7 +59,8 @@ export function validate(
   // Cedar witness draws on it, so a mandate cannot buy unbounded work by
   // spreading it across grants that each stay under the per-automaton cap.
   const budget = ctx.budget ?? workBudget();
-  const cache = sharedAutomata(proposed, ctx.ceiling);
+  // One cache for this call only; see DfaCache.
+  const cache = dfaCache();
 
   // ---- check 0: the requester is the identity whose authority is checked --
   // `requestedBy` used to be a label nothing compared with `ctx.authority`, so
@@ -275,29 +276,6 @@ function facetsFor(grant: Grant, rule: CeilingRule): FacetCheck[] {
   }
 
   return facets;
-}
-
-/**
- * One automaton cache for the call, over every pattern it can decide: the
- * mandate's, the ceiling's, `**`, and the lint's sensitive paths. A pattern
- * that does not parse means no cache; each grant then reports its own
- * pattern as undecidable, as before.
- */
-function sharedAutomata(proposed: ProposedMandate, ceiling: Ceiling): DfaCache | undefined {
-  const patterns: string[] = [...UNCONSTRAINED, ...SENSITIVE_PATHS];
-  for (const g of proposed.grants) {
-    patterns.push(...g.resources, ...(g.branches ?? []), ...(g.paths ?? []), ...(g.denyPaths ?? []));
-    if (g.base !== undefined) patterns.push(g.base);
-  }
-  for (const r of ceiling.rules) {
-    patterns.push(...r.resources, ...r.branches, ...r.paths, ...r.denyPaths, ...r.base);
-  }
-  try {
-    return dfaCache(patterns);
-  } catch (e) {
-    if (e instanceof GlobParseError) return undefined;
-    throw e;
-  }
 }
 
 /** A grant is contained if ANY single ceiling clause contains all of its facets. */

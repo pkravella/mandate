@@ -22,29 +22,27 @@ export interface GlobSetOptions {
 }
 
 /**
- * The automata one `validate()` call has built, over one alphabet for the
- * whole call.
+ * The automata, and whole decisions, one `validate()` call has made.
  *
- * Every grant was decided over an alphabet of its own patterns, so the same
- * deny list and the same ceiling clause were rebuilt for every grant: a
+ * Every grant rebuilt the same deny list and the same ceiling clause: a
  * six-pattern deny list is ~78k units each time, and 19 grants sharing one
- * spent the whole budget (measured). One alphabet makes them the same
- * automaton, built and charged once.
+ * spent the whole budget (measured). Each automaton is built over its own
+ * globs' alphabet (see `step` in dfa.ts), so it can be keyed by its glob list
+ * alone and reused by every grant, and one grant's characters never make
+ * another's automata wider. (A first version shared one alphabet for the
+ * call, and a grant with a 300-character CJK path took 62 ordinary grants
+ * past the budget.)
  *
  * Scoped to one call and never shared between calls, so the same mandate
- * costs the same units whatever was validated before; a cache that outlived
- * the call would make a verdict depend on history.
+ * costs the same units whatever was validated before.
  */
 export interface DfaCache {
-  readonly alphabet: readonly string[];
   readonly built: Map<string, Dfa>;
   /** Whole decisions: the same four pattern lists decide the same way. */
   readonly decided: Map<string, Containment>;
 }
 
-/** A cache whose alphabet covers every pattern the call will decide. */
-export const dfaCache = (patterns: readonly string[]): DfaCache =>
-  ({ alphabet: alphabetOf(patterns), built: new Map(), decided: new Map() });
+export const dfaCache = (): DfaCache => ({ built: new Map(), decided: new Map() });
 
 /**
  * Decides (inner \ innerMinus) ⊆ (outer \ outerMinus).
@@ -60,14 +58,7 @@ export function globSetContains(
   const innerMinus = opts.innerMinus ?? [];
   const outerMinus = opts.outerMinus ?? [];
   const budget = opts.budget;
-  const own = alphabetOf([...outer, ...inner, ...innerMinus, ...outerMinus]);
-
-  // The cache is used only when its alphabet covers this decision's
-  // characters. A pattern it was not seeded with is decided as before.
-  const shared = opts.cache !== undefined && own.every((ch) => opts.cache?.alphabet.includes(ch))
-    ? opts.cache
-    : undefined;
-  const alphabet = shared?.alphabet ?? own;
+  const shared = opts.cache;
   const once = (key: string, build: () => Dfa): Dfa => {
     if (shared === undefined) return build();
     const hit = shared.built.get(key);
@@ -77,7 +68,7 @@ export function globSetContains(
     return made;
   };
   const globsDfa = (globs: readonly string[]): Dfa =>
-    once(`g${JSON.stringify(globs)}`, () => dfaFromGlobs(globs, alphabet, budget));
+    once(`g${JSON.stringify(globs)}`, () => dfaFromGlobs(globs, alphabetOf(globs), budget));
   const minusDfa = (plus: readonly string[], minus: readonly string[]): Dfa =>
     minus.length === 0
       ? globsDfa(plus)
@@ -114,21 +105,19 @@ export function globMatches(
 }
 
 /**
- * `globMatches` for the validator's own probes, drawing on a call's cache when
- * its alphabet covers `globs`. The value's characters need not be in it: the
+ * `globMatches` for the validator's own probes, drawing on a call's cache. The
+ * value's characters need not be in the automaton's alphabet: the
  * glob language has no character classes, so a character no glob names
  * behaves exactly as OTHER, which `dfaAccepts` maps it to.
  */
 export function memberOf(
   globs: readonly string[], value: string, budget?: WorkBudget, cache?: DfaCache,
 ): boolean {
-  if (cache === undefined || !alphabetOf(globs).every((ch) => cache.alphabet.includes(ch))) {
-    return globMatches(globs, value, budget);
-  }
+  if (cache === undefined) return globMatches(globs, value, budget);
   const key = `g${JSON.stringify(globs)}`;
   let dfa = cache.built.get(key);
   if (dfa === undefined) {
-    dfa = dfaFromGlobs(globs, cache.alphabet, budget);
+    dfa = dfaFromGlobs(globs, alphabetOf(globs), budget);
     cache.built.set(key, dfa);
   }
   return dfaAccepts(dfa, value);
