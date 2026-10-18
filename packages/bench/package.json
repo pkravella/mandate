@@ -27,7 +27,7 @@
     "@leastpilot/proxy": "workspace:*"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
+    "@anthropic-ai/sdk": "^0.134.0",
     "@modelcontextprotocol/sdk": "^1.32.1"
   }
 }
