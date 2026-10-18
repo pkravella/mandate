@@ -19,7 +19,7 @@
   "dependencies": {
     "@leastpilot/compiler": "workspace:*",
     "@leastpilot/schema": "workspace:*",
-    "zod": "^4.6.5",
+    "zod": "^4.6.7",
     "@leastpilot/cli": "workspace:*",
     "@leastpilot/replay": "workspace:*",
     "@leastpilot/validator": "workspace:*",
