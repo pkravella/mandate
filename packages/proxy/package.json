@@ -35,7 +35,7 @@
     "@leastpilot/schema": "workspace:*",
     "@leastpilot/validator": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "engines": {
     "node": ">=22.12.0"
