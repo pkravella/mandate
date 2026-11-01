@@ -41,7 +41,7 @@
     "@leastpilot/schema": "workspace:*",
     "@leastpilot/validator": "workspace:*",
     "@leastpilot/writer": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "commander": "^15.0.0",
     "yaml": "^2.9.1"
   },
