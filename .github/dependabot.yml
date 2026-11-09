@@ -37,3 +37,9 @@ updates:
     ignore:
       - dependency-name: node
         versions: [">= 23, < 24", ">= 25, < 26", ">= 27, < 28", ">= 29, < 30", ">= 31, < 32"]
+      # Node 26 is LTS but skipped on purpose: the sandbox stays on 24 (LTS
+      # into 2028) until CI tests a newer Node and the image is checked under
+      # LEASTPILOT_SANDBOX. Moving off 24 also means updating ACCEPTANCE_IMAGE
+      # in packages/bench (#91).
+      - dependency-name: node
+        versions: [">= 26, < 27"]

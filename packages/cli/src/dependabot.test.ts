@@ -40,6 +40,13 @@ describe(".github/dependabot.yml", () => {
     expect(ranges.map(([lo]) => lo)).toEqual([23, 25, 27, 29, 31]);
   });
 
+  // The sandbox stays on Node 24 (#91): CI never builds the image, so a green
+  // check on a Node 26 bump says nothing. Kept apart from the odd-major list.
+  it("skips Node 26 for the sandbox, as its own entry", () => {
+    const skips = (docker?.ignore ?? []).filter((i) => i["dependency-name"] === "node").slice(1);
+    expect(skips.flatMap((i) => i.versions ?? [])).toEqual([">= 26, < 27"]);
+  });
+
   // The sandbox moved into the CLI package to ship on npm (Task 9.1). Pointed
   // at a directory with no Dockerfile, Dependabot reports nothing and the base
   // image stops getting updates without anyone seeing it.
